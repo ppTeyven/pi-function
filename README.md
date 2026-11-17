@@ -49,6 +49,8 @@ pi install ./path/to/pi-function
 
 Or drop `function-menu.js` into `~/.pi/agent/extensions/`. Pi loads it at startup — **there is no enable step**.
 
+If you install it while a Pi session is already running, that session will not see it until you run `/reload` or restart. Until then `/function ...` is a normal prompt: Pi sends it to the model, and the model may start working on the need. An extension that is not loaded cannot intercept that.
+
 Requires Node 20+ and a Pi version that supports extension commands (`pi.registerCommand`), tool control (`pi.setActiveTools`), and skills in `pi.getCommands()`.
 
 ## Usage
@@ -56,7 +58,7 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 | Command | What happens |
 |---|---|
 | `/function` | Prints the full catalog of all 22 scenarios, then opens a picker |
-| `/function <need>` | Matches the need, shows plugins + functions + commands, waits for confirmation, then assembles |
+| `/function <need>` | Matches the need, shows plugins + functions + commands, waits for confirmation, then assembles (never executes the need) |
 | `/function <scenario-id>` | Assembles a known scenario directly (still asks first) |
 | `/function scan` | Re-scans installed packages, local extensions, and skills |
 | `/function status` | Shows the active scenario and enabled plugin tools |
@@ -89,7 +91,7 @@ Typical exchange:
 [ Yes ]  [ No ]
 ```
 
-Only `Yes` calls `setActiveTools`. `No` leaves everything untouched.
+Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly never runs the need: after `Yes`, the requirement is placed back in the editor — press Enter to start, or clear it. `/function` also prints the full proposal as a visible message before the confirmation dialog, so the plugin list stays in the transcript.
 
 ## Scenarios
 
@@ -169,7 +171,7 @@ The active scenario is recorded with `pi.appendEntry` and shown in `/function st
 
 ## Auto-accept
 
-Every new plugin and skill is folded into the catalog automatically — no registration, no restart needed while a session is open:
+Every new plugin and skill is folded into the catalog automatically — no registration. With Pi-function already loaded, no restart is needed while a session is open (installing the extension itself still needs `/reload` or a restart, see above):
 
 1. **At session start**, Pi-function scans `settings.json` packages, the Pi npm tree, local `extensions/`, standalone skills, and skills shipped inside plugins.
 2. **While the session runs**, it watches `settings.json`, `skills/`, `extensions/`, and `node_modules/` with a 1.5 s debounce. A fresh install triggers a rescan and a notification.

@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const ALWAYS_PACKAGES = ["pi-mcp-adapter"];
@@ -588,6 +588,7 @@ function buildProposal(pi, scenario, store) {
     for (const m of brief) lines.push("- " + m);
   }
   lines.push("");
+  lines.push("**不会自动执行**：确认只改变工具与提示，需求仍需你按 Enter 或另行发送。");
   lines.push("**装配含义**：启用上述工具、停用其他插件的可选工具、把本场景流程注入系统提示。插件代码常驻，不会真正卸载。");
   return lines.join("\n");
 }
@@ -724,28 +725,37 @@ export default function functionMenu(pi) {
     return false;
   };
 
-  const chooseScenario = async (ctx, text, ranked) => {
-    let pick = null;
+  const announceProposal = (scenario, reason) => {
+    const head = reason ? `匹配依据：${reason}\n\n` : "";
+    pi.sendMessage({
+      customType: "function-proposal",
+      content: head + buildProposal(pi, scenario, store),
+      display: true,
+    });
+  };
+
+  const identifyScenario = async (ctx, text, ranked) => {
     if (ranked.length && ranked[0].score >= 1.2 && (!ranked[1] || ranked[0].score >= ranked[1].score * 1.5)) {
-      pick = ranked[0].scenario;
-      const ok = await ctx.ui.confirm(
-        `识别为「${pick.title}」？`,
-        `匹配依据：${ranked[0].hits.slice(0, 5).join(" / ") || pick.id}\n\n${buildProposal(pi, pick, store)}`,
-      );
-      if (!ok) return null;
-    } else {
-      const options = (ranked.length ? ranked.slice(0, 4).map((r) => r.scenario) : SCENARIOS).map(
-        (s) => `${s.id} · ${s.title} — ${s.when}`,
-      );
-      const sel = await ctx.ui.select("没把握，选一个最接近的场景", options);
-      if (!sel) return null;
-      const id = sel.split(" · ")[0];
-      pick = SCENARIOS.find((s) => s.id === id) || null;
-      if (!pick) return null;
-      const ok = await ctx.ui.confirm(`装配「${pick.title}」？`, buildProposal(pi, pick, store));
-      if (!ok) return null;
+      return { scenario: ranked[0].scenario, reason: ranked[0].hits.slice(0, 5).join(" / ") || ranked[0].scenario.id };
     }
-    return pick;
+    const options = (ranked.length ? ranked.slice(0, 4).map((r) => r.scenario) : SCENARIOS).map(
+      (s) => `${s.id} · ${s.title} — ${s.when}`,
+    );
+    const sel = await ctx.ui.select("没把握，选一个最接近的场景", options);
+    if (!sel) return null;
+    const id = sel.split(" · ")[0];
+    const pick = SCENARIOS.find((s) => s.id === id) || null;
+    return pick ? { scenario: pick, reason: "手动选择" } : null;
+  };
+
+  const confirmScenario = async (ctx, scenario, reason) => {
+    announceProposal(scenario, reason);
+    const pkgs = scenarioPackages(scenario, store).filter((p) => p !== "pi-mcp-adapter");
+    const list = pkgs.length ? pkgs.join("、") : "无额外插件";
+    return ctx.ui.confirm(
+      `装配「${scenario.title}」？`,
+      `将启用：${list}\n\n确认后只启用工具并注入流程提示，不会自动执行任何需求。`,
+    );
   };
 
   const functionCommand = {
@@ -768,7 +778,7 @@ export default function functionMenu(pi) {
         const id = sel.split(" · ")[0];
         const scenario = SCENARIOS.find((s) => s.id === id);
         if (!scenario) return;
-        const ok = await ctx.ui.confirm(`装配「${scenario.title}」？`, buildProposal(pi, scenario, store));
+        const ok = await confirmScenario(ctx, scenario, "菜单选择");
         if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
         const res = applyScenario(pi, ctx, scenario, store, baseline);
         activeScenario = scenario;
@@ -839,7 +849,7 @@ export default function functionMenu(pi) {
       if (forced) {
         scan(false);
         if (!requireUI(ctx)) return;
-        const ok = await ctx.ui.confirm(`装配「${forced.title}」？`, buildProposal(pi, forced, store));
+        const ok = await confirmScenario(ctx, forced, "指定场景");
         if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
         const res = applyScenario(pi, ctx, forced, store, baseline);
         activeScenario = forced;
@@ -862,7 +872,7 @@ export default function functionMenu(pi) {
         const id = sel.split(" · ")[0];
         const scenario = SCENARIOS.find((s) => s.id === id);
         if (!scenario) return;
-        const ok = await ctx.ui.confirm(`装配「${scenario.title}」？`, buildProposal(pi, scenario, store));
+        const ok = await confirmScenario(ctx, scenario, "菜单选择");
         if (!ok) return;
         const res = applyScenario(pi, ctx, scenario, store, baseline);
         activeScenario = scenario;
@@ -870,12 +880,21 @@ export default function functionMenu(pi) {
         ctx.ui.notify(`已装配「${scenario.title}」`, "info");
         return;
       }
-      const scenario = await chooseScenario(ctx, args, ranked);
-      if (!scenario) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-      const res = applyScenario(pi, ctx, scenario, store, baseline);
-      activeScenario = scenario;
-      pi.appendEntry("function-scenario", { id: scenario.id, at: nowIso(), tools: res.next });
-      ctx.ui.notify(`已装配「${scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具`, "info");
+      const picked = await identifyScenario(ctx, args, ranked);
+      if (!picked) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+      const ok = await confirmScenario(ctx, picked.scenario, picked.reason);
+      if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+      const res = applyScenario(pi, ctx, picked.scenario, store, baseline);
+      activeScenario = picked.scenario;
+      pi.appendEntry("function-scenario", { id: picked.scenario.id, at: nowIso(), tools: res.next });
+      const restored = typeof ctx.ui.setEditorText === "function";
+      if (restored) ctx.ui.setEditorText(args);
+      ctx.ui.notify(
+        restored
+          ? `已装配「${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行；已放回输入框，按 Enter 才会开始。`
+          : `已装配「${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行，请手动重新发送。`,
+        "info",
+      );
     },
   };
 

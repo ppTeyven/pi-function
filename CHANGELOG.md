@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Consent hardening: `/function <need>` now prints the full proposal as a visible session message before the confirmation dialog, and the dialog lists the packages to enable.
+- Assembly never executes the requirement: after approval the text is placed back in the editor (press Enter to start); cancellation changes nothing.
+- Docs: installing into a running session requires `/reload` or restart; otherwise `/function ...` reaches the model as a normal prompt.
+
 ## 1.2.0
 
 - Renamed the extension to **Pi-function**; `/pi-function` added as an alias of `/function`.

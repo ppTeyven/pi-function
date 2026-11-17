@@ -1,6 +1,6 @@
 {
   "name": "pi-function",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Pi-function — always-on scenario assembler for the Pi coding agent. Pick a scenario, see the plugins, approve, then enable their tools.",
   "type": "module",
   "license": "MIT",

@@ -49,6 +49,8 @@ pi install ./path/to/pi-function
 
 也可以直接把 `function-menu.js` 放进 `~/.pi/agent/extensions/`。Pi 启动即加载，**没有额外的启用步骤**。
 
+如果是在已经运行的 Pi 会话里安装，当前会话不会发现它：先执行 `/reload`，或重启 Pi。在此之前 `/function ...` 只是一条普通消息，Pi 会把它交给模型，模型可能直接开始处理需求——未加载的扩展无法拦截。
+
 需要 Node 20+，以及支持扩展命令（`pi.registerCommand`）、工具控制（`pi.setActiveTools`）、技能列表（`pi.getCommands`）的 Pi 版本。
 
 ## 用法
@@ -56,7 +58,7 @@ pi install ./path/to/pi-function
 | 命令 | 行为 |
 |---|---|
 | `/function` | 打印 22 个场景全表，然后弹出选择器 |
-| `/function <需求>` | 识别需求 → 展示插件、功能、命令 → 等你确认 → 装配 |
+| `/function <需求>` | 识别需求 → 展示插件、功能、命令 → 等你确认 → 装配（不执行需求） |
 | `/function <场景id>` | 直接装配已知场景（仍会先确认） |
 | `/function scan` | 重扫插件、本地扩展与技能 |
 | `/function status` | 查看当前场景与已启用的插件工具 |
@@ -87,7 +89,7 @@ pi install ./path/to/pi-function
 [ 是 ]  [ 否 ]
 ```
 
-只有选“是”才调用 `setActiveTools`；选“否”不做任何改动。
+只有选“是”才调用 `setActiveTools`；选“否”不做任何改动。装配不会执行需求：选“是”之后，需求文本会被放回输入框，按 Enter 才开始，也可以直接清空。确认框之前还会把完整方案作为一条可见消息打印到会话里，插件清单不会只存在于弹窗中。
 
 ## 场景
 
@@ -167,7 +169,7 @@ pi install ./path/to/pi-function
 
 ## 自动接纳
 
-每个新装的插件和技能都会自动进入目录，无需注册；会话开着时也无需重启：
+每个新装的插件和技能都会自动进入目录，无需注册；Pi-function 已加载时，会话开着也无需重启（扩展本身的安装仍需 `/reload` 或重启，见上文）：
 
 1. **会话启动时**扫描 `settings.json` 里的包、Pi 的 npm 树、本地 `extensions/`、独立技能，以及插件自带的技能。
 2. **会话运行期间**监听 `settings.json`、`skills/`、`extensions/`、`node_modules/`，1.5 秒防抖；新装会触发重扫并提示。
