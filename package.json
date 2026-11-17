@@ -1,0 +1,44 @@
+{
+  "name": "pi-function",
+  "version": "1.2.0",
+  "description": "Pi-function — always-on scenario assembler for the Pi coding agent. Pick a scenario, see the plugins, approve, then enable their tools.",
+  "type": "module",
+  "license": "MIT",
+  "author": "ppTeyven",
+  "homepage": "https://github.com/ppTeyven/pi-function#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ppTeyven/pi-function.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ppTeyven/pi-function/issues"
+  },
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "pi-extension",
+    "ai-agents",
+    "scenario",
+    "tooling",
+    "developer-tools"
+  ],
+  "pi": {
+    "extensions": [
+      "./function-menu.js"
+    ]
+  },
+  "files": [
+    "function-menu.js",
+    "assets",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "render:banner": "node scripts/render-banner.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
