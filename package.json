@@ -1,6 +1,6 @@
 {
   "name": "pi-function",
-  "version": "2.24.0",
+  "version": "2.25.0",
   "description": "Application-scenario + workflow-bundle assembler for the Pi coding agent.",
   "type": "module",
   "license": "MIT",

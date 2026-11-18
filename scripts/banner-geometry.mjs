@@ -5,7 +5,7 @@
 
 export const WORD = "function";
 export const CELL = 26; // one pixel of the wordmark, in SVG units
-export const GAP = 2; // empty columns between the ink of two letters
+export const GAP = 1; // empty columns between the ink of two letters (1 cell = 26px)
 export const TEXT_X = 536;
 // 偶数：GIF 用 2×2 盒式滤波降采样，奇数起点会让每一行字边都掺进半像素灰
 export const TEXT_Y = 168;
@@ -119,42 +119,32 @@ export function layout() {
 /**
  * Animation timings shared by the SVG (CSS) and the GIF (raster).
  *
- * The motion is deliberately *stepwise*: nothing fades, nothing half-transparent
- * slides over the wordmark. Three Pi blocks land, then the wordmark types in
- * letter by letter with a block caret, then the dots breathe. A wipe with
- * partial-opacity columns looked like a translucent bar covering the letters.
+ * The motion is a travelling wave: every letter stays on screen the whole
+ * time and only bobs a few pixels, with the crest dimmed towards grey. No
+ * appearing/disappearing, no cross-fade — a half-transparent column reads as
+ * a bar covering the letters.
  */
 export const TIMING = {
-  markStep: 0.16, // seconds between the three Pi blocks landing
-  letterStart: 0.3, // first letter appears
-  letterStep: 0.1, // seconds per letter
-  caretBlink: 0.42, // seconds per caret on/off
-  caretTail: 1.0, // caret keeps blinking this long after the last letter
-  breathe: 3.2, // seconds per dot cycle
-  dotDelay: [0, 0.26, 0.52], // seconds
+  wavePeriod: 2.6, // seconds for one full wave (the GIF loop is exactly this)
+  waveAmplitude: 6, // px the crest rises — under a quarter of a pixel cell
+  wavePhaseStep: 0.62, // radians of phase between neighbouring letters
+  waveDim: 0.45, // how much darker the crest is than a letter at rest
+  breathe: 2.6, // dots share the wave period so the loop is seamless
+  dotDelay: [0, 0.2, 0.4], // seconds
 };
 
-/** When letter `i` (0-based) is fully on screen. */
-export function letterAt(i) {
-  return TIMING.letterStart + i * TIMING.letterStep;
-}
-
-/** End of the typing + caret phase. */
-export function entranceEnd() {
-  return letterAt(WORD.length - 1) + TIMING.caretTail;
-}
-
 /**
- * The block caret at time `t`, or null when it is off / done.
- * It sits where the next letter will appear, so it reads as typing rather
- * than as a cursor parked at a fixed spot.
+ * Wave state of letter `i` at time `t`: how far it rises and how bright it is.
+ * The lift is quantised to whole 2px steps so the 2x2 box filter never blends
+ * half a pixel of grey into a stroke — the dimming is the only grey, and it is
+ * deliberate.
  */
-export function caretAt(t, letters) {
-  if (t < TIMING.letterStart || t >= entranceEnd()) return null;
-  const shown = letters.filter((_, i) => t >= letterAt(i)).length;
-  const last = letters[letters.length - 1];
-  const x = shown < letters.length ? letters[shown].x0 : last.x0 + last.ink + (GAP * CELL) / 2;
-  const on = Math.floor((t - TIMING.letterStart) / TIMING.caretBlink) % 2 === 0;
-  if (!on) return null;
-  return { x, y: TEXT_Y + 2 * CELL, w: CELL - 8, h: 3 * CELL };
+export function waveAt(i, t) {
+  const phase = (2 * Math.PI * t) / TIMING.wavePeriod - i * TIMING.wavePhaseStep;
+  const crest = Math.max(0, Math.sin(phase));
+  const lift = Math.round((TIMING.waveAmplitude * crest) / 2) * 2;
+  return { dy: -lift, alpha: 1 - TIMING.waveDim * crest };
 }
+
+/** Seconds of animation per loop (the GIF ships exactly this many frames). */
+export const LOOP_SECONDS = TIMING.wavePeriod;

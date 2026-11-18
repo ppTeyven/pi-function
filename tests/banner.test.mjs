@@ -54,17 +54,21 @@ test("B3 动画是可剥离的：rect 自身不带 opacity / fill=none，剥掉 
   assert.match(SVG, /<g fill="#FFFFFF"/);
 });
 
-test("B4 动画是打字式的：整字母出现 + 光标闪烁 + 可降级", () => {
-  assert.match(SVG, /@keyframes type/);
-  assert.match(SVG, /\.px \{ opacity: 0; animation: type 1ms steps\(1\) forwards \}/);
-  assert.match(SVG, /@keyframes caretOn/);
-  assert.match(SVG, /class="caret"/, "没有打字光标");
-  assert.match(SVG, /animation-delay:\d+ms,\d+ms/, "光标缺进入/消失两个延时");
+test("B4 动画是波浪：字一直在，只起伏与变暗，可降级", () => {
+  assert.match(SVG, /@keyframes bob/);
+  assert.match(SVG, /@keyframes dim/);
+  assert.match(SVG, /class="wave" style="animation-delay:-\d+\.\d+s"/, "每个字母要自己的相位");
+  assert.match(SVG, /translateY\(-6px\)/, "波峰只抬 6px（不要太高）");
+  assert.match(SVG, /animation: bob 2\.6s ease-in-out infinite, dim 2\.6s ease-in-out infinite/);
+  assert.match(SVG, /opacity: 0\.55/, "波峰要比旁边灰一点");
   assert.match(SVG, /prefers-reduced-motion: reduce/);
   assert.match(SVG, /class="dot"/, "三个色点也在呼吸");
-  // 反面：旧实现是逐列淡入，会产生半透明“幽灵列”，压在字上像被盖了一层
-  assert.doesNotMatch(SVG, /@keyframes rise/, "逐列淡入已废弃");
-  assert.doesNotMatch(SVG, /translateY\(/, "不要位移入场，会显得字在抖");
+  // 反面：不许“消失 / 出现”流
+  assert.doesNotMatch(SVG, /@keyframes type/);
+  assert.doesNotMatch(SVG, /@keyframes rise/);
+  assert.doesNotMatch(SVG, /class="caret"/);
+  // 剥掉 <style> 后仍是完整白字：字母分组不许自带 opacity
+  assert.doesNotMatch(SVG, /<g[^>]*opacity=/, "字母分组自带 opacity，会随样式一起失效");
 });
 
 test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {
@@ -111,20 +115,18 @@ function gifInfo(buf) {
   return { w, h, frames: frames.filter((f) => f.kind === "gce") };
 }
 
-test("B6 动图是真的 GIF89a：无限循环、帧数够、宽高比与 SVG 一致", () => {
+test("B6 动图是真的 GIF89a：无限循环、整帧、2.6s 正好 65 帧", () => {
   assert.equal(GIF.subarray(0, 6).toString("ascii"), "GIF89a");
   assert.ok(GIF.includes(Buffer.from("NETSCAPE2.0")), "缺循环扩展，只播一遍就停");
   const { w, h, frames } = gifInfo(GIF);
   assert.equal(GIF[GIF.length - 1], 0x3b, "缺 trailer");
   assert.ok(w <= 1200, `宽 ${w}px 太大，GitHub 会二次缩放`);
   assert.ok(Math.abs(w / h - 1854 / 520) < 0.01, `宽高比 ${w}x${h} 与 SVG 不一致`);
-  assert.ok(frames.length >= 40, `帧太少（${frames.length}），看起来不会动`);
-  assert.ok(frames.every((f) => f.delay >= 2 && f.delay <= 200), "帧延时异常");
-  assert.ok(frames.some((f) => f.fw === w && f.fh === h), "没有整帧");
-  assert.ok(
-    frames.filter((f) => f.fw < w).length >= 10,
-    "呼吸阶段应该只有小块局部帧，否则文件会很大",
-  );
+  // 波浪每帧字都在动，必须整帧；2.6s @25fps = 65 帧 × 40ms，循环无缝
+  assert.equal(frames.length, 65, `帧数 ${frames.length}，应为 65（2.6s × 25fps）`);
+  // GCE 的 delay 单位是厘秒：40ms 写成 4
+  assert.ok(frames.every((f) => f.delay * 10 === 40), "帧延时必须 40ms，否则循环会跳");
+  assert.ok(frames.every((f) => f.fw === w && f.fh === h), "波浪要求整帧，局部帧会丢掉位移");
 });
 
 test("B7 体积在 GitHub 能接受的范围内（< 1.5MB）", () => {
@@ -139,7 +141,7 @@ test("B8 GIF 与 SVG 是同一套排版（共享 banner-geometry）", async () =
   const fromGeom = new Set(letters.flatMap((l) => l.runs.map((r) => `${r.x},${r.y},${r.w},${r.h}`)));
   assert.deepEqual([...fromGeom].sort(), [...fromSvg].sort(), "几何与 SVG 不一致，改一处会漏另一处");
   assert.equal(new Set(gaps).size, 1, `几何里的间隙不一致：${gaps.join(",")}`);
-  assert.equal(gaps[0], 52, "间隙应与 SVG 里的一模一样");
+  assert.equal(gaps[0], 26, "间隙应与 SVG 里的一模一样（1 格）");
   assert.equal(geometry.WIDTH, 1854);
   assert.equal(geometry.HEIGHT, 520);
 });
@@ -219,25 +221,34 @@ function decodeGif(buf) {
   return { w, h, palette, frames };
 }
 
-test("B10 打字是硬的：文字区域只有纯白和背景，没有半透明覆盖", () => {
+test("B10 波浪：每帧字都在，灰只来自变暗，没有杂色覆盖", () => {
   const { palette, frames } = decodeGif(GIF);
-  const WHITE = "255,255,255";
   const BG = "11,14,20";
   const full = frames.filter((f) => f.w === 927 && f.h === 260);
-  assert.ok(full.length >= 20, `整帧太少：${full.length}`);
+  assert.ok(full.length >= 40, `整帧太少：${full.length}`);
+  let white = false;
+  let dim = false;
   const bad = [];
   for (const [n, f] of full.entries()) {
-    if (n % 4 !== 0) continue; // 抽样即可，整帧 24 万像素
-    for (let y = 80; y < 180; y += 2) {
-      for (let x = 260; x < 886; x += 2) {
+    if (n % 5 !== 0) continue;
+    let ink = 0;
+    for (let y = 70; y < 190; y += 2) {
+      for (let x = 260; x < 800; x += 2) {
         const c = palette[f.indices[y * 927 + x]];
         if (!c) continue;
         const key = c.join(",");
-        if (key === WHITE || key === BG) continue;
-        bad.push(`frame ${n} (${x},${y}) rgb(${key})`);
+        if (key === BG) continue;
+        ink++;
+        const [r, g, b] = c;
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 8) bad.push(`frame ${n} rgb(${key}) 不是灰阶`);
+        if (key === "255,255,255") white = true;
+        else if (r < 200) dim = true;
       }
     }
+    // 波浪不许“消失再出现”：任何一帧都必须看得见字
+    assert.ok(ink > 2000, `frame ${n} 的字几乎没了（墨迹 ${ink}）`);
   }
-  assert.deepEqual(bad.slice(0, 5), [], `文字上出现半透明覆盖：${bad.slice(0, 3).join(" / ")}`);
-  assert.ok(full.some((f) => f.indices.some((v) => palette[v]?.join(",") === WHITE)), "整片没有纯白字");
+  assert.deepEqual(bad.slice(0, 3), [], "文字上出现了杂色");
+  assert.ok(white, "整片没有纯白的字");
+  assert.ok(dim, "波峰没有变暗");
 });

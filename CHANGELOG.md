@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.25.0
+
+- **Banner motion is now a travelling wave.** Each letter bobs six pixels and the crest dims to 55%, so the wordmark breathes instead of typing itself in. Nothing appears or disappears any more — the previous versions (per-column fade, then type-on with a caret) both made letters pop in and out, which is exactly what was asked to stop.
+- **Letters are tighter:** the gap between two letters is one cell (26px) instead of two, so `function` reads as one word (inbox 536..1576 instead of 536..1758).
+- **The GIF now loops seamlessly:** 2.6s at 25fps is exactly 65 frames of 40ms, and the dot pulse shares the same period, so the loop point is invisible.
+- **README image URL is versioned** (`assets/banner.gif?v=2.25.0`). GitHub's camo cache is keyed by URL, so the clipped Pi mark people kept seeing was a stale copy of the 2.23.0 render; bumping the query string forces a refetch.
+- `tests/banner.test.mjs`: B4 rewritten for the wave (and rejects the old `type`/`rise`/`caret` motion), B8 expects 26px gaps, B6 asserts 65 whole frames at 40ms (the GCE delay field is in centiseconds — comparing it to 40 was the bug that made B6 red), B10 now proves letters never vanish and the only grey is the wave's dimming.
+- Total 240.
+
 ## 2.24.0
 
 - **Banner motion redone: typing instead of a cross-fade.** The old entrance faded each column in independently, so half-transparent columns sat on top of the letters — which reads as something translucent sliding over the wordmark. Now the three Pi blocks land one after another, the wordmark types in whole letters with a blinking block caret, the dots breathe, and the letters untype right-to-left before the loop restarts. Nothing is ever drawn at partial opacity over text.
