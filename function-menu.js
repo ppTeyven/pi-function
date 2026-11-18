@@ -685,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.21.3";
+const EXT_VERSION = "2.21.4";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2951,6 +2951,12 @@ export default function functionMenu(pi) {
 
   pi.registerCommand("function", functionCommand);
   pi.registerCommand("pi-function", functionCommand);
+  // 快捷键 /fn：不注册参数补全，所以输入 /fn 直接回车就进菜单，
+  // 不会被“补全面板第一行是 assemble”抢走回车键。
+  pi.registerCommand("fn", {
+    description: "同 /function：直接用（工作流 × 场景菜单），不带参数补全",
+    handler: functionCommand.handler,
+  });
 
   // -------------------------------------------------------------------------
   // 模型侧入口：只读的场景建议 + 插件可用性诊断

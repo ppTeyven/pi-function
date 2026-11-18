@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.21.4
+
+- New `/fn` shortcut: same handler as `/function`, registered **without** `getArgumentCompletions`. The web UI keeps a stale argument-completion panel per command name, so `/fn` (a name it has never cached) goes straight to the workflow × scenario menu on Enter.
+- Total 222.
+
 ## 2.21.3
 
 - `/function status` now prints `扩展版本：vX.Y.Z`, and `EXT_VERSION` is exported. When a reload seems not to apply, this answers "which build is actually running?" in one command; a test keeps it equal to `package.json`.

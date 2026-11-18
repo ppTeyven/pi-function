@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 221 cases, repository fixture — runs on any machine
+npm test          # 222 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -541,7 +541,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `complete.test.mjs` | completeness invariant: every token accounted for | 9 |
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
-| `completions.test.mjs` | `/function` argument completion + version marker | 5 |
+| `completions.test.mjs` | `/function` argument completion, version marker, `/fn` shortcut | 6 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

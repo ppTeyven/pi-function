@@ -69,3 +69,18 @@ test("K5 扩展版本号与 package.json 一致（用来确认 /reload 加载的
   const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(m.EXT_VERSION, pkg.version);
 });
+
+test("K6 /fn 是“不带参数补全”的快捷入口，回车不会被 assemble 抢走", () => {
+  const reg = {};
+  const pi = {
+    registerTool() {},
+    registerCommand(name, cmd) { reg[name] = cmd; },
+    on() {}, appendEntry() {}, sendMessage() {},
+    getAllTools: () => [], getActiveTools: () => [], setActiveTools() {},
+    getCommands: () => [], getAllSkills: () => [],
+  };
+  m.default(pi);
+  assert.ok(reg.fn, "没有注册 /fn");
+  assert.equal(reg.fn.getArgumentCompletions, undefined, "/fn 不该有参数补全");
+  assert.equal(reg.fn.handler, reg.function.handler, "/fn 应与 /function 同一实现");
+});
