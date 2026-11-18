@@ -146,6 +146,30 @@ const PROCESS_SKILL_IDS = ["workflow-refactor", "sop-builder", "sop-extractor", 
 
 // 能力标签词表（阶段 B）：把"中文能力词"映射到能力角色。
 // 与 CAPABILITIES 的正则互补——正则看名字，标签看描述里出现的具体能力。
+// 动词（动作）与形容词（风格/质量）也是需求：
+// 「润色」要写作能力，「极简」要设计能力，不能因为描述里人人都写就当作噪声丢掉。
+// 词典同时给词性，词的分类和 selectByCoverage 的 demands 都用这一份，避免两处不一致。
+const ACTION_ROLES = {
+  润色: "writing", 改写: "writing", 精简: "writing", 校对: "writing", 摘要: "writing", 总结: "writing", 扩写: "writing",
+  翻译: "i18n", 本地化: "i18n", 多语言: "i18n",
+  抓取: "automation", 爬取: "automation", 爬虫: "automation", 调度: "automation", 定时: "automation",
+  备份: "automation", 迁移: "automation", 部署: "automation", 打包: "automation", 上传: "automation",
+  渲染: "video", 剪辑: "video", 转码: "video", 压缩: "automation",
+  去重: "data", 合并: "data", 排序: "data", 透视: "data", 清洗: "data", 可视化: "data", 建模: "data", 统计: "data",
+  识别: "vision", 识图: "vision", 提取: "docs",
+  排版: "docx", 美化: "design", 配色: "design",
+  重构: "code-intel", 调试: "code-intel", 诊断: "code-intel",
+  审查: "plan-review", 审计: "plan-review", 测试: "testing",
+  监控: "automation", 搜索: "web", 检索: "web",
+};
+
+const STYLE_ROLES = {
+  极简: "design", 简洁: "design", 干净: "design", 高级: "design", 精致: "design", 优雅: "design",
+  可爱: "design", 复古: "design", 科技感: "design", 商务: "design", 活泼: "design", 治愈: "design",
+  小清新: "design", 扁平: "design", 拟物: "design", 性冷淡: "design",
+  正式: "docx", 口语: "writing", 幽默: "writing", 克制: "writing", 专业: "writing", 自然: "writing",
+};
+
 const TAG_VOCAB = {
   表格: "data", 数据: "data", 图表: "data", 透视: "data", csv: "data", sql: "data", 统计: "data",
   幻灯片: "slides", ppt: "slides", 演示: "slides", 路演: "slides", 讲义: "slides",
@@ -167,6 +191,9 @@ const TAG_VOCAB = {
   测试: "testing", 用例: "testing", 覆盖率: "testing",
   编排: "orchestration", 并行: "orchestration", 子代理: "orchestration",
 };
+
+// 动词与形容词直接进入 tags：它们本来就在需求里，不该只因为“描述里人人写”而被过滤。
+Object.assign(TAG_VOCAB, ACTION_ROLES, STYLE_ROLES);
 
 function tagsOf(text) {
   const t = String(text || "").toLowerCase();
@@ -572,7 +599,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 8;
+const PROFILE_VERSION = 9;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return process.env.PI_FUNCTION_PROFILE || path.join(agentDir(), PROFILE_FILE); }
@@ -1589,8 +1616,10 @@ function skillSearchMessage(gaps, need = "") {
 // 本机有没有条目能做这件事（方向敏感：PDF→Markdown 不算能生成 PDF）。
 function capabilityCovered(cap) {
   const info = ACTIVE_PROFILE?.itemInfo || {};
+  // 只看 id 与描述：tags 是“涉及什么领域”，不是“能干这件事”。
+  // 把 tags 算进来会让一个提到「剪辑」的写作技能被当成能剪视频。
   return Object.entries(info).some(([id, meta]) => {
-    const text = norm(`${id} ${meta?.description || ""} ${(meta?.tags || []).join(" ")}`);
+    const text = norm(`${id} ${meta?.description || ""}`);
     return cap.item.test(text) && !(cap.exclude && cap.exclude.test(text));
   });
 }
@@ -1725,12 +1754,46 @@ function wordAudit(need, items = catalogTexts()) {
     .filter((t) => !tokens.some((o) => o !== t && o.includes(t) && rows.find((r) => r.term === o)?.df > 0))
     .sort((a, b) => b.length - a.length || a.localeCompare(b))
     .slice(0, 6);
-  return { total: tokens.length, matched, generic: generic.slice(0, 8), unmatched };
+  return { total: tokens.length, matched, generic: generic.slice(0, 8), unmatched, deeds: deedWords(need) };
+}
+
+function roleCovered(role) {
+  const r = ACTIVE_PROFILE?.roles?.[role];
+  return !!((r?.packages?.length || 0) + (r?.skills?.length || 0));
+}
+
+// 需求里的动词（做什么）与形容词（要多好/什么风格）。
+// 它们不靠分词：直接拿词典去原文里扫，所以「精简一下」「做可爱点」不会被切碎或当成虚词丢掉。
+function deedWords(need) {
+  const t = flatText(need);
+  const out = [];
+  const seen = new Set();
+  const sources = [
+    ...Object.entries(ACTION_ROLES).map(([term, role]) => ({ term, role, kind: "action" })),
+    ...Object.entries(STYLE_ROLES).map(([term, role]) => ({ term, role, kind: "style" })),
+  ];
+  for (const d of sources) {
+    if (seen.has(d.term) || !t.includes(flatText(d.term))) continue;
+    seen.add(d.term);
+    out.push({ ...d, covered: roleCovered(d.role) });
+  }
+  return out.sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term));
+}
+
+// 动作/风格说得出、但本机没有任何条目能干：这是缺口，不是噪声。
+function deedGaps(need) {
+  return deedWords(need)
+    .filter((d) => !d.covered)
+    .map((d) => ({
+      id: `deed:${d.term}`,
+      label: `${d.term}（${d.kind === "style" ? "风格" : "动作"}）`,
+      hint: `需要 ${CAPABILITIES[d.role]?.label || d.role} 能力`,
+      source: "deed",
+    }));
 }
 
 // 全库都没提到的词：当作可能的交付物问用户，而不是自己判断“它不重要”。
-function unknownWordAsks(words, max = 2) {
-  return (words?.unmatched || []).slice(0, max).map((term) => ({
+function unknownWordAsks(words, max = 2) {  return (words?.unmatched || []).slice(0, max).map((term) => ({
     id: `word:${term}`,
     label: term,
     question: `本机所有插件/技能都没提到「${term}」，这是你要产出的东西吗？`,
@@ -1975,6 +2038,7 @@ function buildProposal(pi, scenario, store, workflow = null) {
     lines.push("**逐词核对（每个词都查过）**");
     lines.push(`- 拆出 ${w.total} 个词：有对应条目 ${w.matched.length} 个、通用词 ${w.generic.length} 个、本机没提到 ${w.unmatched.length} 个`);
     for (const m of w.matched.slice(0, 8)) lines.push(`- 「${m.term}」→ \`${m.kind === "skill" ? "skill:" : ""}${m.item}\``);
+    if (w.deeds?.length) lines.push(`- 动作/风格：${w.deeds.map((d) => `${d.term}→${CAPABILITIES[d.role]?.label || d.role}${d.covered ? "（已覆盖）" : "（本机没有）"}`).join("、")}`);
     if (w.unmatched.length) lines.push(`- 本机没提到：${w.unmatched.map((t) => `「${t}」`).join("、")}（装配前会问你要不要去找）`);
     lines.push("");
   }
@@ -2396,7 +2460,7 @@ export default function functionMenu(pi) {
     await askUnselectedItems(ctx, scenario);
     const baseGaps = capabilityGaps(scenario, store, workflow);
     const bareGaps = await clarifyBareCapabilities(ctx, `${scenario.title || ""} ${scenario.when || ""}`, baseGaps, scenario.analysis?.audit?.words);
-    const gaps = [...baseGaps, ...bareGaps.filter((g) => !baseGaps.some((x) => x.id === g.id))];
+    const gaps = [...baseGaps, ...bareGaps, ...deedGaps(`${scenario.title || ""} ${scenario.when || ""}`)].filter((g, i, all) => all.findIndex((x) => x.id === g.id) === i);
     const wanted = await askMissingCapabilities(ctx, gaps);
     const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
     if (declined.length) scenario.declinedGaps = declined.map((g) => g.label);
@@ -2654,7 +2718,7 @@ export default function functionMenu(pi) {
       await askUnselectedItems(ctx, scenario);
       const baseGaps = capabilityGaps(scenario, store, workflow);
       const bareGaps = await clarifyBareCapabilities(ctx, args, baseGaps, scenario.analysis?.audit?.words);
-      const gaps = [...baseGaps, ...bareGaps.filter((g) => !baseGaps.some((x) => x.id === g.id))];
+      const gaps = [...baseGaps, ...bareGaps, ...deedGaps(args)].filter((g, i, all) => all.findIndex((x) => x.id === g.id) === i);
       const wanted = await askMissingCapabilities(ctx, gaps);
       const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
       if (declined.length) scenario.declinedGaps = declined.map((g) => g.label);
@@ -2888,4 +2952,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { NEED_CAPABILITIES, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

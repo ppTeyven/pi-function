@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.18.0
+
+- **Verbs and adjectives are requirements too.** `ACTION_ROLES` (润色/精简/校对/摘要/翻译/抓取/调度/备份/部署/去重/合并/可视化/剪辑/转码/渲染/重构/调试/审查/审计/监控…) and `STYLE_ROLES` (极简/简洁/干净/高级/精致/优雅/可爱/复古/科技感/商务/小清新/扁平/拟物/正式/口语/幽默/克制/专业) are matched against the **raw request text**, without segmentation, so they cannot be filtered out by `GENERIC_TERMS` or mangled by the word splitter.
+- Both tables are merged into `TAG_VOCAB`, so a verb or adjective also becomes a coverage `demand`: `做个极简风格的海报` now selects `design-system` through `demands: ["design"]`.
+- `deedWords(need)` reports each hit with its part of speech and whether the mapped role has any installed member; the proposal shows `动作/风格：极简→设计 / 视觉（已覆盖）、剪辑→视频创作（本机没有）`.
+- Uncovered deeds become gaps with `source: "deed"` and join the same ask → find-skill flow (`本机没有「剪辑（动作）」能力，要去找吗？`).
+- `capabilityCovered` now looks at id + description only — tags say "what area this touches", not "what it can produce", so a writing skill mentioning 剪辑 no longer counts as video capability.
+- `PROFILE_VERSION` 8 → 9 (tags changed). New `tests/deeds.test.mjs` (9 cases). Total 191.
+
 ## 2.17.0
 
 - **Every word is checked.** `wordTokens()` segments the request with `Intl.Segmenter('zh', {granularity:'word'})` (falling back to 2–4 char windows), keeps ascii words and ascii/CJK runs (`AI味`), and merges runs of single-character segments while also keeping the prefix-trimmed form (`并转成二维码` → `并转成二维码` + `二维码`).

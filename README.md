@@ -335,6 +335,30 @@ wordTokens("帮我把这份报告加上水印并转成二维码")
 
 `「水印」要当成需求吗？` → 是 turns it into a gap (`source: "word"`) and goes through the same find-skill path; 否 drops it for this turn. Function words are filtered by `AUDIT_STOP` plus prefix/suffix trimming (`把/并/转成/的/了`), so the questions stay about nouns you actually named.
 
+#### Verbs and adjectives count too
+
+Nouns are the obvious half. `润色` and `极简` name a capability just as much as `海报` does, and they were being lost two ways: `GENERIC_TERMS` dropped every verb that appears in many descriptions (`生成`, `优化`), and the segmenter has no reason to treat a verb as important.
+
+So `ACTION_ROLES` (verbs) and `STYLE_ROLES` (adjectives) are scanned **against the raw text** — no segmentation involved — and merged into `TAG_VOCAB`, which means they also become `demands` for coverage selection:
+
+```
+润色/精简/校对/摘要 → writing      极简/干净/高级/精致 → design
+翻译/本地化         → i18n         正式                → docx
+抓取/调度/备份/部署  → automation   可爱/复古/科技感    → design
+去重/合并/可视化     → data         幽默/克制/口语      → writing
+剪辑/转码/渲染       → video        扁平/拟物           → design
+重构/调试/诊断       → code-intel
+审查/审计           → plan-review
+```
+
+Each hit carries its part of speech, so the report is honest about what it saw:
+
+```
+- 动作/风格：极简→设计 / 视觉（已覆盖）、剪辑→视频创作（本机没有）
+```
+
+`（本机没有）` is a gap with `source: "deed"` — `剪辑` on a machine without any video capability asks `本机没有「剪辑（动作）」能力，要去找吗？` in the same flow as everything else. `（已覆盖）` is just evidence, already folded into selection through the tags.
+
 ## What assembly changes
 
 - enables the selected plugin tools;
@@ -426,7 +450,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 182 cases, repository fixture — runs on any machine
+npm test          # 191 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -442,6 +466,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `audit.test.mjs` | full catalog sweep, bare-word asks, audit picks | 9 |
 | `two-problems.test.mjs` | regression for the two reported issues: installed-but-unused, bare words guessed | 20 |
 | `words.test.mjs` | word segmentation, per-word buckets, unmatched-word asks | 9 |
+| `deeds.test.mjs` | verbs/adjectives → roles, deed gaps, panel wording | 9 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
