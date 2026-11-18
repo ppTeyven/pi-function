@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.17.0
+
+- **Every word is checked.** `wordTokens()` segments the request with `Intl.Segmenter('zh', {granularity:'word'})` (falling back to 2–4 char windows), keeps ascii words and ascii/CJK runs (`AI味`), and merges runs of single-character segments while also keeping the prefix-trimmed form (`并转成二维码` → `并转成二维码` + `二维码`).
+- `wordAudit(need, items)` classifies every word into `matched` (1…15% of items mention it), `generic` (>15%) or `unmatched` (**no item mentions it**), and reports the strongest item for each match. `analyzeNeed` returns it as `audit.words`; `dynamicScenario.brief` and the proposal both carry it (`**逐词核对（每个词都查过）**`).
+- Unmatched words are **asked**, not judged unimportant: `unknownWordAsks()` → `「水印」要当成需求吗？`; 是 becomes a gap with `source: "word"` and joins the find-skill path, 否 drops it for the turn. Max 2 asks, deduped against bare-word asks and existing gaps.
+- `AUDIT_STOP` + prefix/suffix trimming keep the questions on nouns (`水印`, `二维码`, `报告`) instead of `这份`, `加上`, `的`.
+- `catalogTexts()` extracted so `capabilityScan` and `wordAudit` share one flattened catalog snapshot.
+- New `tests/words.test.mjs` (9 cases). Total 182.
+
 ## 2.16.0
 
 - The ask/apply logic of stage “full sweep” is now pure and exported, so it can be regression-tested without a UI: `auditAskList(scenario, max)` (what to ask, dedup against `auditPicks`), `includeAuditPicks(scenario, picked)` (skill → `skillIds`, plugin → `plugins`), `bareGapsFromAnswers(need, alreadyGaps, yesIds)` (answer 是 + nothing installed → gap).

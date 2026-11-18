@@ -309,6 +309,32 @@ Also fixed on the way: `selectByCoverage` returned **nothing** when the request 
 
 General rule everywhere in this plugin: a word is either evidenced by the request, or it is a question — never an assumption.
 
+### Every word is checked (`wordAudit`)
+
+The rarity filter above decides what *counts as evidence*. It must not decide what *exists*. So the request is also split into words and each word is looked up in every installed item:
+
+```js
+wordTokens("帮我把这份报告加上水印并转成二维码")
+  → 帮, 我把, 这份, 报告, 加上, 水印, 并转成二维码, 二维码, …
+```
+
+- `Intl.Segmenter('zh', {granularity: 'word'})` does the segmentation — real words, not n-gram shrapnel. Runs of one-character segments (`并 转 成 二 维 码`) are merged *and* kept in their prefix-trimmed form (`二维码`), so a word is never lost to a bad dictionary entry.
+- Every word then lands in exactly one bucket:
+
+| bucket | meaning | what happens |
+|---|---|---|
+| `matched` | 1 … 15% of items mention it | shown with the strongest item (`「ai味」→ skill:humanizer`) |
+| `generic` | more than 15% of items mention it | known, but never used as evidence |
+| `unmatched` | **no item mentions it** | shown, and **asked about** (max 2) |
+
+```
+**逐词核对（每个词都查过）**
+- 拆出 8 个词：有对应条目 0 个、通用词 0 个、本机没提到 3 个
+- 本机没提到：「二维码」、「报告」、「水印」（装配前会问你要不要去找）
+```
+
+`「水印」要当成需求吗？` → 是 turns it into a gap (`source: "word"`) and goes through the same find-skill path; 否 drops it for this turn. Function words are filtered by `AUDIT_STOP` plus prefix/suffix trimming (`把/并/转成/的/了`), so the questions stay about nouns you actually named.
+
 ## What assembly changes
 
 - enables the selected plugin tools;
@@ -400,7 +426,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 173 cases, repository fixture — runs on any machine
+npm test          # 182 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -415,6 +441,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `gaps.test.mjs` | capability gaps, find-skill routing, ask flow | 9 |
 | `audit.test.mjs` | full catalog sweep, bare-word asks, audit picks | 9 |
 | `two-problems.test.mjs` | regression for the two reported issues: installed-but-unused, bare words guessed | 20 |
+| `words.test.mjs` | word segmentation, per-word buckets, unmatched-word asks | 9 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

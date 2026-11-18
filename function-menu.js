@@ -1030,11 +1030,13 @@ function analyzeNeed(text, store = { known: {} }) {
     .map(({ id, tags, roles, ...rest }) => rest);
   // 全量核对：所有条目逐个对一遍，报出“相关但没进组合”的，交给用户决定。
   const chosenIds = new Set([...pkgList.map((x) => x.pkg), ...skillList.map((x) => x.skill)]);
-  const scan = capabilityScan(raw);
+  const catalog = catalogTexts();
+  const scan = capabilityScan(raw, { items: catalog });
   const audit = {
-    total: Object.values(ACTIVE_PROFILE?.itemInfo || {}).filter((i) => !i.infra).length,
+    total: catalog.length,
     matched: scan.length,
     unselected: scan.filter((x) => !chosenIds.has(x.id)).slice(0, 6),
+    words: wordAudit(raw, catalog),
   };
   const confidence = intents.length ? (intents[0].score >= 2.5 ? "high" : intents[0].score >= 1 ? "medium" : "low") : "low";
   return {
@@ -1067,7 +1069,7 @@ function dynamicScenario(need, analysis, workflow = null) {
     when: need,
     keywords: [],
     plugins: pkgNames,
-    brief: `需求：${need}\n识别到：${intentText}\n按需插件：${pkgText}\n按需技能：${skillText}\n${workflow ? `工作流：${workflow.title} — ${workflow.brief}\n` : ""}先复核组合是否覆盖需求；缺什么就明确说明，不要因为自动组合而跳过澄清。`,
+    brief: `需求：${need}\n识别到：${intentText}\n按需插件：${pkgText}\n按需技能：${skillText}\n逐词核对：${analysis.audit?.words?.total ?? 0} 个词，本机没提到 ${analysis.audit?.words?.unmatched?.join("、") || "无"}\n${workflow ? `工作流：${workflow.title} — ${workflow.brief}\n` : ""}先复核组合是否覆盖需求；缺什么就明确说明，不要因为自动组合而跳过澄清。`,
     manual: [],
     dynamic: true,
     skillIds: skillNames,
@@ -1611,14 +1613,139 @@ function scanTermsFor(need) {
  * 先用“稀有度”过滤掉人人都写的词（文字/内容/文件…），剩下的才当证据。
  * 只报告，不自动启用；要不要加由用户回答（不自己猜）。
  */
-function capabilityScan(need, opts = {}) {
-  const items = Object.entries(ACTIVE_PROFILE?.itemInfo || {})
+// 需求里的每一个词都要被看过：不先删“通用词”再匹配，而是先全量对一遍，
+// 再按“条目里有多少人写它”分成 有对应 / 通用 / 完全没提到 三类。
+const AUDIT_STOP = new Set([
+  "一下", "一点", "一些", "一直", "一起", "一般", "这个", "那个", "这些", "那些", "这种", "那种",
+  "这份", "那份", "这段", "那段", "这两", "这两", "两个", "两个", "这份",
+  "我的", "我们", "你们", "他们", "自己", "帮我", "帮忙", "给你", "给我", "希望", "要求", "必须",
+  "尽量", "最好", "然后", "就是", "不是", "而且", "但是", "所以", "因为", "如果", "的话",
+  "已经", "现在", "以后", "以前", "时候", "东西", "事情", "办法", "方式", "方面", "情况",
+  "部分", "全部", "其他", "其余", "别的", "稍微", "直接", "重新", "继续", "马上", "尽快",
+  "暂时", "具体", "大概", "大约", "左右", "相关", "还有", "顺便", "同时", "关于", "需要",
+  "加上", "针对", "对准", "对应", "顺手", "两个", "三个", "几个", "多个", "几个",
+]);
+
+function catalogTexts() {
+  return Object.entries(ACTIVE_PROFILE?.itemInfo || {})
     .filter(([, info]) => !info?.infra)
     .map(([id, info]) => ({
       id,
+      kind: info.kind || "skill",
       info,
       text: flatText(`${id} ${info.description || ""} ${(info.tags || []).join(" ")} ${(info.roles || []).map((r) => CAPABILITIES[r]?.label || r).join(" ")}`),
     }));
+}
+
+// 不丢字：先用 Intl.Segmenter 切成真正的词（中文），并保留 ascii 词与
+// ascii/中文混合片段（AI味）；没有 Segmenter 时退回滑窗。
+const WORD_TRIM_HEAD = /^[把被将用并和与跟再又也都很更最就才还只请帮给你我他她它们这那哪个份次张页下上里中到成为做看写说对从向于在是的有要转合变换弄搞找查搜传发能会可想让]+/;
+const WORD_TRIM_TAIL = /[了的吗呢吧啊哦嘛着过和与及等]+$/;
+
+function wordTokens(need) {
+  const t = norm(need);
+  const out = [];
+  const mixed = [];
+  for (const m of t.match(/[a-z][a-z0-9+.#_-]*[\u4e00-\u9fff]{1,2}/g) || []) mixed.push(m);
+  let segz = null;
+  try {
+    segz = [...new Intl.Segmenter("zh", { granularity: "word" }).segment(t)];
+  } catch {
+    segz = null;
+  }
+  if (segz) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        // “并转成二维码”这类连续单字会被合并成一串，
+        // 既留整串，也留去掉前缀虚词后的真词（二维码）。
+        const joined = run.join("");
+        out.push(joined);
+        const trimmed = joined.replace(WORD_TRIM_HEAD, "");
+        if (trimmed && trimmed !== joined && trimmed.length >= 2) out.push(trimmed);
+      } else {
+        out.push(...run);
+      }
+      run = [];
+    };
+    for (const s of segz) {
+      const txt = flatText(s.segment);
+      if (!txt) continue;
+      if (/[\u4e00-\u9fff]/.test(txt)) {
+        if (txt.length === 1) { run.push(txt); continue; }
+        flush();
+        out.push(txt);
+        continue;
+      }
+      flush();
+      if (/[a-z0-9]/.test(txt)) out.push(txt);
+    }
+    flush();
+  } else {
+    for (const m of t.match(/[a-z][a-z0-9+.#_-]+/g) || []) out.push(m);
+    for (const seg of t.match(/[\u4e00-\u9fff]+/g) || []) {
+      if (seg.length === 1) out.push(seg);
+      for (let n = 2; n <= Math.min(4, seg.length); n++) {
+        for (let i = 0; i + n <= seg.length; i++) out.push(seg.slice(i, i + n));
+      }
+    }
+  }
+  return uniq([...out, ...mixed].map(flatText).map((x) => x.replace(WORD_TRIM_TAIL, "")).filter((x) => x && x.length >= 1));
+}
+
+/**
+ * 逐词核对：需求拆出的每个词都去所有条目里找一遍，结果分三类：
+ * - matched：有少数条目写到了它（当作证据，附最强条目）
+ * - generic：大半条目都写到（知道但不当作证据）
+ * - unmatched：全库没有任何条目提到（最需要确认的：用户可能真要做）
+ */
+function wordAudit(need, items = catalogTexts()) {
+  const tokens = wordTokens(need);
+  const limit = Math.max(2, Math.round(items.length * 0.15));
+  const rows = tokens.map((term) => {
+    let df = 0;
+    let best = null;
+    for (const it of items) {
+      if (!it.text.includes(term)) continue;
+      df += 1;
+      if (it.id < (best?.id || "\uffff")) best = { id: it.id, kind: it.kind };
+    }
+    return { term, df, best };
+  });
+  const matched = rows
+    .filter((x) => x.df > 0 && x.df <= limit && x.term.length >= 2 && !GENERIC_TERMS.has(x.term))
+    .filter((x) => !rows.some((y) => y.term !== x.term && y.term.includes(x.term) && y.term.length > x.term.length))
+    .sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term))
+    .map((x) => ({ term: x.term, item: x.best.id, kind: x.best.kind, score: Number((1 + x.term.length / 10).toFixed(2)) }));
+  const generic = rows.filter((x) => x.df > limit).map((x) => x.term);
+  const unmatched = uniq(rows
+    .filter((x) => x.df === 0)
+    .map((x) => x.term.replace(WORD_TRIM_HEAD, "").replace(WORD_TRIM_TAIL, ""))
+    .filter((t) => t.length >= 2 && !AUDIT_STOP.has(t) && !NEED_STOP.has(t) && !GENERIC_TERMS.has(t)))
+    .filter((t) => !tokens.some((o) => o !== t && o.includes(t) && rows.find((r) => r.term === o)?.df > 0))
+    .sort((a, b) => b.length - a.length || a.localeCompare(b))
+    .slice(0, 6);
+  return { total: tokens.length, matched, generic: generic.slice(0, 8), unmatched };
+}
+
+// 全库都没提到的词：当作可能的交付物问用户，而不是自己判断“它不重要”。
+function unknownWordAsks(words, max = 2) {
+  return (words?.unmatched || []).slice(0, max).map((term) => ({
+    id: `word:${term}`,
+    label: term,
+    question: `本机所有插件/技能都没提到「${term}」，这是你要产出的东西吗？`,
+  }));
+}
+
+function wordGapsFromAnswers(words, yesIds = []) {
+  const yes = new Set(yesIds);
+  return (words?.unmatched || [])
+    .filter((term) => yes.has(`word:${term}`))
+    .map((term) => ({ id: `word:${term}`, label: term, hint: "本机所有插件/技能都没提到", source: "word" }));
+}
+
+function capabilityScan(need, opts = {}) {
+  const items = opts.items || catalogTexts();
   const terms = scanTermsFor(need);
   if (!terms.length || !items.length) return [];
   // 稀有度闸门：只留“少数条目才提到”的片段；全库都能命中的词证明不了相关性。
@@ -1841,6 +1968,14 @@ function buildProposal(pi, scenario, store, workflow = null) {
     const left = a.unselected.filter((x) => !(scenario.auditPicks || []).includes(x.kind === "skill" ? `skill:${x.id}` : x.id));
     for (const x of left) lines.push(`- 未选：\`${x.kind === "skill" ? "skill:" : ""}${x.id}\` — ${x.desc}（命中：${x.hits.join(" / ")}）`);
     if (left.length) lines.push("- 装配前会逐个问你：要不要也启用");
+    lines.push("");
+  }
+  if (scenario.dynamic && scenario.analysis?.audit?.words) {
+    const w = scenario.analysis.audit.words;
+    lines.push("**逐词核对（每个词都查过）**");
+    lines.push(`- 拆出 ${w.total} 个词：有对应条目 ${w.matched.length} 个、通用词 ${w.generic.length} 个、本机没提到 ${w.unmatched.length} 个`);
+    for (const m of w.matched.slice(0, 8)) lines.push(`- 「${m.term}」→ \`${m.kind === "skill" ? "skill:" : ""}${m.item}\``);
+    if (w.unmatched.length) lines.push(`- 本机没提到：${w.unmatched.map((t) => `「${t}」`).join("、")}（装配前会问你要不要去找）`);
     lines.push("");
   }
   const gaps = capabilityGaps(scenario, store, workflow);
@@ -2193,16 +2328,25 @@ export default function functionMenu(pi) {
   };
 
   // 裸词澄清：“视频/音频/扫描件”这种只提一个词的，问一句再定。
-  const clarifyBareCapabilities = async (ctx, needText, already = []) => {
+  const clarifyBareCapabilities = async (ctx, needText, already = [], words = null) => {
+    const wa = words || wordAudit(needText);
+    const bare = bareCapabilityAsks(needText, new Set(already.map((g) => g.id)));
+    const known = new Set(already.flatMap((g) => [g.id, g.label]));
+    const wordAsks = unknownWordAsks(wa, 2).filter((w) => !known.has(w.label) && !bare.some((b) => b.label.includes(w.label) || w.label.includes(b.label)));
+    const asks = [...bare, ...wordAsks];
     const yesIds = [];
-    for (const ask of bareCapabilityAsks(needText, new Set(already.map((g) => g.id)))) {
+    for (const ask of asks) {
+      const isWord = ask.id.startsWith("word:");
       const yes = await ctx.ui.confirm(
-        `需求里提到「${ask.label}」：要真的做吗？`,
+        isWord ? `「${ask.label}」要当成需求吗？` : `需求里提到「${ask.label}」：要真的做吗？`,
         `${ask.question}\n\n是：当作需求（本机没能力就去找）\n否：不算需求，按现有能力做`,
       );
       if (yes) yesIds.push(ask.id);
     }
-    return bareGapsFromAnswers(needText, already, yesIds);
+    return [
+      ...bareGapsFromAnswers(needText, already, yesIds.filter((id) => !id.startsWith("word:"))),
+      ...wordGapsFromAnswers(wa, yesIds.filter((id) => id.startsWith("word:"))),
+    ];
   };
 
   // 缺能力时先问用户：是 = 用 find-skill 去找，否 = 跳过（并告诉模型不要假装能做）。
@@ -2251,7 +2395,7 @@ export default function functionMenu(pi) {
     if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
     await askUnselectedItems(ctx, scenario);
     const baseGaps = capabilityGaps(scenario, store, workflow);
-    const bareGaps = await clarifyBareCapabilities(ctx, `${scenario.title || ""} ${scenario.when || ""}`, baseGaps);
+    const bareGaps = await clarifyBareCapabilities(ctx, `${scenario.title || ""} ${scenario.when || ""}`, baseGaps, scenario.analysis?.audit?.words);
     const gaps = [...baseGaps, ...bareGaps.filter((g) => !baseGaps.some((x) => x.id === g.id))];
     const wanted = await askMissingCapabilities(ctx, gaps);
     const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
@@ -2509,7 +2653,7 @@ export default function functionMenu(pi) {
       if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
       await askUnselectedItems(ctx, scenario);
       const baseGaps = capabilityGaps(scenario, store, workflow);
-      const bareGaps = await clarifyBareCapabilities(ctx, args, baseGaps);
+      const bareGaps = await clarifyBareCapabilities(ctx, args, baseGaps, scenario.analysis?.audit?.words);
       const gaps = [...baseGaps, ...bareGaps.filter((g) => !baseGaps.some((x) => x.id === g.id))];
       const wanted = await askMissingCapabilities(ctx, gaps);
       const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
@@ -2744,4 +2888,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { NEED_CAPABILITIES, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { NEED_CAPABILITIES, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
