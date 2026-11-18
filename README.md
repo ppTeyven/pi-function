@@ -76,14 +76,14 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 
 `/pi-function` is an alias.
 
-Picker rows show plugin and skill counts. A typical fixed-menu exchange:
+Workflow rows explain the process; scenario rows show plugin and skill counts. A typical fixed-menu exchange:
 
 ```text
 /function
 
 Step 1: choose a workflow (how to execute)
-  outline · Outline first — ★ recommended · 1 plugin
-  direct · Direct output — no extra plugins
+  outline · Outline first — ★ recommended · produce an outline, confirm it, then expand
+  direct · Direct output — clear, small scope; act now without a separate plan
   ...
 
 Step 2: choose an application scenario (what to make)
@@ -193,17 +193,20 @@ Scenarios are application/output types, not engineering activities.
 
 ## Workflows
 
-The workflow is the execution style; the scenario adds domain capabilities. Duplicate packages are merged.
+A workflow defines **how to work**, never which plugins or skills to use. The same workflow can be used with any application scenario; plugins and skills come from the scenario and the per-user profile.
 
-| id | Workflow | Use when |
-|---|---|---|
-| `direct` | Direct output | Clear, small scope; act now without a separate plan |
-| `outline` | Outline first | Produce an outline or plan, confirm it, then expand |
-| `prototype` | Prototype first | Build a viewable/clickable minimum, then iterate |
-| `parallel` | Parallel exploration | Independent slices or alternative solutions run concurrently |
-| `review-gate` | Review gate | Independent review before delivery |
-| `phased` | Phased delivery | Spec → plan → stage-by-stage acceptance for long work |
-| `offline` | Privacy / offline | Local tools only; network capabilities are excluded |
+| id | Workflow | Process | Use when |
+|---|---|---|---|
+| `direct` | Direct output | Read goal → produce → self-check | Clear, small scope; no separate plan |
+| `outline` | Outline first | Clarify goal → outline only → confirm → expand | You need a structure, outline, or implementation plan first |
+| `prototype` | Prototype first | Minimum artifact → validate direction → add detail | Visual or interactive work where direction comes first |
+| `research` | Evidence first | Questions → multiple sources → cross-check → cited conclusion | Facts are uncertain, sources must be compared, or claims need provenance |
+| `debug` | Debug and fix | Reproduce → isolate root cause → minimal fix → regression | A clear failure, error, or abnormal behavior |
+| `parallel` | Parallel exploration | Partition work → run in parallel → merge and dedupe → verify | Independent slices or alternative solutions |
+| `review-gate` | Review gate | Draft → independent review → fix → re-verify | High-risk changes, pre-release checks, important documents |
+| `phased` | Phased delivery | Spec → plan → staged execution → stage acceptance | Multi-stage work, complex migrations, ongoing development |
+| `iterate` | Iterative polish | First version → feedback or criteria → fix the key gap → finalize | Clear criteria or feedback across several rounds |
+| `offline` | Privacy / offline | Inventory local resources → stay offline → finish local work → list network gaps | Sensitive content, no external sharing, minimal network exposure |
 
 ## Per-user profile
 

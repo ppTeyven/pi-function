@@ -6,6 +6,7 @@ import functionMenu from "./function-menu.js";
 import {
   SCENARIOS,
   WORKFLOWS,
+  workflowOnlyScenario,
   CAPABILITIES,
   CORE_TOOLS,
   CLASSIFIER_VERSION,
@@ -39,17 +40,21 @@ for (const old of ["feature", "refactor", "bugfix", "review", "frontend"]) {
   assert.ok(!ids.includes(old), `old activity scenario ${old} should be gone`);
 }
 assert.deepEqual(CORE_TOOLS, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
-assert.equal(WORKFLOWS.length, 7);
+assert.equal(WORKFLOWS.length, 10);
 const workflowIds = WORKFLOWS.map((w) => w.id);
-for (const id of ["direct", "outline", "prototype", "parallel", "review-gate", "phased", "offline"]) {
+for (const id of ["direct", "outline", "prototype", "research", "debug", "parallel", "review-gate", "phased", "iterate", "offline"]) {
   assert.ok(workflowIds.includes(id), id);
   assert.ok(!ids.includes(id), `${id} must not collide with a task id`);
+  assert.ok(!("plugins" in WORKFLOWS.find((w) => w.id === id)), `${id} must not bundle plugins`);
+  assert.ok(WORKFLOWS.find((w) => w.id === id).steps.length >= 3, `${id} needs process steps`);
 }
 assert.ok(workflowOptions("outline")[0].startsWith("outline · "));
 assert.match(workflowOptions("outline")[0], /★ 推荐/);
 assert.match(workflowOptions("outline")[0], /先出提纲/);
+assert.doesNotMatch(workflowOptions("outline")[0], /个插件/);
 assert.match(workflowOptions("direct")[0], /需求清楚、范围小/);
-assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "review-gate");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "debug");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "report")), "research");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "webpage")), "prototype");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "article")), "outline");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "general")), "direct");
@@ -110,6 +115,10 @@ assert.ok(scenarioPackages(webpage, syntheticStore).includes("pi-web-access"), "
 assert.ok(scenarioSkillIds(syntheticStore, "webpage").includes("frontend-design"), "webpage did not hydrate design skill");
 assert.ok(!scenarioPackages(webpage, syntheticStore).includes("pi-subagents"), "webpage should not pull unrelated subagent package");
 assert.deepEqual(comboPackages(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype")).includes("pi-web-access"), true);
+const baseCombo = comboPackages(webpage, syntheticStore);
+for (const workflow of WORKFLOWS) {
+  assert.deepEqual(comboPackages(webpage, syntheticStore, workflow), baseCombo, `${workflow.id} must not change the plugin combo`);
+}
 
 const summary = summarizeSkills(["gsd-quick", "gsd-plan-phase", "frontend-design"]);
 assert.match(summary, /frontend-design/);
@@ -146,12 +155,21 @@ assert.match(webpageOption, /技能/);
 const proposal = buildProposal(fakePi, webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype"));
 assert.match(proposal, /原型先行 × 网页/);
 assert.match(proposal, /工作流/);
+assert.match(proposal, /流程：/);
+assert.match(proposal, /检查点：/);
+assert.match(proposal, /完成标准：/);
 assert.match(proposal, /核心工具始终保留/);
 assert.match(proposal, /web_search|pi-web-access/);
 
 const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, webpage, syntheticStore, undefined, WORKFLOWS.find((w) => w.id === "prototype"));
 for (const name of [...core, "web_search"]) assert.ok(applied.next.includes(name), `applyScenario lost ${name}`);
 assert.ok(!applied.next.includes("subagent"), "unrelated optional tool should be disabled");
+
+activeTools = ["read", "mcp"];
+const workflowOnly = workflowOnlyScenario(WORKFLOWS.find((w) => w.id === "review-gate"));
+const appliedWorkflow = applyScenario(fakePi, { ui: { notify: () => {} } }, workflowOnly, syntheticStore, undefined, workflowOnly);
+assert.ok(appliedWorkflow.next.includes("mcp"), "workflow-only mode must preserve existing optional tools");
+assert.equal(workflowOnly.plugins.length, 0, "workflow-only mode must not bundle plugins");
 
 const skillCommandPi = {
   getAllTools: () => [],
@@ -268,4 +286,4 @@ const flowCtx = {
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 32 application scenarios, 7 workflows, profile capabilities, dynamic needs, core tools, migration");
+console.log("ok: 32 application scenarios, 10 process workflows, profile capabilities, dynamic needs, core tools, migration");

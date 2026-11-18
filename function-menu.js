@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.1.2";
+const VERSION = "2.2.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -95,17 +95,6 @@ const SCENARIO_CAPABILITIES = {
   maintain: ["code-intel", "testing", "simplify", "context", "plan-review"],
   localization: ["i18n", "writing", "web"],
   general: ["writing", "web", "docs", "memory", "task"],
-};
-
-// 固定工作流 -> 固定能力角色。
-const WORKFLOW_CAPABILITIES = {
-  direct: [],
-  outline: ["writing", "plan-review", "task"],
-  prototype: ["design", "browser", "task"],
-  parallel: ["subagent", "orchestration", "task"],
-  "review-gate": ["subagent", "orchestration", "simplify", "code-intel", "testing"],
-  phased: ["gsd", "task", "plan-review"],
-  offline: [],
 };
 
 // 固定应用场景：先选“做什么”，再选“怎么做”。
@@ -304,56 +293,107 @@ const SCENARIOS = [
   },
 ];
 
-// 固定工作流：只描述怎么做，不绑定任何具体插件。
+// 固定工作流：只描述怎么做，不绑定任何具体插件或技能。
 const WORKFLOWS = [
   {
     id: "direct", title: "直接产出",
     picker: "需求清楚、范围小；直接做，不先写计划",
-    when: "需求清楚、范围小，想马上看到结果；不先写计划，做完立即自检。",
+    when: "需求清楚、范围小，想马上看到结果。",
     keywords: ["直接", "快速", "小任务", "direct", "quick"],
-    brief: "直接做最小可验证的产出：先读目标材料，完成后立即检查；不写额外计划文档，不扩大范围。",
+    brief: "直接做最小可验证的产出，不写额外计划文档，不扩大范围。",
+    steps: ["读清目标与约束", "直接产出最小可验证版本", "自检并交付"],
+    checkpoint: "不做方案评审；遇到范围不清才停下来问。",
+    doneWhen: "目标要求全部覆盖，且完成一次自检。",
   },
   {
     id: "outline", title: "结构先行",
     picker: "先出提纲或方案，确认后再展开",
-    when: "先要提纲、方案、目录或实施步骤；方向确认后再展开全文或代码。",
+    when: "先要提纲、方案、目录或实施步骤，方向确认后再展开。",
     keywords: ["提纲", "结构", "方案", "计划", "目录", "outline", "plan"],
-    brief: "先只出结构/方案，不展开全文或代码；写清目标、章节/模块、验收标准与风险，等用户确认后再执行。",
+    brief: "先只出结构或方案，不展开全文或代码；确认后再执行。",
+    steps: ["提炼目标、受众和验收标准", "只输出提纲/目录/实施方案", "等待用户确认方向", "按确认的结构展开"],
+    checkpoint: "结构未确认前不写正文、不写实现。",
+    doneWhen: "结构覆盖目标，且用户明确确认。",
   },
   {
     id: "prototype", title: "原型先行",
     picker: "先做最小原型，确认方向再补细节",
-    when: "视觉或交互产物，先做能看/能点的最小版本，确认方向后再迭代。",
+    when: "视觉或交互产物，先做能看、能点的最小版本。",
     keywords: ["原型", "草稿", "最小样", "先做一版", "prototype", "draft", "mvp"],
-    brief: "先做能看/能点的最小版本，优先验证方向与手感；确认后再补细节，不在第一版追求完整。",
+    brief: "先验证方向和手感，再补完整度；第一版不追求大而全。",
+    steps: ["写清要验证的假设", "做出能看/能点的最小版本", "收集反馈或自评", "补细节并复验"],
+    checkpoint: "原型未确认前不堆功能、不做精修。",
+    doneWhen: "方向被确认，核心路径可走通。",
+  },
+  {
+    id: "research", title: "证据先行",
+    picker: "先查证，再下结论",
+    when: "事实不确定、需要多源对比，或结论必须能追溯出处。",
+    keywords: ["调研", "查证", "来源", "对比", "事实", "research", "evidence", "source"],
+    brief: "先列问题，再收集多源证据；区分事实、推断和建议，冲突不抹平。",
+    steps: ["拆出必须回答的问题", "收集多源证据并记录出处", "交叉核对，标出冲突和空白", "输出带出处的结论"],
+    checkpoint: "证据不足时明确说不足，不编造来源。",
+    doneWhen: "关键结论都有出处，冲突已说明。",
+  },
+  {
+    id: "debug", title: "排查修复",
+    picker: "先复现和定位，再改",
+    when: "有明确故障、报错或行为异常，需要找到根因并验证修复。",
+    keywords: ["排查", "调试", "复现", "根因", "报错", "debug", "fix"],
+    brief: "先复现，再缩小范围找根因；只做最小修复，最后回归验证。",
+    steps: ["复现问题并记录环境", "缩小范围，定位根因", "做最小修复", "回归验证并补防复发检查"],
+    checkpoint: "根因未确认前不猜测性大改。",
+    doneWhen: "原问题消失，回归检查通过。",
   },
   {
     id: "parallel", title: "并行探索",
     picker: "拆成独立部分，多路同时推进",
-    when: "任务能拆成互不依赖的几块，或需要多方案对比；多个执行者同时推进，最后统一汇总验收。",
+    when: "任务能拆成互不依赖的几块，或需要多方案对比。",
     keywords: ["并行", "多方案", "子代理", "拆开", "parallel", "fanout", "variants"],
-    brief: "只并行真正独立的部分：先列清单和边界，一个执行者一个范围；最后统一汇总、去重并验证。",
+    brief: "只并行真正独立的部分；没有并行工具时按同样边界顺序推进。",
+    steps: ["列出独立工作包和边界", "多路推进或多方案产出", "汇总、去重、解决冲突", "统一验收"],
+    checkpoint: "共享状态或强依赖的部分不并行。",
+    doneWhen: "各工作包合并后通过统一验收。",
   },
   {
     id: "review-gate", title: "评审守门",
     picker: "完成后独立审查，再交付",
-    when: "产出后需要独立审查再交付；适合高风险改动、发布前检查和重要文档。",
+    when: "高风险改动、发布前检查或重要文档，交付前需要第二遍审查。",
     keywords: ["评审", "审查", "守门", "第二遍", "review", "gate"],
-    brief: "完成后不直接交付：先自查，再让独立审查者按清单复核；修复发现后重新验证，最后才总结。",
+    brief: "先自查，再做独立审查；发现问题就修复并重新验证，最后才交付。",
+    steps: ["完成初稿或改动", "按清单做独立审查", "修复发现的问题", "重新验证后交付"],
+    checkpoint: "审查未通过不交付；审查者不能只看作者总结。",
+    doneWhen: "审查清单全部通过，且修复后重新验证。",
   },
   {
     id: "phased", title: "阶段推进",
     picker: "先规格和计划，再分阶段验收",
-    when: "多阶段长任务，需要规格、计划、逐阶段验收；适合新项目、复杂迁移和持续开发。",
+    when: "多阶段长任务，需要规格、计划、逐阶段验收。",
     keywords: ["阶段", "里程碑", "规格", "长任务", "phased", "milestone", "spec"],
-    brief: "先规格再计划，再分阶段执行与验收；每阶段结束确认结果再继续，不把旧上下文拖进下一阶段。",
+    brief: "先规格再计划，逐阶段执行和验收；每阶段确认后再进入下一阶段。",
+    steps: ["写规格与验收标准", "拆分阶段计划和依赖", "逐阶段执行", "每阶段验收后续接"],
+    checkpoint: "上一阶段未验收，不开始下一阶段。",
+    doneWhen: "所有阶段验收通过，整体目标可演示。",
+  },
+  {
+    id: "iterate", title: "迭代打磨",
+    picker: "先出一版，再按反馈改",
+    when: "有明确评价标准或用户反馈，需要多轮修改逐渐逼近目标。",
+    keywords: ["迭代", "打磨", "反馈", "修改", "改一版", "iterate", "refine"],
+    brief: "每轮只改最影响结果的部分；保留版本差异，避免越改越散。",
+    steps: ["出第一版", "对照标准或收集反馈", "只改最关键的差距", "定稿并记录变更"],
+    checkpoint: "没有新反馈或明确差距时停止迭代。",
+    doneWhen: "达到验收标准，且改动可追溯。",
   },
   {
     id: "offline", title: "隐私 / 离线",
     picker: "只用本地工具，不联网",
-    when: "敏感内容、不能外发、需要最小联网面；只启用本地能力，必须联网时先征得同意。",
+    when: "敏感内容、不能外发，或需要最小联网面。",
     keywords: ["隐私", "离线", "敏感", "保密", "内网", "offline", "privacy"],
-    brief: "默认不联网、不使用外部服务；只启用本地核心工具，必须联网时先说明并征得同意。",
+    brief: "默认不联网、不使用外部服务；必须联网时先说明并征得同意。",
+    steps: ["盘点本地可用资料和工具", "不发起网络请求", "完成本地可做的部分", "标出必须联网才能完成的部分"],
+    checkpoint: "任何联网动作都要先征得同意。",
+    doneWhen: "本地部分完成，联网缺口已列清。",
   },
 ];
 
@@ -528,18 +568,6 @@ function hydrateCatalog(profile) {
     scenario.capabilities = roles;
     scenario.manual = [];
     scenario.profileSkills = uniq(skills);
-  }
-  for (const workflow of WORKFLOWS) {
-    const roles = WORKFLOW_CAPABILITIES[workflow.id] || [];
-    const pkgs = [];
-    for (const roleId of roles) {
-      const role = profile?.roles?.[roleId];
-      if (!role || role.infra) continue;
-      pkgs.push(...role.packages.slice(0, 2).map((x) => x.id));
-    }
-    workflow.plugins = uniq(pkgs);
-    workflow.capabilities = roles;
-    workflow.manual = [];
   }
 }
 
@@ -1042,17 +1070,17 @@ function scenarioPackages(scenario, store) {
 }
 
 function comboPackages(scenario, store, workflow = null) {
-  const base = scenarioPackages(scenario, store);
-  // 隐私场景连工作流插件也不加，避免意外引入联网/子代理能力
-  if (scenario.noWorkflow || !workflow || workflow.id === "direct") return base;
-  return uniq([...base, ...(workflow.plugins || [])]);
+  // 工作流只决定过程，不改变插件/技能组合；保留参数是为兼容调用方。
+  void workflow;
+  return scenarioPackages(scenario, store);
 }
 
 function recommendWorkflow(scenario) {
   if (!scenario) return "direct";
-  if (scenario.id === "maintain") return "review-gate";
+  if (scenario.id === "maintain") return "debug";
+  if (scenario.id === "report") return "research";
   if (["webpage", "game", "design", "mobile", "image", "dashboard", "commerce"].includes(scenario.id)) return "prototype";
-  if (["webapp", "api", "plugin", "article", "report", "presentation", "docs", "automation", "integration", "localization", "social", "novel", "video", "course", "resume", "event", "chatbot", "email", "music", "legal"].includes(scenario.id)) return "outline";
+  if (["webapp", "api", "plugin", "article", "presentation", "docs", "automation", "integration", "localization", "social", "novel", "video", "course", "resume", "event", "chatbot", "email", "music", "legal", "tool"].includes(scenario.id)) return "outline";
   return "direct";
 }
 
@@ -1064,10 +1092,8 @@ function workflowOptions(recommendedId = null) {
       ]
     : WORKFLOWS;
   return ordered.map((w) => {
-    const count = (w.plugins || []).length;
-    const pluginBit = count ? ` · ${count} 个插件` : "";
     const mark = w.id === recommendedId ? "★ 推荐 · " : "";
-    return `${w.id} · ${w.title} — ${mark}${w.picker || w.when}${pluginBit}`;
+    return `${w.id} · ${w.title} — ${mark}${w.picker || w.when}`;
   });
 }
 
@@ -1078,9 +1104,10 @@ function workflowOnlyScenario(workflow) {
     title: `仅工作流：${workflow.title}`,
     when: workflow.when,
     brief: workflow.brief,
-    plugins: [...(workflow.plugins || [])],
+    plugins: [],
     skillIds: [],
-    manual: [...(workflow.manual || [])],
+    manual: [],
+    preserveTools: true,
     workflowOnly: true,
   };
 }
@@ -1134,7 +1161,10 @@ function buildProposal(pi, scenario, store, workflow = null) {
   lines.push(`## 装配：${comboTitle}`);
   if (workflow) {
     lines.push(`**工作流**：${workflow.when}`);
-    lines.push(`- 流程：${workflow.brief}`);
+    lines.push("- 流程：");
+    (workflow.steps || []).forEach((step, i) => lines.push(`  ${i + 1}. ${step}`));
+    if (workflow.checkpoint) lines.push(`- 检查点：${workflow.checkpoint}`);
+    if (workflow.doneWhen) lines.push(`- 完成标准：${workflow.doneWhen}`);
   }
   if (scenario.dynamic) {
     lines.push(`**需求**：${scenario.when}`);
@@ -1155,9 +1185,8 @@ function buildProposal(pi, scenario, store, workflow = null) {
   const pkgs = comboPackages(scenario, store, workflow);
   if (!pkgs.length) lines.push("- 不启用额外插件（只保留核心工具）");
   for (const pkg of pkgs) {
-    const fromWorkflow = workflow?.plugins?.includes(pkg) && !scenario.plugins.includes(pkg);
     const reason = scenario.dynamic ? scenario.analysis?.packages?.find((x) => x.pkg === pkg)?.reasons?.[0] : "";
-    lines.push(`- \`${pkg}\`${fromWorkflow ? "（工作流）" : ""} — ${describePlugin(pi, pkg)}${reason ? `（${reason}）` : ""}`);
+    lines.push(`- \`${pkg}\` — ${describePlugin(pi, pkg)}${reason ? `（${reason}）` : ""}`);
   }
   const skills = scenario.dynamic ? (scenario.skillIds || []) : scenarioSkillIds(store, scenario.id);
   if (scenario.dynamic) {
@@ -1172,7 +1201,7 @@ function buildProposal(pi, scenario, store, workflow = null) {
     }
   } else if (skills.length) lines.push(`- 自动归入技能 ${skills.length} 个：${summarizeSkills(skills)}（随会话自动加载）`);
   lines.push("- 核心工具始终保留：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。");
-  const manual = uniq([...(workflow?.manual || []), ...(scenario.manual || [])]);
+  const manual = uniq([...(scenario.manual || [])]);
   if (manual.length) {
     lines.push("");
     lines.push("**装配后仍需手动做**");
@@ -1218,8 +1247,8 @@ function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
   const wanted = new Set(toolsForScenario(pi, scenario, store, workflow));
   const keep = active.filter((n) => !optional.has(n));
   const core = coreToolNames(pi);
-  const next = uniq([...keep, ...core, ...wanted]);
-  const disabled = active.filter((n) => optional.has(n) && !wanted.has(n));
+  const next = scenario.preserveTools ? uniq([...active, ...core]) : uniq([...keep, ...core, ...wanted]);
+  const disabled = scenario.preserveTools ? [] : active.filter((n) => optional.has(n) && !wanted.has(n));
   pi.setActiveTools(next);
   // 说清楚哪些插件其实用不了，不再静默
   const bad = auditPackages(pi, scenario, store, workflow).filter((r) => r.state !== "ok");
@@ -1241,8 +1270,8 @@ function buildCatalog(pi, store) {
   lines.push("");
   lines.push("## 第 1 步：工作流（怎么执行）");
   for (const w of WORKFLOWS) {
-    const count = (w.plugins || []).length;
-    lines.push(`- **${w.id}** · ${w.title} — ${w.when}${count ? `（${count} 个插件）` : ""}`);
+    lines.push(`- **${w.id}** · ${w.title} — ${w.when}`);
+    lines.push(`  - 流程：${(w.steps || []).join(" → ")}`);
   }
   lines.push("");
   lines.push("## 第 2 步：任务场景（做什么）");
@@ -1439,7 +1468,7 @@ export default function functionMenu(pi) {
         activeScenario = scenario;
         activeWorkflow = workflow;
         pi.appendEntry("function-scenario", { id: "workflow", workflow: workflow.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已启用工作流「${workflow.title}」：${scenario.plugins.length} 个插件、${res.enabled.length} 个工具；未绑定任务场景。`, "info");
+        ctx.ui.notify(`已启用工作流「${workflow.title}」：保留当前工具，不绑定任务场景。`, "info");
         return;
       }
 
@@ -1699,7 +1728,7 @@ export default function functionMenu(pi) {
     const extra = [
       "",
       `## 当前组合（/function 装配）：${activeScenario.workflowOnly ? activeScenario.title : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`}`,
-      activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}` : "",
+      activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}\n流程：${(activeWorkflow.steps || []).join(" → ")}\n检查点：${activeWorkflow.checkpoint || "按流程执行"}\n完成标准：${activeWorkflow.doneWhen || "达到任务目标"}` : "",
       activeScenario.workflowOnly ? "" : `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
       (activeWorkflow?.manual?.length || activeScenario.manual?.length)
         ? `仍需手动：${uniq([...(activeWorkflow?.manual || []), ...(activeScenario.manual || [])]).join("；")}`
@@ -1711,4 +1740,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, CAPABILITIES, SCENARIO_CAPABILITIES, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

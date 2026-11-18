@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0
+
+- Workflows are now **process-only**: they no longer own or activate plugin/skill bundles. The same workflow works with any application scenario, and scenario capabilities are identical across workflows.
+- Added process steps, checkpoints, and done criteria to every workflow; the picker explains the process instead of showing plugin counts.
+- Added `research`, `debug`, and `iterate` workflows; `maintain` now recommends `debug`, `report` recommends `research`.
+- Workflow-only mode (`/function workflow`) now preserves the current tool set and injects only the process, instead of enabling workflow-specific packages.
+- Removed `WORKFLOW_CAPABILITIES`, workflow plugin hydration, and workflow package unions from proposals, diagnostics, and tool activation.
+- Updated tests to assert workflows bundle no plugins and all workflows resolve the same scenario capability set.
+
 ## 2.1.2
 
 - Workflow picker rows now explain **when to choose each workflow**, not just the title and plugin count.
