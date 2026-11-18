@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+
+- Scenario picker rows now show skill counts and representative skill names alongside plugin counts, for example `data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`; GSD skills are grouped as `GSD N`.
+- The catalog header now shows the total number of discovered skills, and each scenario lists its skill count explicitly.
+
 ## 1.4.0
 
 - Added three capability-driven scenarios: `gsd` (spec/plan/execute/verify/ship), `frontend` (pages, components, styling, visual acceptance), and `docs` (README, wiki, handoff).

@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 3;
@@ -718,6 +718,22 @@ function autoAssigned(store, scenarioId) {
     .map((id) => id.slice(4));
 }
 
+function scenarioSkillIds(store, scenarioId) {
+  return autoAssignedIds(store, scenarioId)
+    .filter((id) => id.startsWith("skill:"))
+    .map((id) => id.slice(6));
+}
+
+function skillMenuInfo(skills) {
+  if (!skills.length) return "0 技能";
+  const gsd = skills.filter((s) => /^gsd-/.test(s));
+  const rest = skills.filter((s) => !/^gsd-/.test(s));
+  const bits = [];
+  if (rest.length) bits.push(rest.length <= 3 ? rest.join("、") : `${rest.slice(0, 2).join("、")} 等`);
+  if (gsd.length) bits.push(`GSD ${gsd.length}`);
+  return `${skills.length} 技能（${bits.join(" + ")}）`;
+}
+
 // ---------------------------------------------------------------------------
 // 装配
 // ---------------------------------------------------------------------------
@@ -783,8 +799,8 @@ function buildProposal(pi, scenario, store) {
   if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻，不单独计入）");
   const auto = autoAssigned(store, scenario.id).filter((p) => !scenario.plugins.includes(p));
   if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
-  const skills = autoAssignedIds(store, scenario.id).filter((id) => id.startsWith("skill:")).map((id) => id.slice(6));
-  if (skills.length) lines.push(`- 自动归入技能：${summarizeSkills(skills)}（随会话自动加载）`);
+  const skills = scenarioSkillIds(store, scenario.id);
+  if (skills.length) lines.push(`- 自动归入技能 ${skills.length} 个：${summarizeSkills(skills)}（随会话自动加载）`);
   lines.push("- 核心工具始终保留：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。");
   const brief = scenario.manual?.length ? scenario.manual : [];
   if (brief.length) {
@@ -882,7 +898,8 @@ function applyScenario(pi, ctx, scenario, store, baseline) {
 // 菜单
 // ---------------------------------------------------------------------------
 function buildCatalog(pi, store) {
-  const lines = [`## /function 场景菜单（${SCENARIOS.length} 个组合）`];
+  const totalSkills = Object.entries(store.known).filter(([id, meta]) => id.startsWith("skill:") && !meta.missing).length;
+  const lines = [`## /function 场景菜单（${SCENARIOS.length} 个组合 · ${totalSkills} 个技能）`];
   const groups = uniq(SCENARIOS.map((s) => s.group));
   for (const g of groups) {
     lines.push("");
@@ -900,8 +917,8 @@ function buildCatalog(pi, store) {
       if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻）");
       const auto = autoAssignedIds(store, s.id).filter((id) => id.startsWith("npm:") && !s.plugins.includes(id.slice(4))).map((id) => id.slice(4));
       if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
-      const skills = autoAssignedIds(store, s.id).filter((id) => id.startsWith("skill:")).map((id) => id.slice(6));
-      if (skills.length) lines.push(`- 自动归入技能：${summarizeSkills(skills)}（随会话自动加载）`);
+      const skills = scenarioSkillIds(store, s.id);
+      if (skills.length) lines.push(`- 技能 ${skills.length} 个：${summarizeSkills(skills)}（随会话自动加载）`);
     }
   }
   const infra = Object.entries(store.known).filter(([, m]) => m.scenario === "infra" && !m.missing).map(([id]) => id.replace(/^(npm|local|skill):/, ""));
@@ -920,10 +937,12 @@ function buildCatalog(pi, store) {
   return lines.join("\n");
 }
 
-function menuOptions(store) {
+export function menuOptions(store) {
   return SCENARIOS.map((s) => {
     const count = scenarioPackages(s, store).filter((p) => p !== "pi-mcp-adapter").length;
-    return `${s.id} · ${s.title} — ${count ? count + " 个插件" : "无需插件"}`;
+    const skills = scenarioSkillIds(store, s.id);
+    const pluginBit = count ? `${count} 个插件` : "无需插件";
+    return `${s.id} · ${s.title} — ${pluginBit} · ${skillMenuInfo(skills)}`;
   });
 }
 
@@ -1204,7 +1223,7 @@ export default function functionMenu(pi) {
     name: "suggest_scenario",
     label: "Suggest Scenario",
     description:
-      "用 /function 的同一套关键词表给任务描述打分，返回最匹配的场景 id、命中理由、该场景会启用的插件，以及这些插件当前是否真的可用（absent 未安装 / inactive 未启用或未完成设置 / warn 有已知限制 / ok 正常）。只读，不改变任何工具状态。",
+      "用 /function 的同一套关键词表给任务描述打分，返回最匹配的场景 id、命中理由、该场景会启用的插件与技能数量/名称，以及这些插件当前是否真的可用（absent 未安装 / inactive 未启用或未完成设置 / warn 有已知限制 / ok 正常）。只读，不改变任何工具状态。",
     promptSnippet: "查询 /function 场景分类：给出任务最匹配的插件场景与可用性诊断",
     promptGuidelines: [
       "Use suggest_scenario at the start of a task when you need to pick which plugin scene fits, or when the user asks whether a plugin or skill applies.",
@@ -1249,6 +1268,8 @@ export default function functionMenu(pi) {
           lines.push("");
           lines.push(`### ${r.scenario.id}`);
           lines.push("- 插件：" + (rows.length ? rows.map((x) => `${x.pkg}[${x.state}]`).join("、") : "无额外插件（只保留核心工具）"));
+          const skills = scenarioSkillIds(store, r.scenario.id);
+          lines.push("- 技能：" + (skills.length ? `${skills.length} 个 — ${summarizeSkills(skills, 4)}` : "无自动归入技能"));
           if (bad.length) lines.push("- 需注意：" + bad.map((x) => `${x.pkg} — ${x.detail}`).join("；"));
         }
       }

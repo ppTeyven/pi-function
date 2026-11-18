@@ -7,6 +7,7 @@ import {
   summarizeSkills,
   buildCatalog,
   buildProposal,
+  menuOptions,
   reconcile,
   applyScenario,
   discoverItems,
@@ -76,11 +77,17 @@ const catalogStore = {
   },
 };
 const catalog = buildCatalog(fakePi, catalogStore);
-assert.match(catalog, /25 个组合/);
+assert.match(catalog, /25 个组合 · 2 个技能/);
+assert.match(catalog, /技能 2 个/);
 assert.match(catalog, /GSD 阶段技能 2 个/);
+const picker = menuOptions(catalogStore);
+const gsdOption = picker.find((option) => option.startsWith("gsd · "));
+assert.match(gsdOption, /\d+ 个插件 · 2 技能（GSD 2）/);
+assert.match(picker.find((option) => option.startsWith("understand · ")), /0 技能/);
 assert.ok(catalog.length < 12000, "catalog should summarize large skill groups");
 const proposal = buildProposal(fakePi, SCENARIOS.find((s) => s.id === "gsd"), catalogStore);
 assert.match(proposal, /核心工具始终保留/);
+assert.match(proposal, /自动归入技能 2 个/);
 assert.match(proposal, /GSD 阶段技能 2 个/);
 
 const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, SCENARIOS.find((s) => s.id === "gsd"), catalogStore);

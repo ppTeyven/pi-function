@@ -67,6 +67,8 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 
 `/pi-function` is an alias for `/function`.
 
+Picker rows show both plugin and skill counts, followed by representative skill names; GSD skills are grouped as `GSD N`. The catalog header shows the total skill count, and each scenario lists its own skill count. Example row: `data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`.
+
 Typical exchange:
 
 ```text

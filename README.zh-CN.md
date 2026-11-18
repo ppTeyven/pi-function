@@ -67,6 +67,8 @@ pi install ./path/to/pi-function
 
 `/pi-function` 是 `/function` 的别名。
 
+选择器每行同时显示插件数和技能数，并列出代表性技能名；GSD 技能合并为 `GSD N`。全表标题显示技能总数，每个场景单独标注技能数量。例如：`data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`。
+
 示例：
 
 ```text
