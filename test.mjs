@@ -326,7 +326,7 @@ let flowActive = ["read", "mcp"];
 const commands = {};
 const entries = [];
 const prompts = [];
-const selections = ["outline", "webpage"];
+const selections = ["assemble", "outline", "webpage"];
 const fakeFlowPi = {
   getAllTools: () => flowTools,
   getActiveTools: () => flowActive,
@@ -354,8 +354,9 @@ const flowCtx = {
 };
 {
   await commands.function.handler("", flowCtx);
-  assert.match(prompts[0], /工作流/);
-  assert.match(prompts[1], /任务/);
+  assert.match(prompts[0], /子功能/);
+  assert.match(prompts[1], /工作流/);
+  assert.match(prompts[2], /任务/);
   assert.equal(entries.at(-1).data.workflow, "outline");
   assert.equal(entries.at(-1).data.id, "webpage");
 }

@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.5.0";
+const VERSION = "2.6.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -1368,7 +1368,7 @@ function buildCatalog(pi, store) {
     for (const [id, m] of unclassified) lines.push(`- ${id}（${m.reason || "无命中"}）`);
   }
   lines.push("");
-  lines.push("用法：`/function` 工作流 + 场景；`/function workflow` 只选工作流；`/function <需求>` 自动识别；`/function scan` 重扫；`/function off` 还原。");
+  lines.push("用法：`/function` 先选子功能；`/function workflow` 只选工作流；`/function <需求>` 自动识别；`/function profile` 查看画像；`/function scan` 重扫；`/function off` 还原。");
   return lines.join("\n");
 }
 
@@ -1526,32 +1526,78 @@ export default function functionMenu(pi) {
     );
   };
 
+  const FUNCTION_SUBCOMMANDS = [
+    { id: "assemble", label: "场景装配 — 工作流 × 应用场景" },
+    { id: "workflow", label: "仅选工作流 — 只选执行方式，不绑定场景" },
+    { id: "profile", label: "能力画像 — 查看插件/技能的自动归类" },
+    { id: "scan", label: "重新扫描 — 重建能力画像" },
+    { id: "status", label: "当前装配 — 查看已启用的组合" },
+    { id: "off", label: "还原工具集 — 恢复默认工具" },
+    { id: "assign", label: "手动归类 — 指定插件/技能的归属" },
+  ];
+
+  const pickSubcommand = async (ctx) => {
+    const options = FUNCTION_SUBCOMMANDS.map((s) => `${s.id} · ${s.label}`);
+    const sel = await ctx.ui.select("Pi-function 子功能", options);
+    if (!sel) return null;
+    return FUNCTION_SUBCOMMANDS.find((s) => sel.startsWith(`${s.id} ·`))?.id || null;
+  };
+
   const functionCommand = {
     description: "Pi-function：/function 用工作流 × 场景菜单；/function workflow 只选工作流；/function profile 查看能力画像；带需求文本时动态分析并组合插件/技能",
     getArgumentCompletions: (prefix) => {
-      const base = ["workflow", "profile", "scan", "status", "off", "assign"];
-      return base.filter((v) => v.startsWith(prefix || "")).map((v) => ({ value: v, label: v }));
+      const desc = {
+        assemble: "场景装配 — 工作流 × 应用场景",
+        workflow: "仅选工作流 — 不绑定场景",
+        profile: "查看能力画像",
+        scan: "重新扫描插件/技能",
+        status: "查看当前装配",
+        off: "还原工具集",
+        assign: "手动归类插件/技能",
+      };
+      return ["assemble", ...FUNCTION_SUBCOMMANDS.map((s) => s.id)]
+        .filter((v, i, a) => a.indexOf(v) === i && v.startsWith(prefix || ""))
+        .map((v) => ({ value: v, label: v, description: desc[v] || "" }));
     },
     handler: async (rawArgs, ctx) => {
       captureBaseline();
-      const args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
+      let args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
 
       if (!args) {
         scan(false);
-        pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
         if (!requireUI(ctx)) return;
-        const workflow = await pickWorkflow(ctx);
-        if (!workflow) return;
-        const picked = await pickTask(ctx);
-        if (!picked) return;
-        const ok = await confirmScenario(ctx, picked.scenario, "菜单选择", workflow);
-        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-        const res = applyScenario(pi, ctx, picked.scenario, store, baseline, workflow);
-        activeScenario = picked.scenario;
-        activeWorkflow = workflow;
-        pi.appendEntry("function-scenario", { id: picked.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${workflow.title} × ${picked.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
-        return;
+        const picked = await pickSubcommand(ctx);
+        if (!picked) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+
+        if (picked === "assemble") {
+          pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
+          const workflow = await pickWorkflow(ctx);
+          if (!workflow) return;
+          const choice = await pickTask(ctx);
+          if (!choice) return;
+          const ok = await confirmScenario(ctx, choice.scenario, "菜单选择", workflow);
+          if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+          const res = applyScenario(pi, ctx, choice.scenario, store, baseline, workflow);
+          activeScenario = choice.scenario;
+          activeWorkflow = workflow;
+          pi.appendEntry("function-scenario", { id: choice.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
+          ctx.ui.notify(`已装配「${workflow.title} × ${choice.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+          return;
+        }
+
+        if (picked === "assign") {
+          const name = await ctx.ui.input("要归类的插件/技能", "npm:包名 或 skill:名称");
+          if (!name) return;
+          const target = await ctx.ui.select("归到哪个场景？", [
+            ...SCENARIOS.map((s) => `${s.id} · ${s.title}`),
+            "none · 取消归类",
+            "infra · 基础设施（不进入场景）",
+          ]);
+          if (!target) return;
+          args = `assign ${String(name).trim()} ${target.split(" · ")[0]}`;
+        } else {
+          args = picked;
+        }
       }
 
       if (args === "workflow") {

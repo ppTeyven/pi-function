@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.0
+
+- Bare `/function` now opens a sub-function picker first: scenario assembly, workflow-only, profile, scan, status, restore, or manual assignment.
+- `/function` argument completion now includes `assemble` and descriptions for every sub-function.
+- Existing direct subcommands remain unchanged.
+
 ## 2.5.0
 
 - Stronger profile classification: weighted name/tool/command/skill/description signals, minimum score, role-level deny rules, and caps of 3 package roles / 2 skill roles.

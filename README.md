@@ -54,7 +54,7 @@ Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiv
 ### First run
 
 1. Install the extension, then run `/reload` (or restart Pi) so `/function` is recognized.
-2. Run `/function`. It prints the catalog, then opens the first picker.
+2. Run `/function`. It opens a sub-function picker first; choosing “assemble” prints the catalog.
 3. **Choose a workflow** — how this run should proceed (outline/prototype, research, review gate, and so on). The workflow brings its own process bundle; the scenario adds domain capabilities.
 4. **Choose an application scenario** — what you want to make (webpage, article, game, report, and so on).
 5. Review the assembly proposal. Nothing changes until you approve it.
@@ -66,7 +66,7 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 
 | Command | What happens |
 |---|---|
-| `/function` | Prints the catalog, asks for a workflow, then an application scenario, and assembles after approval |
+| `/function` | Opens a sub-function picker first (assemble / workflow-only / profile / scan / status / restore / assign); assemble then prints the catalog, asks for a workflow and an application scenario, and assembles after approval |
 | `/function workflow` | Asks only for a workflow, enables its bundle, and does not bind a task scenario |
 | `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
 | `/function profile` | Shows the generated capability profile: roles, scores, unassigned items, and profile path |
