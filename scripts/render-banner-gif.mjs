@@ -21,7 +21,7 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
   CELL, TEXT_X, TEXT_Y, WIDTH, HEIGHT, RADIUS, BG, BORDER, INK, PI_FILLS, PI_MARK, PI_BOX, piPoints,
-  layout, TIMING,
+  layout, TIMING, letterAt, entranceEnd, caretAt, WORD,
 } from "./banner-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,7 +30,8 @@ const W = WIDTH / SS;
 const H = HEIGHT / SS;
 const RISE = 25; // fps during the entrance
 const BREATHE_FPS = 12;
-const LOOP_HOLD = 2.8; // seconds of breathing before the loop restarts
+const LOOP_HOLD = 2.4;
+const EXIT_STEP = 0.05; // seconds between letters untyping (right to left) // seconds of breathing before the loop restarts
 
 const { letters, gaps } = layout();
 
@@ -96,9 +97,6 @@ const PI = PI_MARK.polygons.map((polygon) => {
   };
 });
 
-const WORD_RECTS = letters.flatMap((letter, li) =>
-  letter.runs.map((r) => ({ ...r, li, delay: ((r.x - TEXT_X) / CELL) * TIMING.columnStep + li * TIMING.letterStep })),
-);
 const DOTS = PI_FILLS.map((fill, i) => ({
   x: WIDTH - 150 + i * 24,
   y: HEIGHT - 46,
@@ -107,11 +105,12 @@ const DOTS = PI_FILLS.map((fill, i) => ({
   phase: TIMING.dotDelay[i],
 }));
 
-const clamp01 = (v) => Math.min(1, Math.max(0, v));
-const easeOut = (p) => 1 - (1 - p) ** 3;
-
 // The SVG canvas (1854x520) IS the raster grid; SS=2 is only the box-filter
 // factor used when shrinking it to the GIF's 927x260.
+const T_END = entranceEnd();
+const T_EXIT = T_END + LOOP_HOLD;
+const T_LOOP = T_EXIT + WORD.length * EXIT_STEP;
+
 const SW = WIDTH;
 const SH = HEIGHT;
 
@@ -163,22 +162,25 @@ function render(t) {
     }
   }
 
-  // wordmark
+  // wordmark: one whole letter at a time, and always fully opaque — a
+  // half-transparent column looked like a bar sliding over the letters.
   const white = hex(INK);
-  for (const r of WORD_RECTS) {
-    const p = clamp01((t - r.delay) / TIMING.rise);
-    if (p <= 0) continue;
-    const a = easeOut(p);
-    const dy = -TIMING.riseDistance * (1 - a);
-    const x0 = Math.round(r.x);
-    const y0 = Math.round(r.y + dy);
-    const x1 = Math.round(r.x + r.w);
-    const y1 = Math.round(r.y + r.h + dy);
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) put(x, y, white, a);
-  }
+  const fillRect = (x, y, w, h) => {
+    const x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
+    for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) put(xx, yy, white, 1);
+  };
+  letters.forEach((letter, i) => {
+    if (t < letterAt(i)) return;
+    if (t >= T_EXIT + (letters.length - 1 - i) * EXIT_STEP) return; // 退场：右→左
+    for (const r of letter.runs) fillRect(r.x, r.y, r.w, r.h);
+  });
+  const caret = caretAt(t, letters);
+  if (caret) fillRect(caret.x, caret.y, caret.w, caret.h);
 
-  // Pi mark
-  for (const poly of PI) {
+  // Pi mark: the three blocks land one after another
+  for (const [k, poly] of PI.entries()) {
+    if (t < k * TIMING.markStep) continue;
+    if (t >= T_EXIT + (PI.length - 1 - k) * EXIT_STEP) continue; // 退场：金→蓝→粉
     const [x0, y0, x1, y1] = poly.box;
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
@@ -279,11 +281,10 @@ function gif({ width, height, palette, frames }) {
 }
 
 // ---------------------------------------------------------------- build
-const entranceEnd = Math.max(...WORD_RECTS.map((r) => r.delay)) + TIMING.rise;
 const frames = [];
 const step = 1 / RISE;
 let entranceFrames = 0;
-for (let t = 0; t < entranceEnd; t += step) {
+for (let t = 0; t < T_END; t += step) {
   frames.push({ x: 0, y: 0, w: W, h: H, delay: step * 1000, indices: downsample(render(t)) });
   entranceFrames++;
 }
@@ -292,13 +293,18 @@ const dotRect = {
   x: WIDTH - 152, y: HEIGHT - 48,
   w: 68, h: 20,
 };
-for (let t = entranceEnd; t < entranceEnd + LOOP_HOLD; t += 1 / BREATHE_FPS) {
+for (let t = T_END; t < T_EXIT; t += 1 / BREATHE_FPS) {
   frames.push({
     // GIF frame coordinates are the downsampled grid, so divide the SVG-space rect
     x: dotRect.x / SS, y: dotRect.y / SS, w: dotRect.w / SS, h: dotRect.h / SS,
     delay: (1 / BREATHE_FPS) * 1000,
     indices: downsample(render(t), dotRect),
   });
+}
+
+// 退场：字一个个灭掉，方块倒序消失——比"啪一下清零"再重播自然
+for (let t = T_EXIT; t < T_LOOP; t += 1 / 25) {
+  frames.push({ x: 0, y: 0, w: W, h: H, delay: 40, indices: downsample(render(t)) });
 }
 
 const out = gif({ width: W, height: H, palette: PALETTE, frames });
@@ -340,5 +346,5 @@ if (process.argv.includes("--png")) {
 
 console.log(
   `wrote assets/banner.gif (${out.length} bytes) · ${frames.length} frames · ${W}x${H} · ` +
-    `entrance ${entranceEnd.toFixed(2)}s + hold ${LOOP_HOLD}s · ${PALETTE.length - 1} colours · gap ${gaps[0]}px`,
+    `loop ${T_LOOP.toFixed(2)}s · entrance ${T_END.toFixed(2)}s + hold ${LOOP_HOLD}s + exit ${(T_LOOP - T_EXIT).toFixed(2)}s · ${PALETTE.length - 1} colours · gap ${gaps[0]}px`,
 );

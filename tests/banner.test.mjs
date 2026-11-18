@@ -54,12 +54,17 @@ test("B3 动画是可剥离的：rect 自身不带 opacity / fill=none，剥掉 
   assert.match(SVG, /<g fill="#FFFFFF"/);
 });
 
-test("B4 动画存在且有降级策略（逐列入场 + prefers-reduced-motion）", () => {
-  assert.match(SVG, /@keyframes rise/);
-  assert.match(SVG, /\.px \{ animation: rise/);
-  assert.match(SVG, /animation-delay:\d+ms/);
+test("B4 动画是打字式的：整字母出现 + 光标闪烁 + 可降级", () => {
+  assert.match(SVG, /@keyframes type/);
+  assert.match(SVG, /\.px \{ opacity: 0; animation: type 1ms steps\(1\) forwards \}/);
+  assert.match(SVG, /@keyframes caretOn/);
+  assert.match(SVG, /class="caret"/, "没有打字光标");
+  assert.match(SVG, /animation-delay:\d+ms,\d+ms/, "光标缺进入/消失两个延时");
   assert.match(SVG, /prefers-reduced-motion: reduce/);
   assert.match(SVG, /class="dot"/, "三个色点也在呼吸");
+  // 反面：旧实现是逐列淡入，会产生半透明“幽灵列”，压在字上像被盖了一层
+  assert.doesNotMatch(SVG, /@keyframes rise/, "逐列淡入已废弃");
+  assert.doesNotMatch(SVG, /translateY\(/, "不要位移入场，会显得字在抖");
 });
 
 test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {
@@ -156,4 +161,83 @@ test("B9 Pi 标记与 SVG 用同一个变换：不重叠、不越界、留足边
     SVG.includes(`translate(${PAD_X},${t.dy}) scale(${t.scale})`),
     "SVG 的 <g transform> 与 PI_MARK.transform 不一致",
   );
+});
+
+// ---- “不许再有半透明覆盖”：直接把 GIF 解出来看像素 ----
+function decodeGif(buf) {
+  let i = 6;
+  const w = buf.readUInt16LE(i), h = buf.readUInt16LE(i + 2);
+  i += 4;
+  const packed = buf[i++];
+  i += 2;
+  const gctSize = 2 ** ((packed & 7) + 1);
+  const palette = [];
+  for (let k = 0; k < gctSize; k++) palette.push([buf[i + k * 3], buf[i + k * 3 + 1], buf[i + k * 3 + 2]]);
+  i += gctSize * 3;
+
+  const lzw = (data, min, npix) => {
+    const clear = 1 << min, eoi = clear + 1;
+    let size = min + 1, dict = [], next = 0, out = new Uint8Array(npix), o = 0;
+    const reset = () => { dict = []; for (let k = 0; k < clear; k++) dict[k] = [k]; next = eoi + 1; size = min + 1; };
+    reset();
+    let cur = 0, bits = 0, prev = null, pos = 0;
+    while (o < npix) {
+      while (bits < size && pos < data.length) { cur |= data[pos++] << bits; bits += 8; }
+      if (bits < size) break;
+      const code = cur & ((1 << size) - 1); cur >>= size; bits -= size;
+      if (code === clear) { reset(); prev = null; continue; }
+      if (code === eoi) break;
+      let entry;
+      if (code < next && dict[code]) entry = dict[code];
+      else if (prev) entry = [...prev, prev[0]];
+      else break;
+      for (const v of entry) if (o < npix) out[o++] = v;
+      if (prev) { dict[next++] = [...prev, entry[0]]; if (next === 1 << size && size < 12) size++; }
+      prev = entry;
+    }
+    return out;
+  };
+
+  const frames = [];
+  while (i < buf.length) {
+    if (buf[i] === 0x21) {
+      const label = buf[i + 1];
+      i += 2;
+      if (label === 0xf9) i += buf[i] + 1;
+      while (buf[i] !== 0) i += buf[i] + 1;
+      i++;
+    } else if (buf[i] === 0x2c) {
+      const fw = buf.readUInt16LE(i + 5), fh = buf.readUInt16LE(i + 7);
+      i += 10;
+      i++;
+      const chunks = [];
+      while (buf[i] !== 0) { chunks.push(buf.subarray(i + 1, i + 1 + buf[i])); i += buf[i] + 1; }
+      i++;
+      frames.push({ w: fw, h: fh, indices: lzw(Buffer.concat(chunks), 8, fw * fh) });
+    } else break;
+  }
+  return { w, h, palette, frames };
+}
+
+test("B10 打字是硬的：文字区域只有纯白和背景，没有半透明覆盖", () => {
+  const { palette, frames } = decodeGif(GIF);
+  const WHITE = "255,255,255";
+  const BG = "11,14,20";
+  const full = frames.filter((f) => f.w === 927 && f.h === 260);
+  assert.ok(full.length >= 20, `整帧太少：${full.length}`);
+  const bad = [];
+  for (const [n, f] of full.entries()) {
+    if (n % 4 !== 0) continue; // 抽样即可，整帧 24 万像素
+    for (let y = 80; y < 180; y += 2) {
+      for (let x = 260; x < 886; x += 2) {
+        const c = palette[f.indices[y * 927 + x]];
+        if (!c) continue;
+        const key = c.join(",");
+        if (key === WHITE || key === BG) continue;
+        bad.push(`frame ${n} (${x},${y}) rgb(${key})`);
+      }
+    }
+  }
+  assert.deepEqual(bad.slice(0, 5), [], `文字上出现半透明覆盖：${bad.slice(0, 3).join(" / ")}`);
+  assert.ok(full.some((f) => f.indices.some((v) => palette[v]?.join(",") === WHITE)), "整片没有纯白字");
 });

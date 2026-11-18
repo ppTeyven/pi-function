@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.24.0
+
+- **Banner motion redone: typing instead of a cross-fade.** The old entrance faded each column in independently, so half-transparent columns sat on top of the letters — which reads as something translucent sliding over the wordmark. Now the three Pi blocks land one after another, the wordmark types in whole letters with a blinking block caret, the dots breathe, and the letters untype right-to-left before the loop restarts. Nothing is ever drawn at partial opacity over text.
+- **Fixed a 1px grey fringe on every stroke.** `TEXT_Y` was 169 (odd); the GIF's 2×2 box filter straddled every text edge and blended half a pixel of background into it (10,560 grey pixels measured). `TEXT_Y` is now 168, so all wordmark edges land on even coordinates and the raster is exactly two colours.
+- `tests/banner.test.mjs` **B10** decodes the GIF's own LZW stream and asserts the wordmark band contains only pure white and background — a regression test for "no translucent overlay", which no amount of palette inspection would have caught. B4 now asserts the stepwise typing animation and that the old `rise`/`translateY` motion is gone. 10 cases.
+- Total 240.
+
 ## 2.23.1
 
 - **Fixed the Pi mark in the GIF: it was drawn at raw logo coordinates.** `PI_MARK.polygons` are the untouched 256-grid logo points; the SVG places them with `<g transform="translate(96,80) scale(0.45)">`, and the GIF renderer was rasterising them without that transform — so the mark rendered 2.2× too large, ran past the card's bottom edge (clipped), and crowded the wordmark. Now both renderers apply the transform exactly once.

@@ -7,7 +7,8 @@ export const WORD = "function";
 export const CELL = 26; // one pixel of the wordmark, in SVG units
 export const GAP = 2; // empty columns between the ink of two letters
 export const TEXT_X = 536;
-export const TEXT_Y = 169;
+// 偶数：GIF 用 2×2 盒式滤波降采样，奇数起点会让每一行字边都掺进半像素灰
+export const TEXT_Y = 168;
 export const WIDTH = 1854;
 export const HEIGHT = 520;
 export const RADIUS = 36;
@@ -115,12 +116,45 @@ export function layout() {
   return { letters, gaps, end: cursor - GAP * CELL };
 }
 
-/** Animation timings shared by the SVG (CSS) and the GIF (raster). */
+/**
+ * Animation timings shared by the SVG (CSS) and the GIF (raster).
+ *
+ * The motion is deliberately *stepwise*: nothing fades, nothing half-transparent
+ * slides over the wordmark. Three Pi blocks land, then the wordmark types in
+ * letter by letter with a block caret, then the dots breathe. A wipe with
+ * partial-opacity columns looked like a translucent bar covering the letters.
+ */
 export const TIMING = {
-  rise: 0.42, // seconds, one pixel rising into place
-  columnStep: 0.045, // seconds of stagger per wordmark column
-  letterStep: 0.012,
-  riseDistance: 10, // px of upward travel
+  markStep: 0.16, // seconds between the three Pi blocks landing
+  letterStart: 0.3, // first letter appears
+  letterStep: 0.1, // seconds per letter
+  caretBlink: 0.42, // seconds per caret on/off
+  caretTail: 1.0, // caret keeps blinking this long after the last letter
   breathe: 3.2, // seconds per dot cycle
   dotDelay: [0, 0.26, 0.52], // seconds
 };
+
+/** When letter `i` (0-based) is fully on screen. */
+export function letterAt(i) {
+  return TIMING.letterStart + i * TIMING.letterStep;
+}
+
+/** End of the typing + caret phase. */
+export function entranceEnd() {
+  return letterAt(WORD.length - 1) + TIMING.caretTail;
+}
+
+/**
+ * The block caret at time `t`, or null when it is off / done.
+ * It sits where the next letter will appear, so it reads as typing rather
+ * than as a cursor parked at a fixed spot.
+ */
+export function caretAt(t, letters) {
+  if (t < TIMING.letterStart || t >= entranceEnd()) return null;
+  const shown = letters.filter((_, i) => t >= letterAt(i)).length;
+  const last = letters[letters.length - 1];
+  const x = shown < letters.length ? letters[shown].x0 : last.x0 + last.ink + (GAP * CELL) / 2;
+  const on = Math.floor((t - TIMING.letterStart) / TIMING.caretBlink) % 2 === 0;
+  if (!on) return null;
+  return { x, y: TEXT_Y + 2 * CELL, w: CELL - 8, h: 3 * CELL };
+}

@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 239 cases, repository fixture — runs on any machine
+npm test          # 240 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -542,7 +542,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
 | `completions.test.mjs` | `/function` publishes no argument candidates (by design) | 4 |
-| `banner.test.mjs` | banner spacing is uniform, the SVG degrades safely, the GIF is a real looping animation | 9 |
+| `banner.test.mjs` | banner spacing, safe degradation, real looping GIF, no translucent overlay | 10 |
 | `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
@@ -556,7 +556,9 @@ npm run render:banner -- --static     # no <style> — what GitHub's sanitiser l
 node scripts/render-banner-gif.mjs    # assets/banner.gif (README uses this one)
 ```
 
-GitHub strips `<style>` from SVGs, so the CSS animation in `banner.svg` only runs in a browser or editor. The GIF carries its own timing, so the README animation actually plays; both are drawn from `scripts/banner-geometry.mjs`, and `banner.test.mjs` B8 fails if the two ever drift apart. The GIF renderer has no dependencies — it rasterises the same rectangles and writes GIF89a by hand (LZW + NETSCAPE loop), 927×260, ~290 KB.
+GitHub strips `<style>` from SVGs, so the CSS animation in `banner.svg` only runs in a browser or editor. The GIF carries its own timing, so the README animation actually plays; both are drawn from `scripts/banner-geometry.mjs`, and `banner.test.mjs` B8 fails if the two ever drift apart. The GIF renderer has no dependencies — it rasterises the same rectangles and writes GIF89a by hand (LZW + NETSCAPE loop), 927×260, ~210 KB, 4.8s loop.
+
+The motion is stepwise, never fades: the three Pi blocks land, the wordmark types in letter by letter with a block caret, the dots breathe, then the letters untype right-to-left and the loop restarts. A per-column cross-fade was tried first and rejected — half-transparent columns read as a bar sliding over the text. `banner.test.mjs` B10 decodes the GIF's LZW stream and asserts the wordmark contains nothing but pure white and background, so a translucent overlay cannot come back; `TEXT_Y` must stay even because the 2×2 box filter would otherwise blend half a pixel of grey into every stroke edge.
 
 Tests read `tests/fixtures/store.json` by default so results do not depend on what you have installed; set `PI_FUNCTION_REAL_STORE=1` to audit your own environment instead.
 
