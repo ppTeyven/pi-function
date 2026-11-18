@@ -248,6 +248,29 @@ Run `/function profile` to inspect the result. The report shows every role, the 
 
 If nothing matches, it still proposes a capability-based combination instead of refusing. The requirement is never sent automatically.
 
+### When you have no capability for the need
+
+Requests name deliverables the machine may simply not be able to produce (PDF, video, dubbing, OCR). Those words belong to no scenario, so silently dropping them is worse than a wrong tool — you would plan around a capability you do not have.
+
+So assembly checks two things and reports them in the proposal:
+
+1. **Need words** — `NEED_CAPABILITIES` maps `pdf / slides / docx / xlsx / video / audio / ocr / imagegen` to a detector for the request and a pattern for installed items. Direction matters: `markdown-converter` (PDF → Markdown) does **not** count as being able to produce a PDF.
+2. **Contracts** — a `required` role with no installed member (`auditCoverage.missing`, `not-installed`).
+
+```
+**能力缺口（本机没有）**
+- ⚠️ PDF 生成 / 转换 — 把内容排成 PDF（版式、字体、分页）（需求提到）：没有可用条目
+- 装配前会问你：要不要用 find-skill 去找这些能力（是 / 否）
+```
+
+Then, per gap, assembly asks `本机没有「…」能力，要去找吗？`:
+
+- **是** → the request is handed to your own find-skill (`skill:skill-finder`, or `skill:find-skill-skillhub` if that is what you have installed) as `/<cmd> 缺的能力：… 先确认本机现有技能/插件/命令行是否真的没有；没有就给出 2-3 个候选（各自覆盖哪部分、怎么装），等我确认再装。` Nothing is installed without your confirmation.
+- **否** → the gap is recorded as `declinedGaps` and injected into the system prompt as `不要假装能做；先说明限制并给替代方案`.
+- **是** is also injected as `已征得同意去找`, so the model runs the search before planning work it cannot finish.
+
+No new network calls: the search goes through a skill that already exists locally.
+
 ## What assembly changes
 
 - enables the selected plugin tools;
@@ -339,7 +362,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 135 cases, repository fixture — runs on any machine
+npm test          # 144 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -351,6 +374,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `journeys.test.mjs` | real user requests (PPT deck, big project, vague one-liner…) | 29 |
 | `feedback.test.mjs` | usage feedback: real tool calls, boost caps, stats/reset | 13 |
 | `tags.test.mjs` | capability tags + set-cover selection | 11 |
+| `gaps.test.mjs` | capability gaps, find-skill routing, ask flow | 9 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

@@ -176,6 +176,20 @@ function tagsOf(text) {
   return [...out].sort();
 }
 
+// 需求里常出现“本机根本没能力”的交付形态（PDF、视频、配音、OCR…）。
+// 这些词不属于任何固定场景，硬塞插件只会变成噪声：检测到缺口后由用户决定要不要去找。
+// item 判断“装了没有”；exclude 排除反方向条目（markdown-converter 是 PDF→Markdown，不能算能生成 PDF）。
+const NEED_CAPABILITIES = [
+  { id: "pdf", label: "PDF 生成 / 转换", hint: "把内容排成 PDF（版式、字体、分页）", need: /\bpdf\b|pdf ?文件|pdf ?文档|导出 ?pdf|生成 ?pdf|做成 ?pdf/, item: /pdf|typst|weasyprint|reportlab|pdfkit|latex|pandoc/i, exclude: /to ?markdown|markdown|读取|解析|parse|ocr/i },
+  { id: "slides", label: "演示文稿生成", hint: "生成可编辑的 .pptx / 幻灯片", need: /\bppt\b|pptx|幻灯片|演示文稿/, item: /ppt|pptx|slide|deck/i, exclude: /convert|markdown|读取|解析/i },
+  { id: "docx", label: "Word / 正式排版", hint: "生成 .docx 或按国标排版", need: /\bdocx\b|word ?文档|公文|红头|正式发文/, item: /docx|gongwen|word|国标|排版/i, exclude: /to ?markdown|markdown|读取|解析/i },
+  { id: "xlsx", label: "Excel / 表格处理", hint: "读写 .xlsx、透视、公式", need: /\bxlsx\b|\bexcel\b|表格|透视表/, item: /excel|xlsx|spreadsheet|pandas|openpyxl/i, exclude: /to ?markdown|markdown|读取|解析/i },
+  { id: "video", label: "视频剪辑 / 合成", hint: "剪辑、加字幕、合成视频", need: /视频剪辑|剪辑|合成视频|加字幕|\bffmpeg\b|视频生成/, item: /ffmpeg|video|剪映|filmora|moviepy/i, exclude: /to ?markdown|markdown|下载|download/i },
+  { id: "audio", label: "音频 / 配音 / 转写", hint: "TTS 配音、音频转写", need: /配音|\btts\b|语音合成|音频|转写|whisper/, item: /\btts\b|whisper|audio|配音|语音/i, exclude: /to ?markdown|markdown/i },
+  { id: "ocr", label: "OCR / 扫描件识别", hint: "图片或扫描件转文字", need: /\bocr\b|扫描件|识别文字|图片转文字/, item: /\bocr\b|tesseract|paddleocr|扫描/i, exclude: /markdown|生成/i },
+  { id: "imagegen", label: "图片生成 / 绘制", hint: "文生图、插画、海报配图", need: /文生图|生图|画一张|生成图片|插画|海报配图/, item: /image ?gen|stable ?diffusion|文生图|生图|dall|midjourney|插画/i, exclude: /describe|vision|识图|to ?markdown/i },
+];
+
 // 动态组合的预算与闸门：宁可少给、让模型/用户补，也不塞一堆无关工具。
 // strongIntent：场景得分到这么高才算“确定命中”；弱命中时插件自身也得沾边才进组合。
 const DYNAMIC_LIMITS = { packages: 5, skills: 5, perIntentSkills: 2, strongIntent: 2 };
@@ -1504,6 +1518,53 @@ function auditCoverage(scenario, store, workflow = null) {
   return { ok: missing.length === 0 && forbiddenHit.length === 0, required: contract.required, present, missing, forbiddenHit };
 }
 
+/**
+ * 能力缺口：需求提到、但本机没有任何条目能做的交付形态。
+ * 两个来源：① NEED_CAPABILITIES 命中的需求词；② 场景契约 required 但 not-installed 的角色。
+ * 只识别缺口、不擅自找方案——找不找由用户在装配前决定（是 → find-skill）。
+ */
+function capabilityGaps(scenario, store = {}, workflow = null) {
+  const raw = scenario?.dynamic ? String(scenario.when || "") : `${scenario?.title || ""} ${scenario?.when || ""}`;
+  const t = norm(raw);
+  const info = ACTIVE_PROFILE?.itemInfo || {};
+  const hasItem = (re, exclude) => Object.entries(info).some(([id, meta]) => {
+    const text = norm(`${id} ${meta?.description || ""} ${(meta?.tags || []).join(" ")}`);
+    return re.test(text) && !(exclude && exclude.test(text));
+  });
+  const gaps = [];
+  for (const cap of NEED_CAPABILITIES) {
+    if (!cap.need.test(t)) continue;
+    if (hasItem(cap.item, cap.exclude)) continue;
+    if (gaps.some((g) => g.id === cap.id)) continue;
+    gaps.push({ id: cap.id, label: cap.label, hint: cap.hint, source: "need" });
+  }
+  for (const miss of auditCoverage(scenario, store, workflow).missing) {
+    if (miss.kind !== "not-installed") continue;
+    if (gaps.some((g) => g.id === miss.need)) continue;
+    gaps.push({ id: miss.need, label: CAPABILITIES[miss.need]?.label || miss.need, hint: "场景必需能力", source: "contract" });
+  }
+  return gaps.slice(0, 3);
+}
+
+// 找技能的入口：用户装的是哪个就用哪个（skill:skill-finder / skill:find-skill-skillhub）。
+function findSkillCommandName(commands = []) {
+  const skills = commands.filter((c) => c?.source === "skill" && c.name);
+  const hit = skills.find((c) => /(?:^|:)skill-finder$/i.test(c.name))
+    || skills.find((c) => /skill-finder|find-skill/i.test(c.name));
+  return hit ? hit.name : null;
+}
+
+// 交给 find-skill 的请求：先说清缺什么，再要求“先确认本机没有、给候选、等确认再装”。
+function skillSearchMessage(gaps, need = "") {
+  const labels = gaps.map((g) => `${g.label}（${g.hint}）`).join("、");
+  return [
+    need ? `需求：${need}` : "",
+    `缺的能力：${labels}`,
+    "先确认本机现有技能/插件/命令行是否真的没有；没有就给出 2-3 个候选（各自覆盖哪部分、怎么装），等我确认再装。",
+    "找不到可用技能时直接说明缺口和替代方案，不要假装能做到。",
+  ].filter(Boolean).join("\n");
+}
+
 // 装配后要问清的事：默认三问（交付物 / 验收 / 边界），流程类场景再加一问。
 function followupQuestions(scenario, workflow = null) {
   const ids = [scenario?.id || "", ...(scenario?.comboIds || [])].join("+");
@@ -1648,6 +1709,15 @@ function buildProposal(pi, scenario, store, workflow = null) {
     lines.push(`**任务**：${scenario.when}`);
   }
   lines.push("");
+  const gaps = capabilityGaps(scenario, store, workflow);
+  if (gaps.length) {
+    lines.push("**能力缺口（本机没有）**");
+    for (const g of gaps) {
+      lines.push(`- ⚠️ ${g.label} — ${g.hint}${g.source === "contract" ? "（场景必需）" : "（需求提到）"}：没有可用条目`);
+    }
+    lines.push("- 装配前会问你：要不要用 find-skill 去找这些能力（是 / 否）");
+    lines.push("");
+  }
   const coverage = auditCoverage(scenario, store, workflow);
   if (coverage.required.length || coverage.forbiddenHit.length) {
     lines.push("**覆盖检查（漏用检查）**");
@@ -1973,6 +2043,39 @@ export default function functionMenu(pi) {
     );
   };
 
+  // 缺能力时先问用户：是 = 用 find-skill 去找，否 = 跳过（并告诉模型不要假装能做）。
+  const askMissingCapabilities = async (ctx, gaps) => {
+    const picked = [];
+    if (!gaps.length) return picked;
+    for (const gap of gaps) {
+      const yes = await ctx.ui.confirm(
+        `本机没有「${gap.label}」能力，要去找吗？`,
+        `缺口：${gap.label} — ${gap.hint}\n当前插件/技能里没有能做的条目。\n\n是：用 find-skill 搜索可安装/可用的技能，先给候选再装\n否：跳过，继续用手头能力（这部分可能做不了）`,
+      );
+      if (yes) picked.push(gap);
+    }
+    return picked;
+  };
+
+  // 把“找能力”的请求交给 find-skill 技能；返回是否已发起。
+  const dispatchSkillSearch = (ctx, scenario, wanted, needText) => {
+    if (!wanted.length) return false;
+    scenario.skillGaps = uniq([...(scenario.skillGaps || []), ...wanted.map((g) => g.label)]);
+    const cmdName = findSkillCommandName(pi.getCommands?.() || []);
+    if (cmdName) scenario.skillIds = uniq([...(scenario.skillIds || []), cmdName.replace(/^skill:/, "")]);
+    const text = skillSearchMessage(wanted, needText);
+    const msg = cmdName ? `/${cmdName} ${text}` : text;
+    try {
+      pi.sendUserMessage(msg, { expandPromptTemplates: !!cmdName });
+      ctx.ui.notify(`已把「${wanted.map((g) => g.label).join("、")}」交给 find-skill 去找（安装前会让你确认）`, "info");
+      return true;
+    } catch {
+      ctx.ui.setEditorText?.(msg);
+      ctx.ui.notify("已把找技能的请求放进输入框，按 Enter 开始", "info");
+      return false;
+    }
+  };
+
   const runAssemble = async (ctx) => {
     const workflows = await pickManyFrom(ctx, "第 1 步：选工作流（怎么执行）", orderWorkflows(), (w) => `${w.id} · ${w.title}
    ${w.picker || w.when}`);
@@ -1984,10 +2087,15 @@ export default function functionMenu(pi) {
     const reason = "菜单多选";
     const ok = await confirmScenario(ctx, scenario, reason, workflow);
     if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+    const gaps = capabilityGaps(scenario, store, workflow);
+    const wanted = await askMissingCapabilities(ctx, gaps);
+    const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
+    if (declined.length) scenario.declinedGaps = declined.map((g) => g.label);
     const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
     activeScenario = scenario;
     activeWorkflow = workflow;
     pi.appendEntry("function-scenario", { id: scenario.id, workflow: workflow?.id || null, at: nowIso(), tools: res.next });
+    dispatchSkillSearch(ctx, scenario, wanted, `${scenario.title} ${scenario.when || ""}`);
     ctx.ui.notify(
       `已装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`,
       "info",
@@ -2234,6 +2342,10 @@ export default function functionMenu(pi) {
       const scenario = dynamicScenario(args, analysis, workflow);
       const ok = await confirmScenario(ctx, scenario, "按需求动态组合", workflow);
       if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+      const gaps = capabilityGaps(scenario, store, workflow);
+      const wanted = await askMissingCapabilities(ctx, gaps);
+      const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
+      if (declined.length) scenario.declinedGaps = declined.map((g) => g.label);
       const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
       activeScenario = scenario;
       activeWorkflow = workflow;
@@ -2250,13 +2362,16 @@ export default function functionMenu(pi) {
           intents: analysis.intents.map((r) => ({ id: r.scenario.id, title: r.scenario.title, score: r.score, hits: r.hits })),
         },
       });
+      const searching = dispatchSkillSearch(ctx, scenario, wanted, args);
       const restored = typeof ctx.ui.setEditorText === "function";
-      if (restored) ctx.ui.setEditorText(args);
+      if (!searching && restored) ctx.ui.setEditorText(args);
       const head = `已按需求组合「${workflow.title} × 动态任务」：${scenario.plugins.length} 个插件、${scenario.skillIds.length} 个技能；启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具。`;
       ctx.ui.notify(
-        restored
-          ? `${head}需求没有自动执行；已放回输入框，按 Enter 才会开始。`
-          : `${head}需求没有自动执行，请手动重新发送。`,
+        searching
+          ? `${head}已发起 find-skill 搜索；装好技能后回来说一声继续。`
+          : restored
+            ? `${head}需求没有自动执行；已放回输入框，按 Enter 才会开始。`
+            : `${head}需求没有自动执行，请手动重新发送。`,
         "info",
       );
     },
@@ -2444,6 +2559,12 @@ export default function functionMenu(pi) {
       (activeWorkflow?.manual?.length || activeScenario.manual?.length)
         ? `仍需手动：${uniq([...(activeWorkflow?.manual || []), ...(activeScenario.manual || [])]).join("；")}`
         : "",
+      activeScenario.skillGaps?.length
+        ? `### 能力缺口：已征得同意去找\n${activeScenario.skillGaps.join("、")}\n先用 find-skill 搜索；装之前让用户确认；找不到就说明缺口，不要假装能做到。`
+        : "",
+      activeScenario.declinedGaps?.length
+        ? `### 能力缺口：用户选择不找\n${activeScenario.declinedGaps.join("、")}\n不要假装能做；先说明限制并给替代方案。`
+        : "",
       "只使用当前已启用的工具；缺工具时提示用户运行 /function 重新装配。",
     ].filter(Boolean).join("\n");
     return { systemPrompt: event.systemPrompt + "\n" + extra };
@@ -2452,4 +2573,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { NEED_CAPABILITIES, capabilityGaps, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

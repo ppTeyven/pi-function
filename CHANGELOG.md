@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.14.0
+
+- Capability gaps are now reported, not silently dropped. `NEED_CAPABILITIES` detects deliverables the request names but no installed item can produce (`pdf / slides / docx / xlsx / video / audio / ocr / imagegen`), and `capabilityGaps()` also surfaces contract `required` roles that resolve to no installed member. Direction is respected: a PDF→Markdown converter does not count as being able to generate a PDF.
+- The proposal (`buildProposal`) gains a `**能力缺口（本机没有）**` section listing each gap, its hint and whether it came from the request or the scenario contract.
+- Assembly asks once per gap — `本机没有「…」能力，要去找吗？` — instead of guessing:
+  - yes → the request is routed to your own find-skill (`skill:skill-finder`, else `skill:find-skill-skillhub`, else plain text in the editor) with a fixed brief: confirm nothing local already does it, offer 2-3 candidates, install only after confirmation;
+  - no → recorded as `declinedGaps`.
+- Both outcomes are injected into the system prompt (`已征得同意去找` / `用户选择不找`), so the model either searches first or states the limit instead of pretending.
+- New `tests/gaps.test.mjs` (9 cases). Total 144.
+
 ## 2.13.0
 
 - Multi-select is now a single step: both pickers print the full option list and ask once for numbers (`1,3`) or ids (`debug,process`). The old "add another?" confirmation loop is gone.
