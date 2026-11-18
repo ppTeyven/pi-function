@@ -29,7 +29,7 @@ const W = WIDTH / SS;
 const H = HEIGHT / SS;
 const RISE = 25; // fps during the entrance
 const BREATHE_FPS = 12;
-const LOOP_HOLD = 1.6; // seconds of breathing before the loop restarts
+const LOOP_HOLD = 2.8; // seconds of breathing before the loop restarts
 
 const { letters, gaps } = layout();
 
