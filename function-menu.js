@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -64,18 +64,33 @@ const CAPABILITIES = {
 // 固定应用场景 -> 固定能力角色。ID 与语义对所有用户一致。
 const SCENARIO_CAPABILITIES = {
   article: ["writing", "web", "memory"],
+  email: ["writing", "task", "memory"],
+  social: ["writing", "design", "web", "memory"],
+  novel: ["writing", "memory"],
+  video: ["writing", "slides", "memory"],
+  music: ["writing", "memory"],
+  course: ["slides", "writing", "docs", "memory"],
+  resume: ["writing", "docs", "design"],
+  event: ["writing", "web", "memory", "task"],
   report: ["web", "writing", "data", "docs", "memory"],
   presentation: ["slides", "design", "writing", "web"],
   docs: ["docs", "writing", "repo-wiki", "memory"],
+  legal: ["writing", "docs", "memory"],
   webpage: ["web", "design", "browser", "writing"],
   webapp: ["web", "design", "browser", "code-intel", "task", "plan-review"],
+  commerce: ["web", "design", "data", "browser"],
   mobile: ["design", "browser", "code-intel", "task"],
   game: ["design", "browser", "code-intel", "testing"],
   design: ["design", "slides", "browser", "writing"],
+  image: ["design", "vision"],
   data: ["data", "context", "web", "docs"],
+  spreadsheet: ["data", "automation", "code-intel"],
+  dashboard: ["data", "design", "web", "code-intel"],
   api: ["code-intel", "testing", "docs", "plan-review"],
   automation: ["automation", "web", "browser", "code-intel"],
+  tool: ["code-intel", "testing", "automation"],
   integration: ["mcp", "web"],
+  chatbot: ["web", "mcp", "memory", "code-intel"],
   plugin: ["code-intel", "testing", "docs", "plan-review", "orchestration"],
   maintain: ["code-intel", "testing", "simplify", "context", "plan-review"],
   localization: ["i18n", "writing", "web"],
@@ -146,13 +161,13 @@ const SCENARIOS = [
   {
     id: "design", group: "视觉", title: "设计 / 品牌 / 视觉稿",
     when: "UI 稿、品牌视觉、logo、海报、配色与设计系统",
-    keywords: ["设计", "视觉", "品牌", "logo", "海报", "配色", "字体", "排版", "设计系统", "design", "brand", "mockup"],
+    keywords: ["设计", "视觉", "品牌", "logo", "配色", "字体", "排版", "设计系统", "design", "brand", "mockup"],
     brief: "先定风格板和三个关键词，再做主视觉与组件规范；检查对比度、层级、间距和不同尺寸下的一致性。",
   },
   {
     id: "data", group: "视觉", title: "数据 / 图表 / 分析",
     when: "数据分析、可视化、报表、指标解释、实验对比",
-    keywords: ["数据", "图表", "可视化", "报表", "指标", "统计", "分析", "csv", "excel", "dashboard", "chart"],
+    keywords: ["数据", "图表", "可视化", "统计", "分析", "csv", "excel", "chart"],
     brief: "先明确问题和口径，再清洗、聚合、可视化；结论要给样本量、时间范围和不确定性，不把相关当因果。",
   },
   {
@@ -190,6 +205,96 @@ const SCENARIOS = [
     when: "界面翻译、文案本地化、多语言资源、术语统一",
     keywords: ["翻译", "本地化", "多语言", "i18n", "locale", "language", "术语", "translation"],
     brief: "先定术语表和语气，再按 key 改资源文件；保持占位符和格式不变，最后检查截断、复数与从右到左布局。",
+  },
+  {
+    id: "social", group: "内容", title: "社交媒体 / 种草 / 推文",
+    when: "小红书、微博、推特、朋友圈、种草与运营文案",
+    keywords: ["小红书", "微博", "推特", "twitter", "推文", "朋友圈", "种草", "社交", "运营", "social", "post", "thread", "caption"],
+    brief: "先定平台、受众和发布目标，再写钩子与正文；遵守平台字数与标签习惯，最后检查事实和合规。",
+  },
+  {
+    id: "novel", group: "内容", title: "小说 / 故事 / 剧本",
+    when: "短篇、长篇章节、剧本、角色设定、世界观与同人",
+    keywords: ["小说", "故事", "剧本", "章节", "角色", "世界观", "同人", "剧情", "novel", "story", "fiction", "screenplay"],
+    brief: "先定题材、视角和核心冲突，再搭人物与章节；保持伏笔和节奏，最后统一设定与文风。",
+  },
+  {
+    id: "video", group: "内容", title: "视频 / 播客 / 分镜",
+    when: "短视频脚本、口播稿、分镜、字幕、播客提纲",
+    keywords: ["视频", "短视频", "口播", "分镜", "字幕", "播客", "音频", "video", "podcast", "storyboard", "subtitle"],
+    brief: "先定时长、平台和核心信息，再写开场钩子与分镜；字幕和口播要顺口，最后核对画面与版权。",
+  },
+  {
+    id: "image", group: "视觉", title: "海报 / 封面 / 配图",
+    when: "海报、封面、插图、社媒配图、图片生成提示词",
+    keywords: ["海报", "封面", "配图", "插图", "图片", "绘图", "prompt", "poster", "cover", "illustration", "image"],
+    brief: "先定尺寸、用途和视觉关键词，再写画面描述或提示词；主体、文字区和留白要清楚，最后检查版权与可读性。",
+  },
+  {
+    id: "course", group: "内容", title: "课程 / 教学 / 培训",
+    when: "课程大纲、教案、课件、作业、培训材料",
+    keywords: ["课程", "教学", "教案", "培训", "课件", "作业", "考试", "学习计划", "course", "lesson", "curriculum", "training"],
+    brief: "先定学习目标和先修知识，再按小节组织讲解与练习；每节有可验收的产出，最后配答案与复习。",
+  },
+  {
+    id: "resume", group: "内容", title: "简历 / 求职 / 作品集",
+    when: "简历、求职信、面试介绍、作品集与个人品牌",
+    keywords: ["简历", "求职", "面试", "作品集", "自我介绍", "cv", "resume", "portfolio", "interview"],
+    brief: "先定目标岗位和差异化证据，再用结果与数字写经历；一页优先，最后针对 JD 调整关键词。",
+  },
+  {
+    id: "event", group: "内容", title: "活动 / 旅行 / 生活策划",
+    when: "活动方案、旅行行程、婚礼或聚会策划、预算清单",
+    keywords: ["活动", "策划", "旅行", "行程", "婚礼", "聚会", "预算", "清单", "event", "travel", "itinerary", "planning"],
+    brief: "先定目标、人数、预算和日期，再排时间线与分工；留出天气或取消等备选，最后输出可执行清单。",
+  },
+  {
+    id: "commerce", group: "产品", title: "电商 / 商品页 / 店铺",
+    when: "商品详情页、店铺首页、购物车、订单与支付流程",
+    keywords: ["电商", "商品", "店铺", "详情页", "购物车", "订单", "支付", "ecommerce", "shop", "product", "checkout"],
+    brief: "先定商品卖点和购买路径，再做详情页或结算闭环；价格、库存、运费和退款规则要清楚，最后走一遍下单。",
+  },
+  {
+    id: "dashboard", group: "产品", title: "仪表盘 / BI / 报表",
+    when: "数据看板、BI 报表、指标监控、运营后台",
+    keywords: ["仪表盘", "看板", "bi", "报表", "指标", "监控", "dashboard", "analytics", "report"],
+    brief: "先定使用者和决策问题，再选 3-5 个核心指标；图表服务结论，最后检查口径、刷新和空数据状态。",
+  },
+  {
+    id: "tool", group: "系统", title: "小工具 / 脚本 / CLI",
+    when: "本地小工具、文件处理、格式转换、命令行脚本",
+    keywords: ["小工具", "脚本", "命令行", "cli", "文件处理", "转换", "批处理", "tool", "utility", "script", "converter"],
+    brief: "先定输入输出和一个真实样例，再做最小可运行脚本；错误输入要有提示，最后在干净目录验证。",
+  },
+  {
+    id: "chatbot", group: "系统", title: "AI 对话 / 机器人 / 客服",
+    when: "聊天机器人、知识库问答、客服助手、AI 工作流",
+    keywords: ["聊天机器人", "对话", "客服", "问答", "助手", "bot", "chatbot", "assistant", "rag", "knowledge base"],
+    brief: "先定知识边界、人格和失败兜底，再设计检索或工具调用；回答要可追溯，最后测试越界与转人工。",
+  },
+  {
+    id: "email", group: "内容", title: "邮件 / 通知 / 营销",
+    when: "邮件、通知、邀请函、营销邮件与 newsletter",
+    keywords: ["邮件", "email", "newsletter", "通知", "邀请函", "营销邮件", "订阅", "mail"],
+    brief: "先定收件人、目的和行动按钮，再写主题与正文；一封信只做一件事，最后检查链接、称呼与退订。",
+  },
+  {
+    id: "music", group: "内容", title: "音乐 / 歌词 / 配乐",
+    when: "歌词、歌曲结构、配乐方向、音乐提示词",
+    keywords: ["音乐", "歌词", "歌曲", "编曲", "配乐", "旋律", "music", "lyrics", "song", "soundtrack"],
+    brief: "先定情绪、曲风和段落结构，再写歌词或提示词；主歌/副歌要有对比，最后检查押韵、时长与版权。",
+  },
+  {
+    id: "spreadsheet", group: "视觉", title: "表格 / Excel / 对账",
+    when: "表格模板、公式、数据录入、对账与批量整理",
+    keywords: ["表格", "excel", "spreadsheet", "公式", "对账", "录入", "csv", "台账", "统计表"],
+    brief: "先定字段、口径和一行样例，再建公式与校验；冻结表头、标出异常，最后用真实数据试算。",
+  },
+  {
+    id: "legal", group: "内容", title: "合同 / 条款 / 隐私政策",
+    when: "合同条款、用户协议、隐私政策、合规说明",
+    keywords: ["合同", "条款", "协议", "隐私政策", "合规", "免责声明", "legal", "contract", "terms", "privacy policy"],
+    brief: "先定适用主体、地区和业务范围，再列权利义务与例外；用清晰短句，标出需律师确认的条款，不冒充法律意见。",
   },
   {
     id: "general", group: "通用", title: "其他 / 通用任务",
@@ -248,18 +353,33 @@ const WORKFLOWS = [
 // 自动归类信号：只写能力词，不写具体插件名。
 const SCENARIO_HINTS = {
   article: ["writing", "copy", "blog", "article", "文案", "文章"],
+  email: ["email", "newsletter", "mail", "邮件", "通知", "邀请函"],
+  social: ["social", "xiaohongshu", "twitter", "thread", "种草", "小红书", "推文", "社交"],
+  novel: ["novel", "story", "fiction", "screenplay", "小说", "故事", "剧本", "章节"],
+  video: ["video", "podcast", "storyboard", "subtitle", "视频", "播客", "分镜", "字幕"],
+  music: ["music", "lyrics", "song", "soundtrack", "音乐", "歌词", "配乐"],
+  image: ["poster", "cover", "illustration", "image", "海报", "封面", "配图", "插图"],
+  course: ["course", "lesson", "curriculum", "training", "课程", "教学", "课件", "培训"],
+  resume: ["resume", "cv", "portfolio", "interview", "简历", "求职", "面试", "作品集"],
+  event: ["event", "travel", "itinerary", "活动", "旅行", "行程", "策划"],
   report: ["research", "report", "survey", "whitepaper", "调研", "报告"],
   presentation: ["slide", "deck", "presentation", "ppt", "幻灯片"],
   docs: ["documentation", "docs", "wiki", "readme", "handoff", "mermaid", "文档"],
+  legal: ["legal", "contract", "terms", "privacy", "合同", "条款", "隐私政策"],
   webpage: ["webpage", "landing", "website", "homepage", "网页", "落地页"],
   webapp: ["webapp", "dashboard", "saas", "admin", "frontend", "web", "应用", "后台"],
   mobile: ["mobile", "ios", "android", "mini program", "responsive", "移动端", "小程序"],
   game: ["game", "canvas", "gameplay", "游戏", "玩法", "关卡"],
   design: ["design", "brand", "visual", "logo", "css", "ui", "设计", "视觉"],
   data: ["data", "chart", "analytics", "csv", "sql", "数据", "图表"],
+  spreadsheet: ["spreadsheet", "excel", "formula", "表格", "公式", "对账"],
+  dashboard: ["dashboard", "bi", "analytics", "报表", "看板", "指标"],
+  commerce: ["ecommerce", "shop", "product", "checkout", "电商", "商品", "店铺"],
   api: ["api", "backend", "server", "cli", "sdk", "接口", "后端"],
   automation: ["automation", "scrape", "crawl", "cron", "schedule", "自动化", "爬虫"],
+  tool: ["tool", "utility", "script", "cli", "小工具", "脚本", "命令行"],
   integration: ["mcp", "integration", "connector", "oauth", "webhook", "集成"],
+  chatbot: ["chatbot", "assistant", "rag", "客服", "聊天机器人", "问答"],
   plugin: ["plugin", "extension", "hook", "skill", "command", "插件", "扩展"],
   maintain: ["bug", "refactor", "test", "review", "performance", "upgrade", "维护", "重构", "测试"],
   localization: ["i18n", "locale", "translation", "language", "本地化", "翻译"],
@@ -290,7 +410,7 @@ function storePath() { return path.join(agentDir(), STORE_FILE); }
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 2;
+const PROFILE_VERSION = 3;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return path.join(agentDir(), PROFILE_FILE); }
@@ -331,6 +451,7 @@ function buildProfile(store) {
     const matchedRoles = [];
     for (const [roleId, def] of Object.entries(CAPABILITIES)) {
       if (isGsdSkill && roleId !== "gsd") continue;
+      if (isSkill && roleId === "writing" && /^(ppt|slide|deck|mermaid|glimpse)/i.test(name)) continue;
       let score = 0;
       const reasons = [];
       const hit = (re, value, weight, why) => {
@@ -923,8 +1044,8 @@ function comboPackages(scenario, store, workflow = null) {
 function recommendWorkflow(scenario) {
   if (!scenario) return "direct";
   if (scenario.id === "maintain") return "review-gate";
-  if (["webpage", "game", "design", "mobile"].includes(scenario.id)) return "prototype";
-  if (["webapp", "api", "plugin", "article", "report", "presentation", "docs", "automation", "integration", "localization"].includes(scenario.id)) return "outline";
+  if (["webpage", "game", "design", "mobile", "image", "dashboard", "commerce"].includes(scenario.id)) return "prototype";
+  if (["webapp", "api", "plugin", "article", "report", "presentation", "docs", "automation", "integration", "localization", "social", "novel", "video", "course", "resume", "event", "chatbot", "email", "music", "legal"].includes(scenario.id)) return "outline";
   return "direct";
 }
 

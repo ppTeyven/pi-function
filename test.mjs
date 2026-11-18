@@ -31,8 +31,8 @@ import {
 } from "./function-menu.js";
 
 const ids = SCENARIOS.map((s) => s.id);
-assert.equal(SCENARIOS.length, 17);
-for (const id of ["article", "report", "presentation", "docs", "webpage", "webapp", "mobile", "game", "design", "data", "api", "automation", "integration", "plugin", "maintain", "localization", "general"]) {
+assert.equal(SCENARIOS.length, 32);
+for (const id of ["article", "email", "social", "novel", "video", "music", "image", "course", "resume", "event", "report", "presentation", "docs", "legal", "webpage", "webapp", "commerce", "mobile", "game", "design", "data", "spreadsheet", "dashboard", "api", "automation", "tool", "integration", "chatbot", "plugin", "maintain", "localization", "general"]) {
   assert.ok(ids.includes(id), `missing application scenario ${id}`);
 }
 for (const old of ["feature", "refactor", "bugfix", "review", "frontend"]) {
@@ -129,7 +129,7 @@ const fakePi = {
 };
 
 const catalog = buildCatalog(fakePi, syntheticStore);
-assert.match(catalog, /17 个组合/);
+assert.match(catalog, /32 个组合/);
 assert.match(catalog, /第 1 步：工作流/);
 assert.match(catalog, /第 2 步：任务场景/);
 assert.match(catalog, /pi-web-access/);
@@ -256,4 +256,4 @@ const flowCtx = {
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 17 application scenarios, 7 workflows, profile capabilities, dynamic needs, core tools, migration");
+console.log("ok: 32 application scenarios, 7 workflows, profile capabilities, dynamic needs, core tools, migration");

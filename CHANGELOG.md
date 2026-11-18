@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.0
+
+- Expanded application scenarios from 17 to 32: email, social posts, novels/stories, video/podcast, music/lyrics, posters/covers, courses, resumes, events, ecommerce, dashboards, spreadsheets, legal documents, small tools/CLI, and AI chatbots.
+- Added capability mappings and classification hints for the new IDs; dashboards and commerce resolve visual/data capabilities, images resolve vision/design, spreadsheets resolve data/tooling, and chatbots resolve web/MCP/memory.
+- Added workflow recommendations for the new scenarios and removed ambiguous keywords (`海报`, `报表`, `dashboard`) from the older `design`/`data` scenarios.
+- Tests and both READMEs now cover the 32 fixed application IDs.
+
 ## 2.0.0
 
 - Scenarios are now **application/output types** instead of engineering activities: `article`, `report`, `presentation`, `docs`, `webpage`, `webapp`, `mobile`, `game`, `design`, `data`, `api`, `automation`, `integration`, `plugin`, `maintain`, `localization`, `general`.
