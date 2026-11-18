@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.30.0
+
+- **The scan also runs at startup, and it speaks.** `session_start` now calls `scan()` with the UI notifier instead of `scan(false)`: new plugins/skills, entries migrated off dead scenario ids, and packages that gained abilities are all reported on boot, before the first `/function`.
+- **`/function status` shows the last scan:** time, how many entries were new, and how many were migrated or gained abilities — so a silent boot scan can still be audited later.
+- Tests R5/R6 cover the startup path (new skill discovered + notified, dead id migrated on boot). Total 256.
+
 ## 2.29.0
 
 - **Dead scenario ids are migrated, not left dangling.** `SCENARIOS` has been reworked over time (release/research/webui/tests/audit/gsd/... are gone), but the store kept those strings: on this machine **66 of 186 entries** pointed at ids no scenario could ever match, so `/function assemble` silently skipped them. `LEGACY_SCENARIO_MAP` pulls each old id to its current equivalent (release→maintain, webui→webapp, gsd→process, i18n→localization, …); an id that is neither current nor in the map becomes `null` (unclassified) instead of an unrecognised string.

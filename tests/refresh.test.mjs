@@ -94,3 +94,34 @@ test("R4 无参数菜单也能正常派发（args 不能是 const）", async () 
   await assert.doesNotReject(() => pi.state.commands.function.handler("", ctx), "菜单派发抛异常了");
   assert.ok(notes.length > 0, "status 没有输出");
 });
+
+test("R5 启动时就扫描并通知（session_start，不用等 /function）", async () => {
+  fs.writeFileSync(STORE, JSON.stringify({ version: 1, known: {}, overrides: {}, usage: {}, itemUse: {}, manualAdds: {} }));
+  const pi = fakePi([{ name: "skill:zz-boot", source: "skill", description: "开机扫描技能", sourceInfo: {} }]);
+  m.default(pi);
+  const notes = [];
+  const ctx = { hasUI: true, ui: { notify: (msg) => notes.push(String(msg)) }, sessionManager: { getBranch: () => [] } };
+  (pi.state.handlers.session_start || []).forEach((fn) => fn({ type: "session_start" }, ctx));
+  (pi.state.handlers.session_shutdown || []).forEach((fn) => fn({ type: "session_shutdown" }, ctx));
+  const saved = JSON.parse(fs.readFileSync(STORE, "utf8"));
+  assert.ok(saved.known["skill:zz-boot"], "启动扫描没有收进新技能");
+  assert.ok(saved.lastAdded?.length, "没有记录 lastAdded");
+  assert.ok(notes.some((n) => /新发现/.test(n)), `启动时没有通知：${notes.join(" | ")}`);
+});
+
+test("R6 启动时就把旧场景 id 迁掉", async () => {
+  fs.writeFileSync(STORE, JSON.stringify({
+    version: 1,
+    known: { "skill:zz-old": { kind: "skill", label: "zz-old", scenario: "release", auto: true, firstSeen: "2026-01-01T00:00:00.000Z" } },
+    overrides: {}, usage: {}, itemUse: {}, manualAdds: {}, classifierVersion: 0,
+  }));
+  const pi = fakePi([{ name: "skill:zz-old", source: "skill", description: "旧场景技能", sourceInfo: {} }]);
+  m.default(pi);
+  const ctx = { hasUI: false, ui: { notify: () => {} }, sessionManager: { getBranch: () => [] } };
+  (pi.state.handlers.session_start || []).forEach((fn) => fn({ type: "session_start" }, ctx));
+  (pi.state.handlers.session_shutdown || []).forEach((fn) => fn({ type: "session_shutdown" }, ctx));
+  const saved = JSON.parse(fs.readFileSync(STORE, "utf8"));
+  const sc = saved.known["skill:zz-old"].scenario;
+  const valid = new Set(m.SCENARIOS.map((s) => s.id));
+  assert.ok(sc === null || sc === "infra" || valid.has(sc), `启动后仍是废弃场景：${sc}`);
+});

@@ -707,7 +707,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.29.0";
+const EXT_VERSION = "2.30.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2457,6 +2457,11 @@ export default function functionMenu(pi) {
     const changed = added.changed || [];
     saveStore(store);
     ensureProfile(store, true);
+    if (added.length || changed.length) {
+      store.lastScanAt = nowIso();
+      store.lastAdded = added.slice(0, 20);
+      store.lastChanged = changed.slice(0, 20);
+    }
     if ((added.length || changed.length) && notify) {
       const parts = [];
       if (added.length) {
@@ -2829,6 +2834,12 @@ export default function functionMenu(pi) {
           lines.push(`动态技能：${activeScenario.skillIds?.length ? summarizeSkills(activeScenario.skillIds) : "（无）"}`);
         }
         lines.push(`已收录条目：${Object.keys(store.known).length} 个（自动归类 ${Object.values(store.known).filter((m) => m.auto).length}）`);
+        if (store.lastScanAt) {
+          const bits = [];
+          if (store.lastAdded?.length) bits.push(`新增 ${store.lastAdded.length}`);
+          if (store.lastChanged?.length) bits.push(`迁移/新增能力 ${store.lastChanged.length}`);
+          lines.push(`上次扫描：${store.lastScanAt}${bits.length ? " · " + bits.join(" · ") : " · 无变化"}`);
+        }
         const optionalActive = pi.getActiveTools().filter((n) => {
           const t = pi.getAllTools().find((x) => x.name === n);
           return t && isOptionalSource(t.sourceInfo);
@@ -3098,10 +3109,14 @@ export default function functionMenu(pi) {
 
   pi.on("session_start", (event, ctx) => {
     captureBaseline();
-    const added = scan(false);
-    if (added.length) {
-      // 静默记录；/function status 可查
+    // 启动即重扫 + 迁移：新装的插件/技能、旧场景 id、插件新增的能力都在这一步处理，
+    // 并把结果说出来（以前是 scan(false)，默默改完谁也不知道）。
+    const added = scan((msg, lvl) => ctx?.ui?.notify?.(msg, lvl));
+    const changed = added.changed || [];
+    if (added.length || changed.length) {
       store.lastAdded = added.slice(0, 20);
+      store.lastChanged = changed.slice(0, 20);
+      store.lastScanAt = nowIso();
       saveStore(store);
     }
     startWatcher(ctx);
