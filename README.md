@@ -304,6 +304,25 @@ npm test                                  # fixtures stay green
 /function assign skill:your-skill bioinfo  # correct a misclassification; it also boosts future picks
 ```
 
+## How slots are filled (stages B + C)
+
+Selection is not "top N by score". Each item carries **capability tags** derived from its name, description, tools, commands and classification role; the need carries tags from the scenario keywords.
+
+```js
+TAG_VOCAB = { 表格: "data", 公文: "docx", 爬虫: "automation", 海报: "design", … }
+
+selectByCoverage(candidates, limit, demands):
+  demands = required roles of the top scenario + tags parsed from the request
+  1. greedily pick the item covering the most uncovered demands
+     (a role match counts double — a description that merely says "代码"
+      does not make a wiki plugin a code-intelligence tool)
+  2. slots left over when all demands are covered stay EMPTY
+```
+
+Why leave slots empty: an unused slot costs nothing; a wrong tool costs a wrong answer. Missing capability is reported by `auditCoverage` (`not-installed` / `not-selected`), so "fewer than 5" is a signal, not a bug.
+
+Measured on the 14 representative needs in the fixture: average precision **1.000**, 0.7 packages and 1.0 skills per need (before stages B/C it was ~2.5 packages with precision 0.99).
+
 ## Learning from your own usage (stage D)
 
 Every assembly records which items it put in (`usage` in `function-menu.json`), and `/function assign` records manual corrections (`manualAdds`). Both add a bounded bonus when scoring the same scenario again:
@@ -320,7 +339,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 124 cases, repository fixture — runs on any machine
+npm test          # 135 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -331,6 +350,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `allocation.test.mjs` | contracts, golden needs, invariants, persistence | 44 |
 | `journeys.test.mjs` | real user requests (PPT deck, big project, vague one-liner…) | 29 |
 | `feedback.test.mjs` | usage feedback: real tool calls, boost caps, stats/reset | 13 |
+| `tags.test.mjs` | capability tags + set-cover selection | 11 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

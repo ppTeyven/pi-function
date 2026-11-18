@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.0
+
+- Stage B: capability tags. `TAG_VOCAB` maps Chinese capability words (表格/图表/公文/爬虫/海报/翻译/…) to capability roles; every profile item now exposes `tags` (name + description + tools + commands + non-infra roles). `PROFILE_VERSION` bumped to 7 so profiles rebuild.
+- Stage C: set-cover slot allocation. `selectByCoverage(candidates, limit, demands)` greedily covers the top scenario's required roles and the request's tags, counting a role match double, and **leaves leftover slots empty** instead of filling them by score.
+- `analyzeNeed` now ends with coverage selection; infrastructure roles no longer appear in tags (they only set the `infra` flag).
+- Effect on the fixture: average precision 1.000, 0.7 packages / 1.0 skills per need; `plugin`-style requests no longer lose `pi-lens` to a wiki plugin that merely mentions 代码.
+- Tests: 11 tag/coverage cases. Total 135.
+
 ## 2.11.0
 
 - Stage D upgraded to a real signal: the extension hooks Pi's `tool_call` event, maps the tool back to its owning package (by tool path, scoped packages included) and records counts per assembled scenario (`itemUse`).

@@ -144,6 +144,38 @@ const ALLOCATION_METHOD = [
 ];
 const PROCESS_SKILL_IDS = ["workflow-refactor", "sop-builder", "sop-extractor", "spec-workflow-guide", "skill-finder"];
 
+// 能力标签词表（阶段 B）：把"中文能力词"映射到能力角色。
+// 与 CAPABILITIES 的正则互补——正则看名字，标签看描述里出现的具体能力。
+const TAG_VOCAB = {
+  表格: "data", 数据: "data", 图表: "data", 透视: "data", csv: "data", sql: "data", 统计: "data",
+  幻灯片: "slides", ppt: "slides", 演示: "slides", 路演: "slides", 讲义: "slides",
+  公文: "docx", 红头: "docx", 排版: "docx", 发文: "docx", 发文字号: "docx", 版记: "docx",
+  海报: "design", 视觉: "design", 配色: "design", 界面: "design", ui: "design", 封面: "design",
+  爬虫: "automation", 抓取: "automation", 定时: "automation", 调度: "automation", 批处理: "automation",
+  翻译: "i18n", 本地化: "i18n", 多语言: "i18n",
+  文案: "writing", 文章: "writing", 润色: "writing", 写作: "writing", 稿: "writing",
+  文档: "docs", 手册: "docs", 教程: "docs", readme: "docs", wiki: "docs",
+  代码: "code-intel", 诊断: "code-intel", 重构: "code-intel", lsp: "code-intel", 符号: "code-intel",
+  流程: "process", sop: "process", 标准化: "process", 基元: "process",
+  搜索: "web", 检索: "web", 抓网页: "web",
+  图片: "vision", 识图: "vision",
+  mcp: "mcp", 外部系统: "mcp", 集成: "mcp",
+  任务: "task", 待办: "task", 清单: "task",
+  记忆: "memory", 备忘: "memory",
+  计划: "plan-review", 审阅: "plan-review", 评审: "plan-review",
+  测试: "testing", 用例: "testing", 覆盖率: "testing",
+  编排: "orchestration", 并行: "orchestration", 子代理: "orchestration",
+};
+
+function tagsOf(text) {
+  const t = String(text || "").toLowerCase();
+  const out = new Set();
+  for (const [word, role] of Object.entries(TAG_VOCAB)) {
+    if (t.includes(word)) out.add(role);
+  }
+  return [...out].sort();
+}
+
 // 动态组合的预算与闸门：宁可少给、让模型/用户补，也不塞一堆无关工具。
 // strongIntent：场景得分到这么高才算“确定命中”；弱命中时插件自身也得沾边才进组合。
 const DYNAMIC_LIMITS = { packages: 5, skills: 5, perIntentSkills: 2, strongIntent: 2 };
@@ -517,7 +549,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 6;
+const PROFILE_VERSION = 7;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return process.env.PI_FUNCTION_PROFILE || path.join(agentDir(), PROFILE_FILE); }
@@ -599,6 +631,10 @@ function buildProfile(store) {
       id: name,
       kind: isSkill ? "skill" : "plugin",
       description: meta.description || "",
+      tags: uniq([
+        ...tagsOf([name, meta.description || "", ...(meta.tools || []), ...(meta.commands || [])].join(" ")),
+        ...selected.filter((x) => !CAPABILITIES[x.roleId]?.infra).map((x) => x.roleId),
+      ]).sort(),
       roles: selected.map((x) => x.roleId),
       roleScores: Object.fromEntries(selected.map((x) => [x.roleId, x.score])),
       assignments: selected,
@@ -814,6 +850,33 @@ function termScore(terms, text) {
 }
 
 // 自由文本需求不做单选场景匹配；先取多个任务信号，再按能力描述组合插件/技能。
+// 阶段 C：名额分配用集合覆盖，而不是"按分数取前 N"。
+// 先保证 required 能力与需求标签被覆盖，其余名额只给"能覆盖新标签"的候选。
+function selectByCoverage(candidates, limit, demands) {
+  if (!limit || !candidates.length) return [];
+  const demandSet = new Set(demands || []);
+  const remaining = [...candidates].sort((a, b) => b.score - a.score || String(a.id).localeCompare(String(b.id)));
+  const chosen = [];
+  const covered = new Set();
+  while (chosen.length < limit && remaining.length && covered.size < demandSet.size) {
+    let best = null;
+    let bestGain = 0;
+    for (const cand of remaining) {
+      // 角色是权威证据（分类器给的），标签只作补充：描述里出现"代码"不代表它是代码理解工具。
+      const roles = (cand.roles || []).filter((r) => demandSet.has(r) && !covered.has(r));
+      const tags = (cand.tags || []).filter((t) => demandSet.has(t) && !covered.has(t) && !(cand.roles || []).includes(t));
+      const gain = roles.length * 2 + tags.length;
+      if (gain > bestGain) { best = cand; bestGain = gain; }
+    }
+    if (!best) break;
+    chosen.push(best);
+    for (const t of [...(best.roles || []), ...(best.tags || [])]) if (demandSet.has(t)) covered.add(t);
+    remaining.splice(remaining.indexOf(best), 1);
+  }
+  // 不给剩余名额硬塞：没覆盖到的新需求，宁可不给（少了会说漏用，多了没人发现）
+  return chosen;
+}
+
 function analyzeNeed(text, store = { known: {} }) {
   const raw = String(text || "").trim();
   const terms = needTerms(raw);
@@ -927,8 +990,18 @@ function analyzeNeed(text, store = { known: {} }) {
     if (raw.length > 12 && firstPkg("task")) addPkg(firstPkg("task"), 0.4, "多步需求跟踪");
   }
 
-  const pkgList = [...packages.values()].sort((a, b) => b.score - a.score).slice(0, DYNAMIC_LIMITS.packages);
-  const skillList = [...skills.values()].sort((a, b) => b.score - a.score).slice(0, DYNAMIC_LIMITS.skills);
+  const demands = uniq([
+    ...(contractFor(topScenario).required || []),
+    ...tagsOf(raw),
+  ]);
+  const withTags = (list) => list.map((x) => {
+    const info = ACTIVE_PROFILE?.itemInfo?.[x.pkg || x.skill];
+    return { ...x, id: x.pkg || x.skill, tags: info?.tags || [], roles: info?.roles || [] };
+  });
+  const pkgList = selectByCoverage(withTags([...packages.values()]), DYNAMIC_LIMITS.packages, demands)
+    .map(({ id, tags, roles, ...rest }) => rest);
+  const skillList = selectByCoverage(withTags([...skills.values()]), DYNAMIC_LIMITS.skills, demands)
+    .map(({ id, tags, roles, ...rest }) => rest);
   const confidence = intents.length ? (intents[0].score >= 2.5 ? "high" : intents[0].score >= 1 ? "medium" : "low") : "low";
   return {
     need: raw,
@@ -2378,4 +2451,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

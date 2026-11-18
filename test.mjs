@@ -307,7 +307,13 @@ assert.ok(intentIds.includes("article"), intentIds.join(","));
 // 相关性闸门：需求里没有搜索/资料类词时，不应仅因为场景带 web 角色就拉进联网搜索插件
 assert.ok(!multi.packages.some((x) => x.pkg === "pi-web-access"), "no web-search package without evidence");
 const withSearch = analyzeNeed("先搜索资料并抓取网页内容做调研，再做网页", syntheticStore);
-assert.ok(withSearch.packages.some((x) => x.pkg === "pi-web-access"), "search need should bring the web capability");
+// 不绑定具体包名：只要命中的是 web 能力集合里的任意一项即可
+const webIds = [
+  ...(profile.roles?.web?.packages || []).map((x) => x.id),
+  ...(profile.roles?.web?.skills || []).map((x) => x.id),
+];
+const withSearchIds = [...withSearch.packages.map((x) => x.pkg), ...withSearch.skills.map((x) => x.skill)];
+assert.ok(withSearchIds.some((id) => webIds.includes(id)), `search need should bring a web capability, got ${withSearchIds}`);
 // 覆盖兜底：不管哪个意图排第一，首要场景的 required 能力都必须至少有一个成员入选
 const topScenario = SCENARIOS.find((sc) => sc.id === multi.intents[0].scenario.id);
 for (const role of (SCENARIO_CONTRACTS?.[topScenario.id]?.required) || []) {
