@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.16.0
+
+- The ask/apply logic of stage “full sweep” is now pure and exported, so it can be regression-tested without a UI: `auditAskList(scenario, max)` (what to ask, dedup against `auditPicks`), `includeAuditPicks(scenario, picked)` (skill → `skillIds`, plugin → `plugins`), `bareGapsFromAnswers(need, alreadyGaps, yesIds)` (answer 是 + nothing installed → gap).
+- `askUnselectedItems` / `clarifyBareCapabilities` now call those helpers; behaviour unchanged, questions deduped.
+- New `tests/two-problems.test.mjs`: 20 cases split evenly across the two reported issues — **installed but unused** (P1–P10: empty-demand coverage, humanizer reachable, sweep finds gated-out items, mutual exclusion, rarity filter, flattened matching, direction sensitivity, ask order, panel wording) and **bare words guessed** (P11–P20: video/audio/OCR asks, explicit phrasing not asked, no repeat asks, max 2, 是/否 outcomes, no gap before an answer, covered capability adds no gap, end-to-end confirm + hand-off to find-skill). Total 173.
+
 ## 2.15.0
 
 - **Full sweep.** After role-based selection, `capabilityScan(need)` compares the request against every non-infra plugin and skill (name, description, tags, role labels). Whatever matched but was not selected is listed in the proposal and asked about one by one — never added silently, never dropped silently.

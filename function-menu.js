@@ -1658,6 +1658,37 @@ function bareCapabilityAsks(need, known = new Set()) {
   return out.slice(0, 2);
 }
 
+// 裸词问答的归一：用户答“是”的才算需求，且本机真没能力时转成缺口。
+function bareGapsFromAnswers(needText, already = [], yesIds = []) {
+  const yes = new Set(yesIds);
+  return bareCapabilityAsks(needText, new Set(already.map((g) => g.id)))
+    .filter((a) => yes.has(a.id))
+    .map((a) => NEED_CAPABILITIES.find((c) => c.id === a.id))
+    .filter((spec) => spec && !capabilityCovered(spec))
+    .map((spec) => ({ id: spec.id, label: spec.label, hint: spec.hint, source: "need" }));
+}
+
+// 全量核对里还没问过的条目（已确认启用的不再问）。
+function auditAskList(scenario, max = 3) {
+  const unselected = scenario?.analysis?.audit?.unselected || [];
+  const picked = scenario?.auditPicks || [];
+  const key = (x) => (x.kind === "skill" ? `skill:${x.id}` : x.id);
+  return unselected.filter((x) => !picked.includes(key(x))).slice(0, max);
+}
+
+// 把“也启用”的回答落到场景上：技能进 skillIds，插件进 plugins。
+function includeAuditPicks(scenario, picked = []) {
+  for (const item of picked) {
+    if (item.kind === "skill") scenario.skillIds = uniq([...(scenario.skillIds || []), item.id]);
+    else scenario.plugins = uniq([...(scenario.plugins || []), item.id]);
+  }
+  if (picked.length) {
+    const keys = picked.map((x) => (x.kind === "skill" ? `skill:${x.id}` : x.id));
+    scenario.auditPicks = uniq([...(scenario.auditPicks || []), ...keys]);
+  }
+  return scenario;
+}
+
 // 装配后要问清的事：默认三问（交付物 / 验收 / 边界），流程类场景再加一问。
 function followupQuestions(scenario, workflow = null) {
   const ids = [scenario?.id || "", ...(scenario?.comboIds || [])].join("+");
@@ -2148,9 +2179,8 @@ export default function functionMenu(pi) {
 
   // 全量核对：相关但没进组合的条目，逐个问要不要也启用（不自己猜）。
   const askUnselectedItems = async (ctx, scenario) => {
-    const unselected = scenario?.analysis?.audit?.unselected || [];
     const picked = [];
-    for (const item of unselected.slice(0, 3)) {
+    for (const item of auditAskList(scenario, 3)) {
       const name = item.kind === "skill" ? `skill:${item.id}` : item.id;
       const yes = await ctx.ui.confirm(
         `也启用「${name}」吗？`,
@@ -2158,27 +2188,21 @@ export default function functionMenu(pi) {
       );
       if (yes) picked.push(item);
     }
-    for (const item of picked) {
-      if (item.kind === "skill") scenario.skillIds = uniq([...(scenario.skillIds || []), item.id]);
-      else scenario.plugins = uniq([...(scenario.plugins || []), item.id]);
-    }
-    if (picked.length) scenario.auditPicks = picked.map((x) => (x.kind === "skill" ? `skill:${x.id}` : x.id));
+    includeAuditPicks(scenario, picked);
     return picked;
   };
 
   // 裸词澄清：“视频/音频/扫描件”这种只提一个词的，问一句再定。
   const clarifyBareCapabilities = async (ctx, needText, already = []) => {
-    const added = [];
+    const yesIds = [];
     for (const ask of bareCapabilityAsks(needText, new Set(already.map((g) => g.id)))) {
       const yes = await ctx.ui.confirm(
         `需求里提到「${ask.label}」：要真的做吗？`,
         `${ask.question}\n\n是：当作需求（本机没能力就去找）\n否：不算需求，按现有能力做`,
       );
-      if (!yes) continue;
-      const spec = NEED_CAPABILITIES.find((c) => c.id === ask.id);
-      if (spec && !capabilityCovered(spec)) added.push({ id: spec.id, label: spec.label, hint: spec.hint, source: "need" });
+      if (yes) yesIds.push(ask.id);
     }
-    return added;
+    return bareGapsFromAnswers(needText, already, yesIds);
   };
 
   // 缺能力时先问用户：是 = 用 find-skill 去找，否 = 跳过（并告诉模型不要假装能做）。
@@ -2720,4 +2744,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { NEED_CAPABILITIES, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, bareCapabilityAsks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { NEED_CAPABILITIES, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
