@@ -138,3 +138,22 @@ test("B8 GIF 与 SVG 是同一套排版（共享 banner-geometry）", async () =
   assert.equal(geometry.WIDTH, 1854);
   assert.equal(geometry.HEIGHT, 520);
 });
+
+test("B9 Pi 标记与 SVG 用同一个变换：不重叠、不越界、留足边距", async () => {
+  const g = await import("../scripts/banner-geometry.mjs");
+  const [x0, y0, x1, y1] = g.PI_BOX;
+  // 标记必须在卡片内留出边距（曾经因为没套 translate/scale 而放大 2.2 倍、被底边切掉）
+  assert.ok(x0 >= 24 && y0 >= 24, `标记贴边：${x0},${y0}`);
+  assert.ok(x1 <= g.WIDTH - 24 && y1 <= g.HEIGHT - 24, `标记越界：${x1},${y1}`);
+  // 不能压到 wordmark 的墨迹起点
+  assert.ok(x1 < g.TEXT_X - 32, `标记压住了字：标记右 ${Math.round(x1)}，字起 ${g.TEXT_X}`);
+  // 尺寸要和原始 logo 的 469.43 网格一致（缩放过就不对）
+  assert.ok(Math.abs(x1 - x0 - 211) < 1, `标记宽 ${Math.round(x1 - x0)}，应为 211`);
+  // SVG 里写死的那行 transform 必须与几何一致，否则两边会各画各的
+  const { PI_MARK, PAD_X } = g;
+  const t = PI_MARK.transform;
+  assert.ok(
+    SVG.includes(`translate(${PAD_X},${t.dy}) scale(${t.scale})`),
+    "SVG 的 <g transform> 与 PI_MARK.transform 不一致",
+  );
+});

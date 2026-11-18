@@ -48,6 +48,29 @@ export const PI_MARK = {
   ],
 };
 
+/**
+ * Pi mark points in banner coordinates.
+ * The polygons above are the raw 256-grid logo; the published banner places them
+ * with `translate(96,80) scale(0.45)`. Apply that exactly once — the SVG emits it
+ * as a <g transform>, the GIF renderer calls this directly.
+ */
+export function piPoints(polygon = null) {
+  const { dx, dy, scale } = PI_MARK.transform;
+  const place = ([x, y]) => [x * scale + dx, y * scale + dy];
+  return polygon ? polygon.points.map(place) : PI_MARK.polygons.map((p) => p.points.map(place));
+}
+
+/** Bounding box of the placed Pi mark: [x0, y0, x1, y1]. */
+export const PI_BOX = (() => {
+  const pts = piPoints().flat();
+  return [
+    Math.min(...pts.map((p) => p[0])),
+    Math.min(...pts.map((p) => p[1])),
+    Math.max(...pts.map((p) => p[0])),
+    Math.max(...pts.map((p) => p[1])),
+  ];
+})();
+
 /** Ink box of one glyph: min/max column and row that actually contain ink. */
 export function inkBox(glyph) {
   let minCol = 5, maxCol = -1, minRow = 7, maxRow = -1;

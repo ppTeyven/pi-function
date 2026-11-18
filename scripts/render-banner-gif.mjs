@@ -20,7 +20,8 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
-  CELL, TEXT_X, TEXT_Y, WIDTH, HEIGHT, RADIUS, BG, BORDER, INK, PI_FILLS, PI_MARK, layout, TIMING,
+  CELL, TEXT_X, TEXT_Y, WIDTH, HEIGHT, RADIUS, BG, BORDER, INK, PI_FILLS, PI_MARK, PI_BOX, piPoints,
+  layout, TIMING,
 } from "./banner-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -82,14 +83,14 @@ function inPoly(poly, x, y) {
   return inside;
 }
 
-// PI_MARK.polygons are already in final SVG px (banner-geometry applies the
-// translate/scale when it builds them), so only the supersample factor is applied here.
-const PI = PI_MARK.polygons.map(({ fill, points }) => {
-  const pts = points.map(([x, y]) => [x, y]);
+// Same placement the SVG gets from its <g transform="translate(96,80) scale(.45)">.
+const PI = PI_MARK.polygons.map((polygon) => {
+  const fill = hex(polygon.fill);
+  const pts = piPoints(polygon);
   const xs = pts.map((p) => p[0]);
   const ys = pts.map((p) => p[1]);
   return {
-    fill: hex(fill),
+    fill,
     pts,
     box: [Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys)), Math.ceil(Math.max(...xs)), Math.ceil(Math.max(...ys))],
   };

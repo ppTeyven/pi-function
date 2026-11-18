@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.23.1
+
+- **Fixed the Pi mark in the GIF: it was drawn at raw logo coordinates.** `PI_MARK.polygons` are the untouched 256-grid logo points; the SVG places them with `<g transform="translate(96,80) scale(0.45)">`, and the GIF renderer was rasterising them without that transform — so the mark rendered 2.2× too large, ran past the card's bottom edge (clipped), and crowded the wordmark. Now both renderers apply the transform exactly once.
+- `scripts/banner-geometry.mjs` exposes `piPoints()` and `PI_BOX` so the placed mark is a shared, testable fact instead of a comment in two files; `tests/banner.test.mjs` **B9** asserts the mark stays inside the card with ≥24px margins, never reaches the wordmark's ink (`x1 < TEXT_X - 32`), keeps its 211px width, and that the SVG's `<g transform>` string still equals `PI_MARK.transform`.
+- Total 239.
+
 ## 2.23.0
 
 - **The README banner now actually animates on GitHub.** GitHub's sanitiser strips `<style>`, so the CSS animation in `banner.svg` only ever ran in a browser or editor — on the README the wordmark appeared static. The banner is now a GIF (`assets/banner.gif`, 927×260, 85 frames, ~290 KB) and the SVG stays as the crisp static/edit-time version.
