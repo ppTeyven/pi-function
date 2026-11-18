@@ -20,6 +20,8 @@ import {
   reconcile,
   applyScenario,
   discoverItems,
+  analyzeNeed,
+  dynamicScenario,
 } from "./function-menu.js";
 
 const ids = SCENARIOS.map((s) => s.id);
@@ -211,14 +213,54 @@ const flowCtx = {
 }
 {
   prompts.length = 0;
-  selections.push("phased", "bugfix");
+  selections.push("phased");
   await commands.function.handler('"修 bug"', flowCtx);
   assert.match(prompts[0], /工作流/);
-  assert.match(prompts[1], /任务/);
+  assert.equal(prompts.length, 1, "free-text need must not open a fixed task picker");
   assert.equal(entries.at(-1).data.workflow, "phased");
-  assert.equal(entries.at(-1).data.id, "bugfix");
+  assert.equal(entries.at(-1).data.id, "custom");
+  assert.ok(entries.at(-1).data.custom.packages.includes("pi-lens"));
+}
+
+{
+  prompts.length = 0;
+  selections.push("direct");
+  await commands.function.handler('"帮我把客厅灯光调暖一点"', flowCtx);
+  assert.equal(prompts.length, 1);
+  assert.equal(entries.at(-1).data.id, "custom");
+  assert.equal(entries.at(-1).data.workflow, "direct");
+}
+
+{
+  prompts.length = 0;
+  selections.push("direct");
+  await commands.function.handler('"scan the repo for bugs"', flowCtx);
+  assert.equal(prompts.length, 1);
+  assert.equal(entries.at(-1).data.id, "custom");
+}
+
+{
+  const multi = analyzeNeed("修 bug，补测试，最后写文档", { known: {} });
+  const intentIds = multi.intents.map((r) => r.scenario.id);
+  assert.ok(intentIds.includes("bugfix"), intentIds.join(","));
+  assert.ok(intentIds.includes("tests"), intentIds.join(","));
+  assert.ok(intentIds.includes("docs"), intentIds.join(","));
+  assert.ok(multi.packages.some((x) => x.pkg === "pi-lens"));
+  const visual = analyzeNeed("把首页做得好看一点并适配手机", { known: {} });
+  assert.ok(visual.intents.some((r) => r.scenario.id === "frontend"));
+  assert.ok(visual.packages.some((x) => x.pkg === "@onkernel/browser-loop"));
+  const none = analyzeNeed("帮我把客厅灯光调暖一点", { known: {} });
+  assert.equal(none.intents.length, 0);
+  const dynamic = dynamicScenario("帮我把客厅灯光调暖一点", none, null);
+  assert.equal(dynamic.id, "custom");
+  assert.match(dynamic.brief, /没有命中固定场景/);
+  const planFirst = WORKFLOWS.find((w) => w.id === "plan-first");
+  const dynProposal = buildProposal(fakeFlowPi, dynamicScenario("修 bug 并补测试，最后写文档", analyzeNeed("修 bug 并补测试，最后写文档", { known: {} }), planFirst), { known: {} }, planFirst);
+  assert.match(dynProposal, /需求分析/);
+  assert.match(dynProposal, /动态任务/);
+  assert.match(dynProposal, /按需技能|没有匹配到额外技能/);
 }
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 25 scenarios, workflows, core tools, skill mapping, migration, privacy, catalog summary");
+console.log("ok: 25 scenarios, dynamic needs, workflows, core tools, skill mapping, migration, privacy, catalog summary");

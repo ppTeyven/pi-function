@@ -1,7 +1,7 @@
 {
   "name": "pi-function",
-  "version": "1.5.0",
-  "description": "Pi-function — always-on workflow + task assembler for the Pi coding agent. Pick an execution workflow, then a task, approve, then enable their tools.",
+  "version": "1.6.0",
+  "description": "Pi-function — always-on workflow + task assembler for the Pi coding agent. Bare /function picks a workflow and task; a need is analyzed dynamically across multiple task signals before composing plugins and skills.",
   "type": "module",
   "license": "MIT",
   "author": "ppTeyven",

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0
+
+- `/function "<need>"` no longer force-fits one task scenario. It performs multi-label analysis over all task signals, then composes plugins and skills from capability descriptions, including needs that match no fixed scenario.
+- Free-text mode now asks only for a workflow; the fixed task picker is reserved for bare `/function`. Task ids passed as arguments are treated as needs, not shortcuts.
+- Dynamic scenarios show per-item reasons and confidence in the proposal; selected skills are listed with their descriptions.
+- A dynamic combination is recorded as `id: "custom"` with the need, selected packages/skills, and detected task signals, and is restored with the session.
+- Privacy detection suppresses network packages in dynamic mode; MCP is only added when the need explicitly mentions MCP/integration.
+- `suggest_scenario` now returns a dynamic composition even when no fixed task matches.
+- Tests cover multi-intent analysis, no-match fallback, single workflow picker for free text, custom-entry persistence, and dynamic proposals.
+
 ## 1.5.0
 
 - Added a workflow-first, task-second flow. `/function` now asks for an execution workflow (`direct`, `plan-first`, `test-first`, `fanout`, `review-gate`, `phased`) before the task scenario.

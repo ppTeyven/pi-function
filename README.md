@@ -25,7 +25,7 @@
 
 ---
 
-Pi-function turns a pile of installed Pi extensions into **6 execution workflows × 25 task scenarios**. Instead of remembering which plugin to enable for which job, you first choose how to work (direct, plan-first, test-first, fan-out, review-gate, or phased), then what to work on. Nothing is enabled until you press **yes**.
+Pi-function turns a pile of installed Pi extensions into **6 execution workflows × 25 task scenarios**. Bare `/function` asks how to work (direct, plan-first, test-first, fan-out, review-gate, or phased), then what to work on. When you pass a need, it skips the fixed task picker and analyzes the need across multiple task signals before composing plugins and skills. Nothing is enabled until you press **yes**.
 
 It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
 
@@ -58,8 +58,9 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 | Command | What happens |
 |---|---|
 | `/function` | Prints the catalog, then asks **workflow first**, **task second**, and assembles the combination after approval |
-| `/function <need>` | Ranks task scenarios, asks for a workflow, then lets you pick the task (ranked matches first), shows the combined proposal, and assembles after approval; never executes the need |
-| `/function <scenario-id>` | Preselects the task but still asks for a workflow first, then assembles the combination |
+| `/function <need>` | Dynamically analyzes the need across multiple task signals, asks for a workflow, composes plugins/skills from capability descriptions, shows the proposal, and assembles after approval; never opens a fixed task picker and never executes the need |
+
+Free-text mode is always dynamic. A task id passed as an argument is treated as a need, not a shortcut; use bare `/function` for the fixed catalog.
 | `/function scan` | Re-scans installed packages, local extensions, and skills |
 | `/function status` | Shows the active workflow × task and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none\|infra>` | Overrides classification for one plugin or skill |
@@ -69,10 +70,10 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 
 Picker rows show both plugin and skill counts, followed by representative skill names; GSD skills are grouped as `GSD N`. The catalog header shows the total skill count, and each scenario lists its own skill count. Example row: `data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`.
 
-Typical exchange:
+Typical fixed-menu exchange:
 
 ```text
-/function 把整个项目重构一下
+/function
 
 第 1 步：先选工作流（怎么执行）
   plan-first · 计划先行 — ★ 推荐 · 2 个插件
@@ -102,6 +103,25 @@ Typical exchange:
 **装配含义**：启用上述工具、停用其他插件的可选工具、把本场景流程注入系统提示。
 
 [ Yes ]  [ No ]
+```
+
+For a free-text need, step 2 disappears. Pi-function prints the detected task signals and the dynamic composition, for example:
+
+```text
+## 装配：阶段推进 × 动态任务
+**需求**：修 bug，补测试，最后把结论写进文档
+**需求分析**
+- 任务信号：修 bug（命中：bug）
+- 任务信号：补测试（命中：测试）
+- 任务信号：写文档（命中：文档）
+- 置信度：medium（组合仍可确认/取消）
+
+**将启用的插件与功能**
+- `pi-lens` — ...（任务信号：修 bug（bug））
+- `pi-subagents` — ...（工作流）
+
+**按需技能 2 个**
+- `skill:investigate-first` — ...
 ```
 
 Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly never runs the need: after `Yes`, the requirement is placed back in the editor — press Enter to start, or clear it. `/function` also prints the full proposal as a visible message before the confirmation dialog, so the plugin list stays in the transcript.
@@ -222,12 +242,14 @@ Infrastructure packages that should not take part in assembly (context compresso
 
 Classification is versioned. Upgrading reclassifies auto-assigned entries but preserves manual `/function assign` overrides. GSD's 72 phase skills collapse into the `gsd` scenario and appear as a count instead of flooding the catalog.
 
+Free-text needs are not classified into a single scenario. `analyzeNeed` extracts multiple task signals, scores installed packages and skill descriptions against those terms, and builds a synthetic `custom` scenario. That is why `/function "修 bug，补测试，写文档"` can combine bugfix, tests, and docs packages in one assembly, while an unrecognized need still gets a capability-based composition instead of an error.
+
 ## Files
 
 | Path | Purpose |
 |---|---|
 | `function-menu.js` | The whole extension: catalog, matcher, classifier, assembler, watcher |
-| `test.mjs` | Zero-dependency regression tests: workflows, 25 scenarios, core tools, skill mapping, migration, catalog summary |
+| `test.mjs` | Zero-dependency regression tests: workflows, 25 scenarios, core tools, skill mapping, migration, dynamic need analysis, catalog summary |
 | `~/.pi/agent/function-menu.json` | Runtime store: discovered items, assignments, overrides |
 | `assets/banner.svg` | Generated banner (official Pi mark + white pixel wordmark) |
 | `assets/pi-logo.svg` | Official Pi logo, unchanged from [pi.dev/logo-auto.svg](https://pi.dev/logo-auto.svg) |
