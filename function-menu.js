@@ -9,6 +9,10 @@
  *   /function status            查看当前装配
  *   /function off               还原装配前的工具集
  *
+ * 模型侧入口：suggest_scenario 工具（只读）—— 按同一套关键词表打分，
+ * 返回最匹配场景 + 各插件可用性（absent / inactive / warn / ok），不改变任何状态。
+ * 想真正装配仍需用户执行 /function <场景id>。
+ *
  * 装配 = 启用该场景相关工具 + 注入场景流程提示 + 停用无关插件工具。
  * 插件代码本身常驻进程（Pi 不支持运行时装卸扩展），所以“装配”是工具/提示层面的。
  */
@@ -16,10 +20,13 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "1.2.1";
+const VERSION = "1.4.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
+const CLASSIFIER_VERSION = 3;
 const ALWAYS_PACKAGES = ["pi-mcp-adapter"];
+// 核心工具永远保留；pi-pretty 的 disableTools 可能把它们从默认激活集里移除
+const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 // 常驻/默认关闭的基础设施：不参与场景装配，也不进“未分类”
 const INFRA_PACKAGES = [
   "billion-context", "cc-safety-net", "pi-pretty", "context-mode",
@@ -40,13 +47,60 @@ const KNOWN_SCENARIO = {
   "@juicesharp/rpiv-todo": "feature",
   "pi-simplify": "review",
   "pi-memory": "knowledge",
-  "@opengsd/gsd-core": "feature",
+  "@opengsd/gsd-core": "gsd",
   "pi-advisor-flow": "advisor",
   "@quintinshaw/pi-dynamic-workflows": "parallel",
   "@getpipher/vision": "webui",
   "pi-btw": "sideask",
   "context-mode": "infra",
   "pi-mcp": "mcp",
+};
+
+// skill 的固定归属（classifyItem 已剥掉 "skill:" 前缀，所以这里写裸名）
+const KNOWN_SKILL_SCENARIO = {
+  "agent-handbook": "review",
+  "agent-workflow": "unattended",
+  "architect": "plan",
+  "browser-use": "webui",
+  "caveman-explore": "understand",
+  "de-slop": "frontend",
+  "find-skills": "knowledge",
+  "frontend-design": "frontend",
+  "handoff": "docs",
+  "improve-codebase-architecture": "understand",
+  "investigate-first": "bugfix",
+  "lean-build": "feature",
+  "prove-it": "tests",
+  "qa": "webui",
+  "safe-refactor": "refactor",
+  "surgical-patch": "bugfix",
+  "verify-and-stop": "review",
+  "branch-name": "release",
+  "caveman-commit": "release",
+  "btw": "sideask",
+  "council-mode": "parallel",
+  "ctx-doctor": "data",
+  "ctx-stats": "data",
+  "ctx-upgrade": "data",
+  "fallow": "review",
+  "fallow-setup": "review",
+  "glimpse": "infra",
+  "mermaid-diagrams": "docs",
+  "ponytail": "feature",
+  "ponytail-audit": "audit",
+  "ponytail-debt": "audit",
+  "ponytail-gain": "data",
+  "ponytail-help": "knowledge",
+  "ponytail-review": "review",
+  "workflow-authoring": "parallel",
+  "workflow-patterns": "parallel",
+  "pi-advisor-flow": "advisor",
+  "pi-lens-ast-grep": "review",
+  "pi-lens-lsp-navigation": "understand",
+  "pi-lens-write-ast-grep-rule": "review",
+  "pi-lens-write-tree-sitter-rule": "review",
+  "pi-subagents": "parallel",
+  "write-connector": "docs",
 };
 
 // ---------------------------------------------------------------------------
@@ -57,9 +111,17 @@ const SCENARIOS = [
     id: "understand", group: "理解", title: "看懂代码 / 接手仓库",
     when: "陌生仓库、想弄清结构、找某段逻辑在哪、读遗留代码",
     keywords: ["看懂", "理解", "接手", "陌生", "架构", "结构", "在哪", "怎么工作", "读代码", "梳理", "考古", "历史", "onboarding", "understand", "walkthrough", "legacy", "explain", "overview"],
-    plugins: ["openwiki", "pi-btw", "pi-memory", "pi-web-access"],
-    brief: "先建立地图再下钻：用 openwiki 生成/查询仓库 wiki，用 grep/find 定位，用 pi-btw 做只读旁问；结论写入 pi-memory。不要一上来就改文件。",
+    plugins: ["openwiki", "pi-lens", "pi-btw", "pi-memory", "pi-web-access"],
+    brief: "先建立地图再下钻：用 project_report / symbol_search / module_report 定位符号与模块，用 openwiki 查仓库 wiki，用 grep/find 搜索；只读旁问交给 pi-btw；结论写入 pi-memory。不要一上来就改文件。",
     manual: ["首次用 openwiki_begin 扫全库（较慢）", "只想问不想改：/btw:ask \"…\""],
+  },
+  {
+    id: "docs", group: "理解", title: "文档 / Wiki / 交接",
+    when: "写 README、架构说明、ADR、mermaid 图，或把任务交接给下一个人",
+    keywords: ["文档", "说明", "readme", "wiki", "handoff", "交接", "注释", "docstring", "changelog", "手册", "mermaid", "adr"],
+    plugins: ["openwiki", "pi-memory"],
+    brief: "先确认读者与用途再写：架构/流程写进 openwiki，长期决策写进 memory；交接用 /skill:handoff 生成自包含文档；图用 mermaid，命令/路径必须来自实际仓库。",
+    manual: ["/skill:handoff 生成交接文档", "/skill:mermaid-diagrams 画流程图", "GSD 用户可加 /skill:gsd-docs-update"],
   },
   {
     id: "small", group: "修改", title: "日常小改 / 改一个函数",
@@ -73,23 +135,39 @@ const SCENARIOS = [
     id: "bugfix", group: "修改", title: "修 bug / 复现报错",
     when: "有报错栈、线上问题、行为不符预期",
     keywords: ["bug", "报错", "异常", "崩溃", "复现", "修复", "不工作", "failed", "error", "stack", "traceback", "regression", "线上"],
-    plugins: ["context-mode", "pi-web-access", "cc-safety-net"],
-    brief: "先复现再改：用 ctx_execute 跑最小复现并过滤日志，用 web_search 查报错原文；定位到根因后只改必要处，最后跑同一复现验证。",
-    manual: ["大日志交给 ctx_execute，别整段贴进对话"],
+    plugins: ["context-mode", "pi-web-access", "pi-lens"],
+    brief: "先复现再改：用 ctx_execute 跑最小复现并过滤日志，用 web_search 查报错原文；用 lens_diagnostics / LSP 定位类型与符号问题；定位到根因后只改必要处，最后跑同一复现验证。",
+    manual: ["大日志交给 ctx_execute，别整段贴进对话", "pi-lens 的 hooks 默认关闭；工具仍可手动调用，/lens-toggle 可开自动检查"],
   },
   {
     id: "feature", group: "修改", title: "写新功能（完整流程）",
     when: "从零加一个功能、需要阶段推进和任务跟踪",
     keywords: ["新功能", "实现", "开发", "加一个功能", "feature", "implement", "从零", "需求", "阶段"],
-    plugins: ["@opengsd/gsd-core", "rpiv-todo", "pi-lens"],
-    brief: "先拆分再实现：用 rpiv-todo 建任务清单（或 /gsd 推进阶段），逐项实现；每完成一项跑测试；用 /lens-toggle 打开静态检查即时暴露问题。",
-    manual: ["/lens-toggle 打开静态检查", "/gsd 查看阶段命令"],
+    plugins: ["@juicesharp/rpiv-todo", "pi-lens"],
+    brief: "先拆分再实现：用 todo 建任务清单，逐项实现；每完成一项跑测试；用 lens_diagnostics 或 /lens-toggle 检查静态问题。需要完整规格/阶段流程时改用 /function gsd。",
+    manual: ["/todos 查看任务清单", "/lens-toggle 打开自动静态检查"],
+  },
+  {
+    id: "gsd", group: "修改", title: "GSD 规格驱动 / 阶段推进",
+    when: "多阶段功能、需要 PRD/计划/验收、上下文容易腐烂的长任务",
+    keywords: ["gsd", "规格", "spec", "prd", "里程碑", "milestone", "路线图", "roadmap", "阶段推进", "需求文档", "验收标准", "上下文腐烂", "context rot"],
+    plugins: ["@opengsd/gsd-core", "@juicesharp/rpiv-todo", "@plannotator/pi-extension"],
+    brief: "按 GSD 五步走：discuss → plan → execute → verify → ship，每阶段用 fresh context，不把旧对话拖进下一阶段；用 /gsd next 或 /gsd progress 推进。Windows 下 gsd_dispatch 不可用，改用 /gsd 命令；计划先给用户确认。",
+    manual: ["/gsd next 进入下一步", "/gsd progress 查看阶段", "/gsd verify-work 做验收", "GSD 的 72 个阶段技能已自动归入本场景"],
+  },
+  {
+    id: "frontend", group: "修改", title: "前端页面 / 视觉实现",
+    when: "落地页面、改样式、建设计系统、截图对比与视觉验收",
+    keywords: ["前端", "样式", "css", "tailwind", "react", "vue", "svelte", "组件", "视觉", "设计系统", "landing page", "响应式", "动效", "ui 实现"],
+    plugins: ["@onkernel/browser-loop", "@getpipher/vision", "pi-web-access"],
+    brief: "先定视觉方向与设计系统，再写组件；用 /skill:frontend-design 约束版式与文案，用 /skill:de-slop 去模板味；截图对照必须人眼看关键帧。browser-loop 需先 /browser-tools 选能力并配置 KERNEL_API_KEY；vision 需确认模型真的支持图像。",
+    manual: ["/skill:frontend-design 设计方向", "/skill:de-slop 去 AI 味", "/browser-tools 选浏览器能力", "/vision-use 配置/切换视觉模型"],
   },
   {
     id: "refactor", group: "修改", title: "大重构 / 迁移",
     when: "跨文件重构、换框架、批量机械替换",
     keywords: ["重构", "迁移", "重写", "批量", "替换", "refactor", "migrate", "rewrite", "rename", "升级框架"],
-    plugins: ["@quintinshaw/pi-dynamic-workflows", "@plannotator/pi-extension", "rpiv-todo", "pi-simplify"],
+    plugins: ["@quintinshaw/pi-dynamic-workflows", "@plannotator/pi-extension", "@juicesharp/rpiv-todo", "pi-simplify", "pi-lens"],
     brief: "先审计划再动手：用 plannotator 出计划并等批准，用 workflow 批量执行，用 todo 跟踪批次；每批改完立刻跑测试；最后 /simplify 收尾。不要用 subagent 并发改同一批文件。",
     manual: ["/plannotator-plan-mode 审计划", "/workflows run … 批量执行", "/simplify 收尾"],
   },
@@ -105,15 +183,15 @@ const SCENARIOS = [
     id: "review", group: "验证", title: "代码评审 / 写 PR 描述",
     when: "提交前自查、回应 review、生成 PR 说明",
     keywords: ["评审", "review", "pr", "自查", "diff", "代码审查", "描述", "提交前"],
-    plugins: ["pi-simplify", "@quintinshaw/pi-dynamic-workflows"],
-    brief: "先看 diff 统计再逐处审：用 ctx_execute 跑 git diff --stat，只把关键 hunk 放进上下文；用 /simplify 或 /code-review 做第二遍；PR 描述写“为什么改 + 怎么验”。",
-    manual: ["/simplify --staged", "/code-review"],
+    plugins: ["pi-lens", "pi-simplify", "pi-subagents", "@quintinshaw/pi-dynamic-workflows"],
+    brief: "先看 diff 统计再逐处审：用 ctx_execute 跑 git diff --stat，只把关键 hunk 放进上下文；用 /simplify、/code-review 或 reviewer 子代理做第二遍；lens_diagnostics 查类型/静态问题；PR 描述写“为什么改 + 怎么验”。",
+    manual: ["/simplify --staged", "/code-review", "/subagents 可叫 reviewer / oracle"],
   },
   {
     id: "plan", group: "验证", title: "计划评审",
     when: "动手前要人批准方案、拆阶段",
     keywords: ["计划", "方案", "评审", "拆解", "plan", "design", "批准", "步骤"],
-    plugins: ["@plannotator/pi-extension", "rpiv-todo"],
+    plugins: ["@plannotator/pi-extension", "@juicesharp/rpiv-todo"],
     brief: "只出计划不写代码：用 plannotator 展示方案等批准，批准后用 todo 拆成可执行项；计划里写清验收标准。",
     manual: ["/plannotator-plan-mode"],
   },
@@ -121,8 +199,9 @@ const SCENARIOS = [
     id: "research", group: "验证", title: "查资料 / 写调研",
     when: "查文档、比对方案、写技术调研",
     keywords: ["查资料", "调研", "文档", "搜索", "资料", "research", "search", "survey", "对比方案", "官网"],
-    plugins: ["pi-web-access", "pi-memory", "openwiki"],
-    brief: "先搜后读再记：web_search 找入口，fetch_content 读原文，结论与出处写入 memory；不确定的版本信息必须查官网，不靠记忆。",
+    plugins: ["pi-web-access", "pi-memory", "openwiki", "pi-subagents", "@quintinshaw/pi-dynamic-workflows"],
+    brief: "先搜后读再记：web_search 找入口，fetch_content 读原文；独立子问题交给 researcher/evidence-auditor 子代理，或跑 /deep-research 工作流；结论与出处写入 memory。不确定的版本信息必须查官网，不靠记忆。",
+    manual: ["/deep-research 多源调研", "/subagents 叫 researcher 做独立取证"],
     manual: [],
   },
   {
@@ -142,11 +221,12 @@ const SCENARIOS = [
     manual: [],
   },
   {
-    id: "parallel", group: "协作", title: "多任务并行",
-    when: "互相独立的模块同时推进",
-    keywords: ["并行", "同时", "多任务", "分开做", "parallel", "subagent", "子代理", "并发"],
-    plugins: ["pi-subagents", "rpiv-todo"],
-    brief: "只并行真正独立的部分：一个子代理一个目录/模块，禁止同时改同一文件；用 todo 记录每个分支；汇总时统一跑测试。",
+    id: "parallel", group: "协作", title: "并行 / 子代理委派",
+    when: "互相独立的模块同时推进，或要把调查/实现/审查分给不同代理",
+    keywords: ["并行", "同时", "多任务", "分开做", "parallel", "subagent", "子代理", "并发", "委派", "delegate", "委员会", "council"],
+    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "@juicesharp/rpiv-todo"],
+    brief: "只并行真正独立的部分：clarify → scout → worker → fresh reviewers，一个子代理一个目录/模块，禁止同时改同一文件；用 todo 记录分支；需要多视角时用 /council，汇总时统一跑测试。",
+    manual: ["/council 多顾问辩论", "/workflows run 批量编排"],
     manual: [],
   },
   {
@@ -169,16 +249,16 @@ const SCENARIOS = [
     id: "audit", group: "验证", title: "安全审计 / 依赖检查",
     when: "查漏洞、许可证、危险调用、依赖风险",
     keywords: ["安全", "审计", "漏洞", "许可证", "合规", "security", "audit", "cve", "license", "依赖风险"],
-    plugins: ["@quintinshaw/pi-dynamic-workflows", "cc-safety-net", "pi-web-access"],
-    brief: "限定范围再扫：明确目录/依赖清单；用 /codebase-audit 或 workflow 并行检查；CVE 与许可证必须查官方源；报告写清位置与修复建议。",
-    manual: ["/codebase-audit 指定目录", "cc-safety-net 保持常驻，审计脚本也受保护"],
+    plugins: ["@quintinshaw/pi-dynamic-workflows", "pi-lens", "pi-subagents", "pi-web-access"],
+    brief: "限定范围再扫：明确目录/依赖清单；用 /codebase-audit 或 workflow 并行检查；evidence-auditor 子代理独立复核；CVE 与许可证必须查官方源；报告写清位置与修复建议。",
+    manual: ["/codebase-audit 指定目录", "cc-safety-net 常驻，审计脚本也受保护"],
   },
   {
     id: "release", group: "协作", title: "发布 / CI 排查",
     when: "合并前检查、CI 失败、打 tag、写 release notes",
     keywords: ["发布", "上线", "ci", "流水线", "release", "tag", "合并", "部署", "build 失败"],
-    plugins: ["pi-simplify", "rpiv-todo", "cc-safety-net"],
-    brief: "按清单走：先看 CI 日志定位第一处失败（不是最后一处），修完本地复跑；合并前 /simplify 自查；release notes 按“破坏性变更/新功能/修复”分组。",
+    plugins: ["pi-simplify", "@juicesharp/rpiv-todo", "pi-subagents"],
+    brief: "按清单走：先看 CI 日志定位第一处失败（不是最后一处），修完本地复跑；合并前 /simplify 自查，必要时叫 reviewer 子代理；release notes 按“破坏性变更/新功能/修复”分组。",
     manual: ["/simplify --staged"],
   },
   {
@@ -193,9 +273,10 @@ const SCENARIOS = [
     id: "privacy", group: "环境", title: "隐私 / 离线 / 省钱",
     when: "敏感仓库、不能外发、token 预算紧",
     keywords: ["隐私", "离线", "敏感", "保密", "省钱", "省 token", "offline", "privacy", "不能外发", "内网"],
+    noAlways: true,
     plugins: [],
-    brief: "默认全关：不联网、不上报、不用云浏览器；只保留本地工具与安全网。需要联网时必须先说明并征得同意。",
-    manual: ["确认 langsmith/vision/browser-loop 均未启用"],
+    brief: "默认全关：不联网、不上报、不用云浏览器，连 MCP 也停用；只保留本地核心工具与安全网。需要联网时必须先说明并征得同意。",
+    manual: ["确认 langsmith / vision / browser-loop / MCP 均未启用"],
   },
   {
     id: "mcp", group: "环境", title: "MCP / 外部系统集成",
@@ -233,20 +314,23 @@ const SCENARIOS = [
 
 // 自动归类的强信号：包名/工具名/描述里出现这些词就投到对应场景
 const SCENARIO_HINTS = {
-  understand: ["wiki", "openwiki", "codebase", "explain", "navigate"],
-  bugfix: ["error", "traceback", "debug", "diagnostic", "stack"],
-  feature: ["todo", "gsd", "stage", "scaffold"],
+  understand: ["wiki", "openwiki", "codebase", "explain", "navigate", "symbol", "lsp", "module"],
+  docs: ["documentation", "wiki", "readme", "handoff", "mermaid", "guide", "adr"],
+  bugfix: ["error", "traceback", "debug", "diagnostic", "stack", "regression"],
+  feature: ["todo", "scaffold", "stage", "implement"],
+  gsd: ["gsd", "milestone", "roadmap", "spec", "phase", "acceptance", "context rot"],
+  frontend: ["frontend", "react", "vue", "svelte", "css", "tailwind", "component", "design system", "responsive"],
   refactor: ["workflow", "plannotator", "refactor", "migrate", "batch", "multi-agent", "simplify"],
   tests: ["test", "jest", "vitest", "pytest", "flaky", "coverage"],
-  review: ["review", "simplify", "diff", "lint"],
+  review: ["review", "simplify", "diff", "lint", "reviewer", "oracle"],
   plan: ["plan", "plannotator", "approve", "design"],
-  research: ["web", "search", "fetch", "http", "scrape", "crawl"],
+  research: ["web", "search", "fetch", "http", "scrape", "crawl", "deep-research", "researcher"],
   webui: ["browser", "playwright", "screenshot", "dom", "computer", "vision", "image"],
   data: ["benchmark", "profile", "metrics", "execute", "sql", "analytics"],
-  parallel: ["subagent", "parallel", "fan-out", "delegate"],
+  parallel: ["subagent", "parallel", "fan-out", "delegate", "council"],
   sideask: ["btw", "side", "chat"],
   advisor: ["advisor", "second opinion", "critique"],
-  audit: ["audit", "security", "cve", "license", "safety", "secret"],
+  audit: ["audit", "security", "cve", "license", "safety", "secret", "evidence"],
   release: ["release", "ci", "deploy", "build", "tag", "publish", "notify"],
   knowledge: ["memory", "wiki", "note", "knowledge", "adr"],
   privacy: ["privacy", "telemetry", "offline", "redact"],
@@ -263,16 +347,16 @@ const PLUGIN_INFO = {
   "pi-btw": { what: "旁路只读问答，不污染主线", manual: "/btw:ask \"…\"" },
   "pi-memory": { what: "长期记忆 + 草稿 + 检索", manual: "" },
   openwiki: { what: "仓库 wiki：生成/查询/跨库关联", manual: "" },
-  "pi-lens": { what: "LSP/静态检查/格式化（当前全局关闭）", manual: "/lens-toggle 临时开" },
-  "cc-safety-net": { what: "危险命令拦截（bash/powershell）", manual: "" },
-  "rpiv-todo": { what: "任务清单与进度跟踪", manual: "/todos" },
+  "pi-lens": { what: "LSP/静态检查/格式化（默认关闭 hooks，工具仍可调用）", manual: "/lens-toggle 临时开" },
+  "cc-safety-net": { what: "危险命令拦截（常驻基础设施，不参与装配）", manual: "" },
   "@plannotator/pi-extension": { what: "浏览器里审计划/代码", manual: "/plannotator-plan-mode" },
+  "@juicesharp/rpiv-todo": { what: "任务清单与进度跟踪", manual: "/todos" },
   "@juicesharp/rpiv-i18n": { what: "TUI 界面语言切换", manual: "/languages" },
   "@juicesharp/rpiv-ask-user-question": { what: "一次问清多个选项", manual: "" },
   "context-mode": { what: "大输出转指针，省上下文", manual: "" },
   "pi-simplify": { what: "改动收尾自查（/simplify）", manual: "/simplify" },
   "@quintinshaw/pi-dynamic-workflows": { what: "多代理编排与批量审计", manual: "/workflows run …" },
-  "@opengsd/gsd-core": { what: "阶段化开发流程（/gsd）", manual: "gsd_dispatch 在 Windows 不可用" },
+  "@opengsd/gsd-core": { what: "GSD 五步流程 / 72 个阶段技能", manual: "/gsd next；Windows 下 gsd_dispatch 不可用" },
   "pi-advisor-flow": { what: "顾问模型第二意见", manual: "/advisor-models 先配置" },
   "@getpipher/vision": { what: "图片描述（需视觉模型）", manual: "无视觉模型时不可用" },
   "@onkernel/browser-loop": { what: "云浏览器/computer-use", manual: "/browser-tools 选能力" },
@@ -307,6 +391,7 @@ function loadStore() {
   if (!raw || typeof raw !== "object") return { version: 1, updatedAt: nowIso(), known: {}, overrides: {}, isNew: true };
   return {
     version: 1,
+    classifierVersion: raw.classifierVersion || 0,
     updatedAt: raw.updatedAt || nowIso(),
     known: raw.known && typeof raw.known === "object" ? raw.known : {},
     overrides: raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {},
@@ -370,6 +455,11 @@ function classifyItem(item, scenarios = SCENARIOS) {
     const known = KNOWN_SCENARIO[key];
     if (known) return { scenarioId: known, score: 99, reason: "已知插件" };
   }
+  if (item?.kind === "skill") {
+    const bare = String(item.id || "").replace(/^(npm|skill|local):/, "").replace(/^skill:/, "");
+    const skillScenario = KNOWN_SKILL_SCENARIO[bare] || (/^gsd-/.test(bare) ? "gsd" : null);
+    if (skillScenario) return { scenarioId: skillScenario, score: 99, reason: skillScenario === "gsd" ? "GSD 阶段技能" : "已知技能" };
+  }
   const t = norm(item.text || "");
   if (!t.trim()) return { scenarioId: null, score: 0, reason: "无描述" };
   let best = null;
@@ -401,6 +491,11 @@ function classifyItem(item, scenarios = SCENARIOS) {
 // ---------------------------------------------------------------------------
 // 发现已安装的插件与技能
 // ---------------------------------------------------------------------------
+function isInfraId(id) {
+  const base = String(id || "").replace(/^(npm|local|skill):/, "").split("/").pop();
+  return INFRA_PACKAGES.some((p) => p.split("/").pop() === base);
+}
+
 function listInstalledPackages() {
   const names = new Set();
   const settings = readJson(path.join(agentDir(), "settings.json"), {});
@@ -414,6 +509,63 @@ function listInstalledPackages() {
     for (const n of Object.keys(data?.dependencies || {})) names.add(n);
   }
   return [...names];
+}
+
+function stripSkillPrefix(name) {
+  return String(name || "").replace(/^skill:/, "");
+}
+
+function readSkillMeta(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, "utf8"); } catch { return null; }
+  const block = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!block) return null;
+  const read = (key) => {
+    const line = block[1].split(/\r?\n/).find((l) => l.trimStart().startsWith(key + ":"));
+    if (!line) return "";
+    return line.slice(line.indexOf(":") + 1).trim().replace(/^["']|["']$/g, "");
+  };
+  return {
+    name: stripSkillPrefix(read("name") || path.basename(path.dirname(file))),
+    description: read("description"),
+  };
+}
+
+function skillRoots() {
+  const roots = [
+    path.join(agentDir(), "skills"),
+    path.join(process.cwd(), ".agents", "skills"),
+    path.join(process.cwd(), ".pi", "skills"),
+  ];
+  // GSD 的技能在 agent/gsd-package-cache/<hash>/skills 下
+  try {
+    for (const d of fs.readdirSync(path.join(agentDir(), "gsd-package-cache"), { withFileTypes: true })) {
+      if (d.isDirectory()) roots.push(path.join(agentDir(), "gsd-package-cache", d.name, "skills"));
+    }
+  } catch { /* no GSD cache */ }
+  // 包自带技能作为 pi.getCommands() 的兜底，只查已知包的一层 skills
+  for (const pkg of listInstalledPackages()) {
+    roots.push(path.join(agentDir(), "npm", "node_modules", pkg, "skills"));
+  }
+  return uniq(roots);
+}
+
+function discoverFilesystemSkills(items, ensure) {
+  for (const root of skillRoots()) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(root, d.name)); } catch { continue; }
+    for (const dir of dirs) {
+      const meta = readSkillMeta(path.join(dir, "SKILL.md"));
+      if (!meta?.name) continue;
+      const id = "skill:" + meta.name;
+      const desc = meta.description || "技能";
+      const it = ensure(id, { kind: "skill", pkg: null, label: meta.name, description: desc, text: meta.name + " " + desc });
+      it.label = meta.name;
+      it.description = desc;
+      it.text = [it.text, meta.name, desc].filter(Boolean).join(" ");
+      if (!it.skills.includes(meta.name)) it.skills.push(meta.name);
+    }
+  }
 }
 
 function discoverItems(pi) {
@@ -473,16 +625,19 @@ function discoverItems(pi) {
     }
     if (owner) {
       const bucket = c.source === "skill" ? owner.skills : owner.commands;
-      bucket.push(c.name);
-      owner.text += " " + c.name + " " + (c.description || "");
+      bucket.push(c.source === "skill" ? stripSkillPrefix(c.name) : c.name);
+      owner.text += " " + stripSkillPrefix(c.name) + " " + (c.description || "");
       continue;
     }
     if (c.source === "skill") {
-      const id = "skill:" + c.name;
-      const it = ensure(id, { kind: "skill", pkg: null, label: c.name, description: c.description || "技能", text: c.name + " " + (c.description || "") });
-      it.skills.push(c.name);
+      const name = stripSkillPrefix(c.name);
+      const it = ensure("skill:" + name, { kind: "skill", pkg: null, label: name, description: c.description || "技能", text: name + " " + (c.description || "") });
+      if (!it.skills.includes(name)) it.skills.push(name);
     }
   }
+
+  // 5) 文件系统技能兜底：pi.getCommands() 在 session_start 时可能还没加载技能
+  discoverFilesystemSkills(items, ensure);
 
   for (const it of items.values()) {
     it.tools = uniq(it.tools);
@@ -497,12 +652,37 @@ function discoverItems(pi) {
 // ---------------------------------------------------------------------------
 function reconcile(store, items) {
   const added = [];
+  const changed = [];
+  // 分类规则升级：只重算自动归类项，手动 override 永远保留。
+  if ((store.classifierVersion || 0) < CLASSIFIER_VERSION) {
+    for (const [id, meta] of Object.entries(store.known)) {
+      if (!meta.auto || store.overrides[id] || meta.scenario === "infra" || isInfraId(id)) continue;
+      const item = items.get(id);
+      if (!item) continue;
+      const c = classifyItem(item);
+      if (c.scenarioId && c.scenarioId !== meta.scenario) {
+        changed.push({ id, label: meta.label || id, from: meta.scenario, to: c.scenarioId });
+        meta.scenario = c.scenarioId;
+        meta.reason = c.reason;
+      }
+    }
+    // 已删除的本地扩展不要永久留在目录里
+    for (const id of Object.keys(store.known)) {
+      if (id.startsWith("local:") && !items.has(id)) delete store.known[id];
+    }
+    store.classifierVersion = CLASSIFIER_VERSION;
+  }
   for (const [id, item] of items) {
     if (store.overrides[id] === "none") continue;
-    if (store.known[id]) { store.known[id].missing = false; continue; }
+    if (store.known[id]) {
+      const meta = store.known[id];
+      meta.missing = false;
+      if (item.label && (!meta.label || String(meta.label).startsWith("skill:"))) meta.label = item.label;
+      if (item.description && !meta.description) meta.description = item.description;
+      continue;
+    }
     const c = classifyItem(item);
-    const idBase = id.replace(/^(npm|local):/, "").split("/").pop();
-    const infra = INFRA_PACKAGES.some((p) => p.split("/").pop() === idBase);
+    const infra = isInfraId(id);
     const scenario = store.overrides[id] || (infra ? "infra" : c.scenarioId);
     store.known[id] = {
       kind: item.kind,
@@ -519,6 +699,7 @@ function reconcile(store, items) {
   for (const [id, meta] of Object.entries(store.known)) {
     if (!items.has(id)) meta.missing = true;
   }
+  if (changed.length) store.lastReclassified = changed.slice(0, 50);
   return added;
 }
 
@@ -541,7 +722,13 @@ function autoAssigned(store, scenarioId) {
 // 装配
 // ---------------------------------------------------------------------------
 function scenarioPackages(scenario, store) {
-  return uniq([...ALWAYS_PACKAGES, ...scenario.plugins, ...autoAssigned(store, scenario.id)]);
+  const always = scenario.noAlways ? [] : ALWAYS_PACKAGES;
+  return uniq([...always, ...scenario.plugins, ...autoAssigned(store, scenario.id)]);
+}
+
+function coreToolNames(pi) {
+  const all = pi.getAllTools().map((t) => t.name);
+  return CORE_TOOLS.filter((n) => all.includes(n));
 }
 
 function toolsForScenario(pi, scenario, store) {
@@ -553,6 +740,22 @@ function commandsForPkg(pi, pkg) {
   return pi.getCommands().filter((c) => c.source === "extension" && matchesPkg(c.sourceInfo, pkg));
 }
 
+function summarizeNames(names, max = 8) {
+  if (!names.length) return "";
+  if (names.length <= max) return names.join(", ");
+  return names.slice(0, max).join(", ") + ` …（共 ${names.length} 个）`;
+}
+
+function summarizeSkills(skills, max = 8) {
+  if (!skills.length) return "";
+  const gsd = skills.filter((s) => /^gsd-/.test(s));
+  const rest = skills.filter((s) => !/^gsd-/.test(s));
+  const bits = [];
+  if (rest.length) bits.push(summarizeNames(rest, max));
+  if (gsd.length) bits.push(`GSD 阶段技能 ${gsd.length} 个（/gsd 查看）`);
+  return bits.join("；");
+}
+
 function describePlugin(pi, pkg, manual = "") {
   const info = PLUGIN_INFO[pkg] || {};
   const tools = pi.getAllTools().filter((t) => matchesPkg(t.sourceInfo, pkg)).map((t) => t.name);
@@ -561,7 +764,8 @@ function describePlugin(pi, pkg, manual = "") {
   const bits = [info.what || "插件"];
   if (tools.length) bits.push("工具 " + tools.join(", "));
   if (cmds.length) bits.push("命令 " + cmds.slice(0, 6).join(", "));
-  if (skills.length) bits.push("技能 " + skills.join(", "));
+  if (skills.length) bits.push("技能 " + summarizeSkills(skills));
+  if (pkg === "pi-memory") bits.push("semantic/deep 检索需 qmd；缺少时用 keyword");
   if (manual || info.manual) bits.push("手动 " + (manual || info.manual));
   return bits.join(" · ");
 }
@@ -578,9 +782,10 @@ function buildProposal(pi, scenario, store) {
   for (const pkg of extra) lines.push(`- \`${pkg}\` — ${describePlugin(pi, pkg)}`);
   if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻，不单独计入）");
   const auto = autoAssigned(store, scenario.id).filter((p) => !scenario.plugins.includes(p));
-  if (auto.length) lines.push(`- 自动归入：${auto.join(", ")}`);
+  if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
   const skills = autoAssignedIds(store, scenario.id).filter((id) => id.startsWith("skill:")).map((id) => id.slice(6));
-  if (skills.length) lines.push(`- 自动归入技能：${skills.join(", ")}（随会话自动加载）`);
+  if (skills.length) lines.push(`- 自动归入技能：${summarizeSkills(skills)}（随会话自动加载）`);
+  lines.push("- 核心工具始终保留：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。");
   const brief = scenario.manual?.length ? scenario.manual : [];
   if (brief.length) {
     lines.push("");
@@ -593,16 +798,84 @@ function buildProposal(pi, scenario, store) {
   return lines.join("\n");
 }
 
+// 插件可用性诊断：ok = 有工具且已启用；warn = 能跑但有已知限制；
+// inactive = 已注册但全局停用/未完成设置；absent = 未安装/未注册。
+function auditPackages(pi, scenario, store) {
+  const all = pi.getAllTools();
+  const active = new Set(pi.getActiveTools());
+  const cmds = pi.getCommands();
+  const vision = readJson(path.join(agentDir(), "vision.json"), {});
+  const lens = readJson(path.join(os.homedir(), ".pi-lens", "config.json"), {});
+  const advisor = readJson(path.join(agentDir(), "advisor.json"), {});
+  const rows = [];
+  for (const pkg of scenarioPackages(scenario, store).filter((p) => p !== "pi-mcp-adapter")) {
+    const tools = all.filter((t) => matchesPkg(t.sourceInfo, pkg)).map((t) => t.name);
+    const skillN = cmds.filter((c) => c.source === "skill" && matchesPkg(c.sourceInfo, pkg)).length;
+    const cmdN = cmds.filter((c) => c.source === "extension" && matchesPkg(c.sourceInfo, pkg)).length;
+    let state = "ok";
+    let detail = tools.length ? tools.slice(0, 8).join(", ") : `${cmdN} 个命令 / ${skillN} 个技能`;
+    if (!tools.length && !skillN && !cmdN) {
+      state = "absent";
+      detail = "未安装或未注册任何工具/命令/技能";
+    } else if (tools.length && !tools.some((t) => active.has(t))) {
+      state = "inactive";
+      detail = "工具已注册但已停用：" + tools.slice(0, 6).join(", ");
+    }
+
+    if (pkg === "@onkernel/browser-loop" && !tools.length) {
+      state = "inactive";
+      detail = "命令已注册但还没选浏览器能力；先 /browser-tools 并配置 KERNEL_API_KEY";
+    }
+    if (pkg === "pi-lens" && lens?.lens?.enabled === false) {
+      if (state === "ok") state = "warn";
+      detail += "；全局 hooks 已关闭，工具仍可手动调用，/lens-toggle 可开自动检查";
+    }
+    if (pkg === "@getpipher/vision") {
+      const configured = vision?.enabled !== false && vision?.provider && vision?.model;
+      if (!configured) {
+        state = "inactive";
+        detail = "未配置视觉模型；先 /vision-use 选择支持图像的模型";
+      } else {
+        if (state === "ok") state = "warn";
+        detail += `；配置为 ${vision.provider}/${vision.model}，需确认该模型真的支持图像`;
+      }
+    }
+    if (pkg === "@opengsd/gsd-core") {
+      if (state === "ok") state = "warn";
+      detail += "；Windows 下 gsd_dispatch 不可用，改用 /gsd 命令";
+    }
+    if (pkg === "pi-advisor-flow" && !(advisor.advisorProvider && advisor.advisorModel) && !advisor.advisorRef) {
+      if (state === "ok") state = "warn";
+      detail += "；未配置顾问模型，先 /advisor-models";
+    }
+    if (pkg === "pi-memory") {
+      detail += "；semantic/deep 检索需要 qmd，缺少时 keyword 仍可用";
+    }
+
+    rows.push({ pkg, state, detail });
+  }
+  return rows;
+}
+
 function applyScenario(pi, ctx, scenario, store, baseline) {
   const all = pi.getAllTools();
   const active = pi.getActiveTools();
   const optional = new Set(all.filter((t) => isOptionalSource(t.sourceInfo)).map((t) => t.name));
   const wanted = new Set(toolsForScenario(pi, scenario, store));
   const keep = active.filter((n) => !optional.has(n));
-  const next = uniq([...keep, ...wanted]);
+  const core = coreToolNames(pi);
+  const next = uniq([...keep, ...core, ...wanted]);
   const disabled = active.filter((n) => optional.has(n) && !wanted.has(n));
   pi.setActiveTools(next);
-  return { next, enabled: [...wanted].filter((n) => !active.includes(n)), disabled };
+  // 说清楚哪些插件其实用不了，不再静默
+  const bad = auditPackages(pi, scenario, store).filter((r) => r.state !== "ok");
+  if (bad.length) {
+    ctx?.ui?.notify?.(
+      "场景中以下插件需要留意：\n" + bad.map((r) => `- ${r.pkg}（${r.state}）：${r.detail}`).join("\n"),
+      "warning",
+    );
+  }
+  return { next, enabled: [...wanted].filter((n) => !active.includes(n)), disabled, bad };
 }
 
 // ---------------------------------------------------------------------------
@@ -625,10 +898,10 @@ function buildCatalog(pi, store) {
         lines.push("- 不需要额外插件");
       }
       if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻）");
-      const auto = autoAssignedIds(store, s.id).filter((id) => id.startsWith("npm:") && !s.plugins.includes(id.slice(4)));
-      if (auto.length) lines.push(`- 自动归入：${auto.map((id) => id.slice(4)).join(", ")}`);
+      const auto = autoAssignedIds(store, s.id).filter((id) => id.startsWith("npm:") && !s.plugins.includes(id.slice(4))).map((id) => id.slice(4));
+      if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
       const skills = autoAssignedIds(store, s.id).filter((id) => id.startsWith("skill:")).map((id) => id.slice(6));
-      if (skills.length) lines.push(`- 自动归入技能：${skills.join(", ")}（随会话自动加载）`);
+      if (skills.length) lines.push(`- 自动归入技能：${summarizeSkills(skills)}（随会话自动加载）`);
     }
   }
   const infra = Object.entries(store.known).filter(([, m]) => m.scenario === "infra" && !m.missing).map(([id]) => id.replace(/^(npm|local|skill):/, ""));
@@ -664,7 +937,7 @@ export default function functionMenu(pi) {
   let baselineCaptured = false;
   const captureBaseline = () => {
     if (baselineCaptured) return;
-    baseline = pi.getActiveTools();
+    baseline = uniq([...pi.getActiveTools(), ...coreToolNames(pi)]);
     baselineCaptured = baseline.length > 0;
   };
 
@@ -814,9 +1087,12 @@ export default function functionMenu(pi) {
       }
 
       if (sub === "off") {
-        const restored = (baseline.length ? baseline : pi.getActiveTools()).filter((n) => pi.getAllTools().some((t) => t.name === n));
+        const restored = uniq([...(baseline.length ? baseline : pi.getActiveTools()), ...coreToolNames(pi)])
+          .filter((n) => pi.getAllTools().some((t) => t.name === n));
         pi.setActiveTools(restored);
         activeScenario = null;
+        // 写 null 墓磑，否则重启后会从会话记录里把旧场景又拉回来
+        pi.appendEntry("function-scenario", { id: null, at: nowIso(), tools: restored });
         ctx.ui.notify(`已还原到装配前工具集（${restored.length} 个工具）`, "info");
         return;
       }
@@ -898,8 +1174,97 @@ export default function functionMenu(pi) {
     },
   };
 
+  const restoreScenario = (ctx) => {
+    let last = null;
+    try {
+      for (const entry of ctx?.sessionManager?.getBranch?.() || []) {
+        if (entry?.type === "custom" && entry.customType === "function-scenario") last = entry.data || null;
+      }
+    } catch { last = null; }
+    if (!last || !last.id) return;
+    const scenario = SCENARIOS.find((s) => s.id === last.id);
+    if (!scenario) return;
+    activeScenario = scenario;
+    const res = applyScenario(pi, ctx, scenario, store, baseline);
+    const bad = res.bad || [];
+    ctx?.ui?.notify?.(
+      `已从会话记录恢复场景：${scenario.title}（${new Date(last.at || Date.now()).toLocaleString()}）` +
+        (bad.length ? `\n不可用：${bad.map((r) => r.pkg).join("、")}` : ""),
+      bad.length ? "warning" : "info",
+    );
+  };
+
   pi.registerCommand("function", functionCommand);
   pi.registerCommand("pi-function", functionCommand);
+
+  // -------------------------------------------------------------------------
+  // 模型侧入口：只读的场景建议 + 插件可用性诊断
+  // -------------------------------------------------------------------------
+  pi.registerTool({
+    name: "suggest_scenario",
+    label: "Suggest Scenario",
+    description:
+      "用 /function 的同一套关键词表给任务描述打分，返回最匹配的场景 id、命中理由、该场景会启用的插件，以及这些插件当前是否真的可用（absent 未安装 / inactive 未启用或未完成设置 / warn 有已知限制 / ok 正常）。只读，不改变任何工具状态。",
+    promptSnippet: "查询 /function 场景分类：给出任务最匹配的插件场景与可用性诊断",
+    promptGuidelines: [
+      "Use suggest_scenario at the start of a task when you need to pick which plugin scene fits, or when the user asks whether a plugin or skill applies.",
+      "suggest_scenario is read-only: it never changes active tools. To actually assemble a scene, tell the user to run /function <scenario-id>.",
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "任务或需求的描述文本" },
+        top: { type: "number", description: "返回几个候选场景，默认 3，范围 1-5" },
+        withPlugins: { type: "boolean", description: "是否附带插件与可用性明细，默认 true" },
+      },
+      required: ["text"],
+    },
+    async execute(_toolCallId, params) {
+      const text = String(params?.text || "");
+      const top = Math.max(1, Math.min(5, Number(params?.top) || 3));
+      scan(false);
+      const ranked = scoreScenarios(text).slice(0, top);
+      if (!ranked.length) {
+        return {
+          content: [{
+            type: "text",
+            text: `没有命中任何场景关键词（纯关键词子串匹配，需命中至少 1 个）。可用场景：${SCENARIOS.map((s) => s.id).join(", ")}\n请改用更贴近场景描述的措辞重新调用。`,
+          }],
+          details: { matched: false, ranked: [] },
+        };
+      }
+      const best = ranked[0];
+      const confident = best.score >= 1.2 && (!ranked[1] || best.score >= ranked[1].score * 1.5);
+      const lines = [
+        `最佳场景：${best.scenario.id} · ${best.scenario.title}（score ${best.score.toFixed(2)}；命中：${uniq(best.hits).slice(0, 5).join(" / ")}）`,
+        confident ? "置信度：足够（领先次选 ≥1.5 倍）" : "置信度：不足，建议把候选摆给用户选",
+      ];
+      if (ranked.length > 1) {
+        lines.push("其他候选：" + ranked.slice(1).map((r) => `${r.scenario.id}(${r.score.toFixed(2)})`).join("、"));
+      }
+      if (params?.withPlugins !== false) {
+        for (const r of ranked) {
+          const rows = auditPackages(pi, r.scenario, store);
+          const bad = rows.filter((x) => x.state !== "ok");
+          lines.push("");
+          lines.push(`### ${r.scenario.id}`);
+          lines.push("- 插件：" + (rows.length ? rows.map((x) => `${x.pkg}[${x.state}]`).join("、") : "无额外插件（只保留核心工具）"));
+          if (bad.length) lines.push("- 需注意：" + bad.map((x) => `${x.pkg} — ${x.detail}`).join("；"));
+        }
+      }
+      lines.push("");
+      lines.push(`装配入口（需用户执行）：/function ${best.scenario.id}`);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: {
+          matched: true,
+          confident,
+          best: { id: best.scenario.id, score: best.score, hits: uniq(best.hits) },
+          ranked: ranked.map((r) => ({ id: r.scenario.id, score: r.score, hits: uniq(r.hits) })),
+        },
+      };
+    },
+  });
 
   pi.on("session_start", (event, ctx) => {
     captureBaseline();
@@ -910,6 +1275,7 @@ export default function functionMenu(pi) {
       saveStore(store);
     }
     startWatcher(ctx);
+    restoreScenario(ctx);
   });
 
   pi.on("session_shutdown", () => {
@@ -930,4 +1296,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, PLUGIN_INFO, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, matchesPkg };
+export { SCENARIOS, PLUGIN_INFO, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario };

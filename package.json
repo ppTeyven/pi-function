@@ -1,6 +1,6 @@
 {
   "name": "pi-function",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "description": "Pi-function — always-on scenario assembler for the Pi coding agent. Pick a scenario, see the plugins, approve, then enable their tools.",
   "type": "module",
   "license": "MIT",
@@ -29,6 +29,7 @@
   },
   "files": [
     "function-menu.js",
+    "test.mjs",
     "scripts",
     "assets",
     "README.md",
@@ -37,6 +38,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "test": "node test.mjs",
     "render:banner": "node scripts/render-banner.mjs"
   },
   "engines": {

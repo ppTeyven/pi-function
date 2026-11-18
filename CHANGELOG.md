@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+- Added three capability-driven scenarios: `gsd` (spec/plan/execute/verify/ship), `frontend` (pages, components, styling, visual acceptance), and `docs` (README, wiki, handoff).
+- Re-mapped scenarios against the installed 24-package set: pi-lens and subagents are now used for understand/bugfix/review/research/audit; `cc-safety-net` stays infrastructure instead of being offered as a scenario plugin.
+- Fixed package ids: `@juicesharp/rpiv-todo` replaces the unqualified `rpiv-todo`; removed the duplicate `PLUGIN_INFO` key.
+- Core tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are always kept active, including after `/function off`, so pi-pretty's disabled grep/find/ls no longer disappear.
+- Privacy scenario no longer forces the MCP adapter; MCP remains resident in other scenarios.
+- Classifier v3 reclassifies auto-assigned entries, moves all `gsd-*` skills into `gsd`, removes stale local entries, and preserves manual overrides.
+- GSD skills and large auto-assigned groups are summarized as counts instead of flooding the catalog/proposal.
+- Availability audit now reports `ok` / `warn` / `inactive` / `absent` with config-aware warnings for pi-lens, browser-loop, vision, GSD on Windows, and the advisor.
+- Added zero-dependency `test.mjs` and npm `test` script.
+- Fixed skill discovery: reads `SKILL.md` from agent/project/GSD/package roots when `pi.getCommands()` has not registered skill commands yet, and normalizes `skill:` prefixes.
+
 ## 1.2.1
 
 - Consent hardening: `/function <need>` now prints the full proposal as a visible session message before the confirmation dialog, and the dialog lists the packages to enable.

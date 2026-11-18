@@ -25,7 +25,7 @@
 
 ---
 
-Pi-function turns a pile of installed Pi extensions into **22 task scenarios**. Instead of remembering which plugin to enable for which job, you describe the job — or open the menu — and Pi-function proposes the right set. Nothing is enabled until you press **yes**.
+Pi-function turns a pile of installed Pi extensions into **25 task scenarios**. Instead of remembering which plugin to enable for which job, you describe the job — or open the menu — and Pi-function proposes the right set. Nothing is enabled until you press **yes**.
 
 It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
 
@@ -57,7 +57,7 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 
 | Command | What happens |
 |---|---|
-| `/function` | Prints the full catalog of all 22 scenarios, then opens a picker |
+| `/function` | Prints the full catalog of all 25 scenarios, then opens a picker |
 | `/function <need>` | Matches the need, shows plugins + functions + commands, waits for confirmation, then assembles (never executes the need) |
 | `/function <scenario-id>` | Assembles a known scenario directly (still asks first) |
 | `/function scan` | Re-scans installed packages, local extensions, and skills |
@@ -78,7 +78,7 @@ Typical exchange:
 **将启用的插件与功能**
 - `@quintinshaw/pi-dynamic-workflows` — 动态工作流，fan-out 多代理
 - `@plannotator/pi-extension` — 浏览器里审计划/代码
-- `rpiv-todo` — 任务清单与进度跟踪
+- `@juicesharp/rpiv-todo` — task tracking and progress
 - `pi-simplify` — 审查改动并简化
 
 **装配后仍需手动做**
@@ -100,8 +100,9 @@ Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly ne
 
 | id | Scenario | Use when | Plugins |
 |---|---|---|---|
-| `understand` | Codebase walkthrough | Unfamiliar repo, map the structure, find logic, legacy code | `openwiki`, `pi-btw`, `pi-memory`, `pi-web-access` |
+| `understand` | Codebase walkthrough | Unfamiliar repo, map the structure, find logic, legacy code | `openwiki`, `pi-lens`, `pi-btw`, `pi-memory`, `pi-web-access` |
 | `knowledge` | Knowledge capture | Write findings to long-term memory, maintain a wiki, record decisions | `pi-memory`, `openwiki` |
+| `docs` | Docs / wiki / handoff | READMEs, wiki upkeep, handoff notes | `openwiki`, `pi-memory` |
 
 </details>
 
@@ -111,9 +112,11 @@ Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly ne
 | id | Scenario | Use when | Plugins |
 |---|---|---|---|
 | `small` | Small edit | One-file fix, typo, copy change, add a log line | — |
-| `bugfix` | Bug fix / repro | Stack traces, regressions, unexpected behavior | `context-mode`, `pi-web-access`, `cc-safety-net` |
-| `feature` | New feature | Add a feature end to end with staged progress | `@opengsd/gsd-core`, `rpiv-todo`, `pi-lens` |
-| `refactor` | Refactor / migration | Cross-file refactors, framework swaps, bulk edits | `@quintinshaw/pi-dynamic-workflows`, `@plannotator/pi-extension`, `rpiv-todo`, `pi-simplify` |
+| `bugfix` | Bug fix / repro | Stack traces, regressions, unexpected behavior | `context-mode`, `pi-web-access`, `pi-lens` |
+| `feature` | New feature | Add a feature end to end with staged progress | `@juicesharp/rpiv-todo`, `pi-lens` |
+| `gsd` | GSD spec-driven phases | Spec → plan → execute → verify → ship with fresh-context workers | `@opengsd/gsd-core`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension` |
+| `frontend` | Frontend / visual work | Pages, components, styling, responsive behavior, visual acceptance | `@onkernel/browser-loop`, `@getpipher/vision`, `pi-web-access` |
+| `refactor` | Refactor / migration | Cross-file refactors, framework swaps, bulk edits | `@quintinshaw/pi-dynamic-workflows`, `@plannotator/pi-extension`, `@juicesharp/rpiv-todo`, `pi-simplify`, `pi-lens` |
 | `tests` | Tests / flaky | Coverage gaps, unstable tests, parallel shards | `pi-lens`, `pi-subagents`, `context-mode` |
 | `deps` | Dependency upgrades | Upgrade libraries, fix breaking changes, align versions | `pi-web-access`, `pi-lens` |
 
@@ -124,11 +127,11 @@ Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly ne
 
 | id | Scenario | Use when | Plugins |
 |---|---|---|---|
-| `review` | Code review / PR writeup | Pre-commit self review, respond to review, PR description | `pi-simplify`, `@quintinshaw/pi-dynamic-workflows` |
-| `plan` | Plan review | Get a human-approved plan before touching code | `@plannotator/pi-extension`, `rpiv-todo` |
-| `research` | Research | Read docs, compare options, write a tech brief | `pi-web-access`, `pi-memory`, `openwiki` |
+| `review` | Code review / PR writeup | Pre-commit self review, respond to review, PR description | `pi-simplify`, `pi-lens`, `pi-subagents`, `@quintinshaw/pi-dynamic-workflows` |
+| `plan` | Plan review | Get a human-approved plan before touching code | `@plannotator/pi-extension`, `@juicesharp/rpiv-todo` |
+| `research` | Research | Read docs, compare options, write a tech brief | `pi-web-access`, `pi-memory`, `openwiki`, `pi-subagents`, `@quintinshaw/pi-dynamic-workflows` |
 | `data` | Logs / perf / data | Big logs, benchmarks, profiling, stats | `context-mode`, `@quintinshaw/pi-dynamic-workflows` |
-| `audit` | Security / dependency audit | Vulnerabilities, licenses, risky calls, dependency risk | `@quintinshaw/pi-dynamic-workflows`, `cc-safety-net`, `pi-web-access` |
+| `audit` | Security / dependency audit | Vulnerabilities, licenses, risky calls, dependency risk | `@quintinshaw/pi-dynamic-workflows`, `pi-lens`, `pi-subagents`, `pi-web-access` |
 | `webui` | Browser / UI QA | Click flows, screenshots, end-to-end acceptance | `@onkernel/browser-loop`, `@getpipher/vision`, `@plannotator/pi-extension` |
 
 </details>
@@ -138,10 +141,10 @@ Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly ne
 
 | id | Scenario | Use when | Plugins |
 |---|---|---|---|
-| `parallel` | Parallel workstreams | Independent modules at the same time | `pi-subagents`, `rpiv-todo` |
+| `parallel` | Parallel workstreams / delegation | Independent modules at the same time | `pi-subagents`, `@juicesharp/rpiv-todo`, `@quintinshaw/pi-dynamic-workflows` |
 | `sideask` | Side question | Ask without derailing the main thread | `pi-btw` |
 | `advisor` | Second opinion | Trade-offs, architecture calls, another model's critique | `pi-advisor-flow` |
-| `release` | Release / CI | Pre-merge checks, CI failures, tags, release notes | `pi-simplify`, `rpiv-todo`, `cc-safety-net` |
+| `release` | Release / CI | Pre-merge checks, CI failures, tags, release notes | `pi-simplify`, `@juicesharp/rpiv-todo`, `pi-subagents` |
 | `unattended` | Unattended batch | Run a batch of tasks, long autonomous runs | `@quintinshaw/pi-dynamic-workflows` |
 
 </details>
@@ -162,8 +165,8 @@ Plugins you have not installed are simply skipped at assembly time. The scenario
 ## How assembly works
 
 - **Ownership by path, not by name.** A tool belongs to a plugin if its `sourceInfo.path` lives under that package's `node_modules` directory. New tools from new releases are picked up without editing Pi-function.
-- **Enable the scenario, disable the noise.** Optional plugin tools that are not part of the chosen scenario are switched off. Built-in tools (`read`, `bash`, `edit`, …) are never touched.
-- **MCP stays available.** `pi-mcp-adapter` is treated as infrastructure and kept in every scenario.
+- **Enable the scenario, disable the noise.** Optional plugin tools that are not part of the chosen scenario are switched off. Core tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are always kept, so search and directory listing never disappear after a switch.
+- **MCP stays available, except in privacy.** `pi-mcp-adapter` is treated as infrastructure and kept by default; the `privacy` scenario explicitly disables it.
 - **A brief goes into the system prompt.** Each scenario injects its workflow rules for the current session (for example: reproduce before fixing; never run parallel editors on the same files).
 - **Nothing is uninstalled.** Pi cannot hot-load or hot-unload extension code. "Assembly" means tool visibility plus prompt guidance; the code itself stays resident. `/function off` restores the previous tool set.
 
@@ -173,7 +176,7 @@ The active scenario is recorded with `pi.appendEntry` and shown in `/function st
 
 Every new plugin and skill is folded into the catalog automatically — no registration. With Pi-function already loaded, no restart is needed while a session is open (installing the extension itself still needs `/reload` or a restart, see above):
 
-1. **At session start**, Pi-function scans `settings.json` packages, the Pi npm tree, local `extensions/`, standalone skills, and skills shipped inside plugins.
+1. **At session start**, Pi-function scans `settings.json` packages, the Pi npm tree, local `extensions/`, standalone skills, and skills shipped inside plugins. If skill commands are not registered yet, it also reads `SKILL.md` from agent / project / GSD / package skill roots as a fallback.
 2. **While the session runs**, it watches `settings.json`, `skills/`, `extensions/`, and `node_modules/` with a 1.5 s debounce. A fresh install triggers a rescan and a notification.
 3. **Classification** runs in this order:
    - a curated map for well-known packages (`KNOWN_SCENARIO`);
@@ -189,11 +192,14 @@ Every new plugin and skill is folded into the catalog automatically — no regis
 
 Infrastructure packages that should not take part in assembly (context compressors, safety guards, themes, telemetry, this extension itself) are listed under **Resident / not assembled** in the catalog.
 
+Classification is versioned. Upgrading reclassifies auto-assigned entries but preserves manual `/function assign` overrides. GSD's 72 phase skills collapse into the `gsd` scenario and appear as a count instead of flooding the catalog.
+
 ## Files
 
 | Path | Purpose |
 |---|---|
 | `function-menu.js` | The whole extension: catalog, matcher, classifier, assembler, watcher |
+| `test.mjs` | Zero-dependency regression tests: scenarios, core tools, skill mapping, migration, catalog summary |
 | `~/.pi/agent/function-menu.json` | Runtime store: discovered items, assignments, overrides |
 | `assets/banner.svg` | Generated banner (official Pi mark + white pixel wordmark) |
 | `assets/pi-logo.svg` | Official Pi logo, unchanged from [pi.dev/logo-auto.svg](https://pi.dev/logo-auto.svg) |
