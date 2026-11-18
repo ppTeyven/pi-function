@@ -5,6 +5,7 @@
 - Added `/function workflow`: shows only the workflow picker, enables the selected workflow, and does not bind a task scenario.
 - `/function status` and session restore now understand workflow-only mode; the workflow brief is injected without a task section.
 - Added a regression test ensuring workflow mode never opens the task picker.
+- Added a step-by-step user guide to both READMEs: first run, entry points, picker labels, day-to-day commands, and troubleshooting.
 
 ## 2.1.0
 

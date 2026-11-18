@@ -15,7 +15,7 @@
 
   <p>
     <a href="#install">Install</a> ·
-    <a href="#usage">Usage</a> ·
+    <a href="#usage-guide">Usage guide</a> ·
     <a href="#scenarios">Scenarios</a> ·
     <a href="#workflows">Workflows</a> ·
     <a href="#per-user-profile">Profile</a> ·
@@ -49,7 +49,20 @@ If you install it while a session is already running, run `/reload` or restart. 
 
 Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiveTools`, and skills in `pi.getCommands()`.
 
-## Usage
+## Usage guide
+
+### First run
+
+1. Install the extension, then run `/reload` (or restart Pi) so `/function` is recognized.
+2. Run `/function`. It prints the catalog, then opens the first picker.
+3. **Choose a workflow** — how this run should proceed (outline, prototype, review gate, and so on).
+4. **Choose an application scenario** — what you want to make (webpage, article, game, report, and so on).
+5. Review the assembly proposal. Nothing changes until you approve it.
+6. After assembly, describe the task. The extension never executes your request by itself.
+
+If you only want an execution style, run `/function workflow`; it asks for a workflow and does not bind a task scenario.
+
+### Commands
 
 | Command | What happens |
 |---|---|
@@ -86,7 +99,58 @@ Picker rows show plugin and skill counts. A typical fixed-menu exchange:
 ...
 ```
 
-Only **Yes** calls `setActiveTools`. **No** leaves everything untouched. After **Yes**, a free-text requirement is placed back in the editor; press Enter to start it.
+### Which entry point should I use?
+
+| Situation | Use | What happens |
+|---|---|---|
+| You want to browse the available combinations | `/function` | Workflow → application scenario → approve assembly |
+| You want a workflow without a specific deliverable | `/function workflow` | Choose only a workflow; enable it without a task scenario |
+| You already have a one-line request | `/function "build a product site and write a launch article"` | Analyze multiple application types → ask only for a workflow → approve the composition; the request goes back to the editor |
+
+### Reading the picker
+
+Each row looks roughly like this:
+
+```text
+webpage · 网页 / 落地页 / 官网 — 2 plugins · 3 skills (frontend-design, ...)
+```
+
+- The leading `webpage` is a stable scenario ID shared by every user.
+- Plugins and skills come from the current machine's capability profile; another user may see different ones.
+- The proposal lists the plugins, tools, skills, and any commands that still need to be run manually.
+- Only **Yes** calls `setActiveTools`. **No** leaves everything untouched.
+
+### Day-to-day commands
+
+| Need | Command |
+|---|---|
+| See the active assembly | `/function status` |
+| Restore the pre-assembly tool set | `/function off` |
+| Pick up newly installed plugins/skills | `/function scan` |
+| Correct one binding | `/function assign <package-or-skill> <scenario-id>`; use `none` to exclude it |
+| See the full catalog again | `/function` |
+
+### Troubleshooting
+
+**`/function` is treated as a normal prompt.**
+
+The current session has not loaded the extension. Run `/reload` or restart Pi.
+
+**A newly installed plugin or skill is missing from the picker.**
+
+Run `/function scan`. If it is still missing, verify that the package registers a tool/command or that the skill has a `SKILL.md`; then bind it with `/function assign`.
+
+**The assembled tool set feels incomplete.**
+
+Run `/function status` to inspect the active combination, choose a different workflow/scenario, or use `/function assign` to correct the profile binding.
+
+**Will `/function "need"` start working on its own?**
+
+No. It analyzes the need and waits for approval. After approval the need is placed back in the editor; press Enter to start it.
+
+**Do multiple projects or sessions interfere?**
+
+No. Assembly and `/reload` are scoped to the current Pi session.
 
 ## Scenarios
 
