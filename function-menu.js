@@ -28,7 +28,26 @@ import os from "node:os";
 const VERSION = "2.8.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
-const CLASSIFIER_VERSION = 5;
+const CLASSIFIER_VERSION = 6;
+// 场景 id 只增不减会留下“死 id”：旧版分类写进 store 的 release/research/webui…
+// 这些条目在 /function assemble 里永远匹配不到任何场景。迁移表把它们拉到现行场景。
+const LEGACY_SCENARIO_MAP = {
+  release: "maintain",
+  research: "report",
+  webui: "webapp",
+  tests: "maintain",
+  audit: "maintain",
+  review: "maintain",
+  gsd: "process",
+  parallel: "process",
+  knowledge: "docs",
+  mcp: "integration",
+  deps: "maintain",
+  bugfix: "maintain",
+  i18n: "localization",
+  plan: "process",
+  unattended: "automation",
+};
 const ALWAYS_PACKAGES = [];
 // 核心工具永远保留；其他工具由用户本机安装的插件/技能自动匹配。
 const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -619,6 +638,9 @@ const WORKFLOWS = [
   },
 ];
 
+// 现行场景 id 集合：迁移时用它判断一个 id 是不是已经废弃。
+const KNOWN_SCENARIO_IDS = new Set(SCENARIOS.map((s) => s.id));
+
 // 自动归类信号：只写能力词，不写具体插件名。
 const SCENARIO_HINTS = {
   docx: ["gongwen", "公文", "docx", "红头", "发文字号"],
@@ -685,7 +707,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.28.0";
+const EXT_VERSION = "2.29.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -1402,14 +1424,19 @@ function reconcile(store, items) {
   // 分类规则升级：只重算自动归类项，手动 override 永远保留。
   if ((store.classifierVersion || 0) < CLASSIFIER_VERSION) {
     for (const [id, meta] of Object.entries(store.known)) {
-      if (!meta.auto || store.overrides[id] || meta.scenario === "infra" || isInfraId(id)) continue;
+      if (!meta.auto || store.overrides[id]) continue;
+      if (meta.scenario === "infra" || isInfraId(id)) { meta.scenario = "infra"; continue; }
       const item = items.get(id);
-      if (!item) continue;
-      const c = classifyItem(item);
-      if (c.scenarioId && c.scenarioId !== meta.scenario) {
-        changed.push({ id, label: meta.label || id, from: meta.scenario, to: c.scenarioId });
-        meta.scenario = c.scenarioId;
-        meta.reason = c.reason;
+      const c = item ? classifyItem(item) : { scenarioId: null, reason: "" };
+      // 分类器给不出结果时，至少把旧版死 id 迁到现行场景，
+      // 而不是让它在 store 里永远停留成一个没人认领的字符串。
+      const target = c.scenarioId
+        || LEGACY_SCENARIO_MAP[meta.scenario]
+        || (KNOWN_SCENARIO_IDS.has(meta.scenario) ? meta.scenario : null);
+      if (target !== meta.scenario || (c.scenarioId && c.reason)) {
+        if (target !== meta.scenario) changed.push({ id, label: meta.label || id, from: meta.scenario, to: target });
+        meta.scenario = target;
+        if (c.scenarioId) meta.reason = c.reason;
       }
     }
     // 已删除的本地扩展不要永久留在目录里

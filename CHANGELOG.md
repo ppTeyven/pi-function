@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.29.0
+
+- **Dead scenario ids are migrated, not left dangling.** `SCENARIOS` has been reworked over time (release/research/webui/tests/audit/gsd/... are gone), but the store kept those strings: on this machine **66 of 186 entries** pointed at ids no scenario could ever match, so `/function assemble` silently skipped them. `LEGACY_SCENARIO_MAP` pulls each old id to its current equivalent (release→maintain, webui→webapp, gsd→process, i18n→localization, …); an id that is neither current nor in the map becomes `null` (unclassified) instead of an unrecognised string.
+- **The migration now runs even when the classifier has no answer.** The old code only wrote a reclassification when `classifyItem()` returned a scenario, so an entry whose keywords stopped matching kept its dead id forever. It now falls through to the map, then to null.
+- **Manual assignments are still untouchable:** `overrides` and `auto: false` entries are skipped by the migration (test M5).
+- `CLASSIFIER_VERSION` 5 → 6, so the migration runs once on the next `/function`.
+- `tests/migration.test.mjs`: six cases — hit, map fallback, unknown → null, valid untouched, override untouched, whole table ends valid. Total 254.
+
 ## 2.28.0
 
 - **Every `/function` call rescans the catalog first** — not just `scan`/`assemble`. Newly installed plugins and skills are discovered, classified and made available for *this* assembly instead of waiting for a `/reload` or a manual `/function scan`. The scan runs once at the top of the handler, so all sub-functions inherit it.
