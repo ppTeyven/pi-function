@@ -256,13 +256,34 @@ If nothing matches, it still proposes a capability-based combination instead of 
 - injects the workflow and scenario process into the system prompt;
 - leaves plugin code loaded; it does not uninstall anything.
 
+## Portability: what is guaranteed, what is not
+
+This plugin never hardcodes plugin or skill names. It classifies whatever is installed into capability roles (`code-intel`, `writing`, `data`, `automation`, `process`, `docx`, …) and assembles by role, so a different plugin set still works — but "works" means "reports honestly", not "always perfect":
+
+- **Adapts by itself**: the profile is rebuilt from your install on every start; items are matched by name, tool, command and description patterns. Unknown items land in `unassigned` and are still reachable by description matching.
+- **Never silently under-allocates**: each scenario has a contract (`required / optional / forbidden`). If a required capability is missing you get `缺「数据 / 图表 / 分析」：当前没有可用条目`, and `/function` still lets you assemble with a warning.
+- **Manual override always wins**: `/function assign <item> <scenario|none|infra>` and `/function scan` correct any misclassification.
+- **What is *not* guaranteed**: keyword tables are tuned for Chinese office/dev tasks; a non-Chinese or very domain-specific workflow may need scenario keyword edits. Capability patterns target common naming; a plugin named nothing like its function needs `assign`.
+- **No network calls, no writes outside the agent dir**: store and profile live in `~/.pi/agent/` (overridable with `PI_FUNCTION_STORE` / `PI_FUNCTION_PROFILE`, and `PI_CODING_AGENT_DIR` for the root).
+
 ## Development
 
 ```bash
-npm test
+npm test          # 111 cases, repository fixture — runs on any machine
 ```
 
-The tests build synthetic capability profiles, verify that stable IDs resolve differently for different package sets, exercise dynamic multi-intent analysis, and cover the two-step command flow.
+Test layout (`tests/`, plan in `TEST-PLAN.md`):
+
+| file | layer | cases |
+|---|---|---|
+| `contracts.test.mjs` | unit / config integrity | 29 |
+| `allocation.test.mjs` | contracts, golden needs, invariants, persistence | 44 |
+| `journeys.test.mjs` | real user requests (PPT deck, big project, vague one-liner…) | 29 |
+| `e2e.test.mjs` | command handler main + alternate flows | 9 |
+
+Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
+
+Tests read `tests/fixtures/store.json` by default so results do not depend on what you have installed; set `PI_FUNCTION_REAL_STORE=1` to audit your own environment instead.
 
 ## License
 

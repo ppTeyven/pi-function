@@ -4,7 +4,8 @@
  *   /function                   列出全部场景组合（插件 + 功能），然后选一个
  *   /function <需求>            自动识别场景 → 展示插件清单 → 确认后装配
  *   /function <场景id>          直接指定场景
- *   /function scan              重新扫描已安装插件/技能，自动归类新条目
+ *   /function a+b               多选组合：场景与工作流可混搭（如 debug+process）
+ *   /function scan              重新扫已装插件/技能，自动归类新条目
  *   /function assign <名称> <场景id|none>   手动改归类
  *   /function status            查看当前装配
  *   /function off               还原装配前的工具集
@@ -15,15 +16,19 @@
  *
  * 装配 = 启用该场景相关工具 + 注入场景流程提示 + 停用无关插件工具。
  * 插件代码本身常驻进程（Pi 不支持运行时装卸扩展），所以“装配”是工具/提示层面的。
+ *
+ * 分配方法层：process 场景 / process-design 工作流装配时，先拆基元（workflow-refactor）
+ * → 定验收（spec-workflow-guide）→ 固化 SOP（sop-builder / sop-extractor）
+ * → 补能力缺口（skill-finder）→ 最后才按基元分配插件与技能。
  */
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.6.0";
+const VERSION = "2.8.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
-const CLASSIFIER_VERSION = 4;
+const CLASSIFIER_VERSION = 5;
 const ALWAYS_PACKAGES = [];
 // 核心工具永远保留；其他工具由用户本机安装的插件/技能自动匹配。
 const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -37,6 +42,7 @@ const CAPABILITIES = {
   web: { label: "联网搜索 / 抓取", package: /web|search|fetch|crawl|http/i, tool: /web_|search|fetch/i, skill: /research|web|search/i, terms: /搜索|联网|网页|资料/i, deny: /gongwen|公文|convert|humaniz|design|frontend/i, network: true },
   subagent: { label: "子代理 / 独立复核", package: /subagent|agent/i, tool: /subagent|contact_supervisor|bg_wait/i, skill: /subagent|council/i, terms: /子代理|subagent|独立复核/i },
   orchestration: { label: "多代理编排", package: /workflow|orchestrat|dynamic/i, tool: /workflow/i, skill: /workflow|parallel|fanout/i, terms: /编排|workflow|并行/i },
+  process: { label: "流程 / SOP / 需求建模", skill: /^(workflow-refactor|sop-(builder|extractor)|spec-workflow|skill-finder|requirement)/i, terms: /流程|工作流|sop|需求(分析|拆解|探索|梳理)|验收标准|标准化|作业指导|交接|能力缺口/i },
   task: { label: "任务清单 / 进度", package: /todo|task/i, tool: /^todo$|todos/i, skill: /todo|task/i, terms: /清单|任务|进度|todo/i },
   "plan-review": { label: "计划 / 方案审阅", package: /plannotator|plan|approval/i, tool: /plannotator|plan/i, skill: /plan|spec|architect/i, terms: /计划|方案|审阅|批准/i },
   context: { label: "大输出 / 上下文管理", package: /context/i, tool: /ctx_|context/i, skill: /context|ctx/i, terms: /上下文|大输出|日志/i, infra: true },
@@ -53,10 +59,11 @@ const CAPABILITIES = {
   design: { label: "视觉 / UI / 品牌", package: /design|frontend|\bui\b|\bcss\b/i, tool: /design|style/i, skill: /design|frontend|\bcss\b|\bui\b|de-slop/i, terms: /设计|视觉|品牌|配色|排版|\bui\b|\bcss\b/i, deny: /gongwen|公文|format|convert|markdown|humaniz|ima|search|research/i },
   writing: { label: "写作 / 编辑 / 文案", package: /writing|content|docs/i, command: /write|article/i, skill: /writing|copy|blog|article|editor|humaniz|handoff|mermaid|docs/i, terms: /写作|文章|文案|编辑|润色/i, deny: /gongwen|公文|convert|markdown|format|slide|ppt|deck|mermaid|glimpse/i },
   slides: { label: "演示 / 幻灯片", package: /slide|deck|presentation|ppt/i, skill: /ppt|slide|deck|presentation/i, terms: /ppt|幻灯片|演示|路演/i, deny: /gongwen|公文|convert|format|mermaid|markdown/i },
+  docx: { label: "公文 / 正式排版", skill: /gongwen|docx|redhead/i, terms: /公文|红头|发文字号|版记|主送|国标|正式发文/ },
   docs: { label: "文档 / 教程 / 知识库", package: /docs|wiki/i, tool: /wiki|docs/i, skill: /docs|documentation|readme|handoff|mermaid|connector|ima/i, terms: /文档|教程|手册|wiki|readme/i, deny: /gongwen|公文|convert|format|search|research/i },
   release: { label: "发布 / CI / 版本", package: /release|publish|deploy|\bci\b/i, command: /release|publish/i, skill: /release|publish|commit|branch|\bci\b/i, terms: /发布|上线|版本|\bci\b|部署/i },
   testing: { label: "测试 / 验证", package: /test|qa/i, tool: /test/i, skill: /test|tdd|qa|prove|coverage/i, terms: /测试|用例|验证|覆盖/i, deny: /search|research|multi|stock|ima|gongwen|humaniz/i },
-  automation: { label: "自动化 / 爬虫 / 定时", package: /automation|scrape|crawl|schedule|cron/i, tool: /cron|schedule|scrape|crawl/i, skill: /automation|scrape|crawl/i, terms: /自动化|爬虫|定时|批处理/i },
+  automation: { label: "自动化 / 爬虫 / 定时", package: /automation|scrape|crawl|schedule|cron/i, tool: /cron|schedule|scrape|crawl/i, skill: /automation|scrape|crawl|cron|schedul|dispatch|pipeline/i, terms: /自动化|爬虫|定时|批处理/i },
   data: { label: "数据 / 图表 / 分析", package: /data|analytics|chart|sql|pandas/i, tool: /sql|query|chart|dataset/i, skill: /\bdata\b|analytics|csv|chart|pandas|notebook/i, terms: /数据|图表|统计|csv|sql|分析/i, deny: /search|research|multi|stock|newsletter/i },
   perf: { label: "性能 / 基准", package: /perf|benchmark|profile/i, tool: /benchmark|profile/i, skill: /perf|benchmark|profile/i, terms: /性能|基准|延迟|profile/i },
 };
@@ -75,6 +82,7 @@ const SCENARIO_CAPABILITIES = {
   report: ["web", "writing", "data", "docs", "memory"],
   presentation: ["slides", "design", "writing", "web"],
   docs: ["docs", "writing", "repo-wiki", "memory"],
+  docx: ["docx", "writing", "docs"],
   legal: ["writing", "docs", "memory"],
   webpage: ["web", "design", "browser", "writing"],
   webapp: ["web", "design", "browser", "code-intel", "task", "plan-review"],
@@ -92,6 +100,7 @@ const SCENARIO_CAPABILITIES = {
   integration: ["mcp", "web"],
   chatbot: ["web", "mcp", "memory", "code-intel"],
   plugin: ["code-intel", "testing", "docs", "plan-review", "orchestration"],
+  process: ["process", "plan-review", "task", "docs"],
   maintain: ["code-intel", "testing", "simplify", "context", "plan-review"],
   localization: ["i18n", "writing", "web"],
   general: ["writing", "web", "docs", "memory", "task"],
@@ -108,6 +117,7 @@ const WORKFLOW_SKILL_PATTERNS = {
   parallel: { allow: /subagent|council|workflow|delegate|parallel|orchestrat/i },
   "review-gate": { allow: /review|audit|verify|prove|qa|test|lens|lsp|simplify|council|subagent|iterate|refine/i, deny: /multi-search|web-search|research|stock|connector|\bima\b|gongwen|convert|ppt|slide|workflow/i },
   phased: { allow: /gsd|spec|plan|phase|milestone|verify|execute/i, deny: /web-search|stock|connector|gongwen|convert/i },
+  "process-design": { allow: /workflow-refactor|sop-|spec-workflow|process|requirement|plan|knowledge|note/i, deny: /convert|gongwen|stock|connector|\bima\b|ppt|slide|web-search|research/i },
   offline: { allow: /memory|handoff|note|knowledge|scratch/i, deny: /connector|\bima\b|web|search|stock/i },
 };
 
@@ -119,8 +129,24 @@ const WORKFLOW_CAPABILITIES = {
   parallel: ["subagent", "orchestration", "task"],
   "review-gate": ["subagent", "orchestration", "code-intel", "testing", "simplify", "plan-review"],
   phased: ["gsd", "plan-review", "task", "context"],
+  "process-design": ["process", "plan-review", "task"],
   offline: ["memory"],
 };
+
+// 分配方法层：process 场景 / process-design 工作流装配时注入，
+// 目的是让分配依据“每步的输入输出与判据”，而不是插件/技能名字像不像。
+const ALLOCATION_METHOD = [
+  "拆基元：workflow-refactor —— 每步的输入、输出、判据、人工还是自动",
+  "定验收：spec-workflow-guide —— 需求边界、验收标准、谁验收",
+  "固化：sop-builder / sop-extractor —— 阶段产物、退出条件、自检清单",
+  "补缺口：skill-finder / find-skill-skillhub —— 先找现成能力，找不到再自造",
+  "分配：按基元匹配插件与技能，并标明每一项服务于哪个基元",
+];
+const PROCESS_SKILL_IDS = ["workflow-refactor", "sop-builder", "sop-extractor", "spec-workflow-guide", "skill-finder"];
+
+// 动态组合的预算与闸门：宁可少给、让模型/用户补，也不塞一堆无关工具。
+// strongIntent：场景得分到这么高才算“确定命中”；弱命中时插件自身也得沾边才进组合。
+const DYNAMIC_LIMITS = { packages: 5, skills: 5, perIntentSkills: 2, strongIntent: 2 };
 
 // 固定应用场景：先选“做什么”，再选“怎么做”。
 const SCENARIOS = [
@@ -133,14 +159,20 @@ const SCENARIOS = [
   {
     id: "report", group: "内容", title: "报告 / 调研 / 白皮书",
     when: "调研报告、方案对比、分析总结、带出处的长文",
-    keywords: ["报告", "调研", "白皮书", "分析报告", "方案对比", "研究", "report", "research", "survey", "whitepaper"],
+    keywords: ["报告", "调研", "白皮书", "分析报告", "经营分析", "年报", "季报", "方案对比", "研究", "report", "research", "survey", "whitepaper"],
     brief: "先列问题与来源标准，再收集证据、对比方案；结论必须带出处，区分事实、推断和建议。",
   },
   {
     id: "presentation", group: "内容", title: "演示 / PPT / 路演",
     when: "幻灯片、课程讲义、路演材料、汇报提纲",
-    keywords: ["ppt", "幻灯片", "演示", "路演", "讲义", "课件", "slide", "deck", "presentation"],
+    keywords: ["ppt", "幻灯片", "演示", "路演", "讲义", "课件", "发布会", "宣讲", "答辩", "汇报", "slide", "deck", "presentation"],
     brief: "先定受众和一句话结论，再排叙事顺序；每页只表达一个观点，图少而准，最后检查演示节奏。",
+  },
+  {
+    id: "docx", group: "内容", title: "公文 / 正式发文",
+    when: "公文、红头文件、发文字号、材料排版、讲话稿、请示批复，要符合国标格式",
+    keywords: ["公文", "红头文件", "发文字号", "版记", "主送机关", "讲话稿", "请示", "批复", "国标格式", "正式发文"],
+    brief: "先确认文种、发文单位与主送机关，再按 GB/T 9704 版式排版；成文后核对发文字号、落款日期与版记。",
   },
   {
     id: "docs", group: "内容", title: "文档 / 教程 / 知识库",
@@ -209,6 +241,12 @@ const SCENARIOS = [
     brief: "先确认扩展点（工具/命令/技能/钩子）和触发方式，再做最小可加载版本；错误要可诊断，最后在真实会话里验证。",
   },
   {
+    id: "process", group: "流程", title: "流程 / SOP / 需求→流程映射",
+    when: "把零散需求或口述经验变成可复用流程、SOP、作业指导，或给一条流程重新分配工具与技能",
+    keywords: ["流程", "工作流", "sop", "需求分析", "需求拆解", "需求梳理", "标准化", "作业指导", "交接", "规范", "编排", "分配", "workflow", "process", "requirement"],
+    brief: "先把需求拆到基元（每步的输入/输出/判据），再定验收标准，然后写成带退出条件的 SOP；最后才按基元挑插件和技能。",
+  },
+  {
     id: "maintain", group: "维护", title: "现有项目维护 / 修 bug",
     when: "修 bug、重构、补测试、性能优化、依赖升级、代码评审",
     keywords: ["bug", "报错", "修复", "重构", "测试", "评审", "性能", "依赖", "升级", "迁移", "维护", "refactor", "fix", "test", "review", "upgrade"],
@@ -241,7 +279,7 @@ const SCENARIOS = [
   {
     id: "image", group: "视觉", title: "海报 / 封面 / 配图",
     when: "海报、封面、插图、社媒配图、图片生成提示词",
-    keywords: ["海报", "封面", "配图", "插图", "图片", "绘图", "prompt", "poster", "cover", "illustration", "image"],
+    keywords: ["海报", "封面", "配图", "插图", "图片", "绘图", "出图", "渲染", "建模", "模型", "3d", "prompt", "poster", "cover", "illustration", "image"],
     brief: "先定尺寸、用途和视觉关键词，再写画面描述或提示词；主体、文字区和留白要清楚，最后检查版权与可读性。",
   },
   {
@@ -253,7 +291,7 @@ const SCENARIOS = [
   {
     id: "resume", group: "内容", title: "简历 / 求职 / 作品集",
     when: "简历、求职信、面试介绍、作品集与个人品牌",
-    keywords: ["简历", "求职", "面试", "作品集", "自我介绍", "cv", "resume", "portfolio", "interview"],
+    keywords: ["简历", "求职", "面试", "岗位", "招聘", "投递", "作品集", "自我介绍", "求职信", "cv", "resume", "portfolio", "interview"],
     brief: "先定目标岗位和差异化证据，再用结果与数字写经历；一页优先，最后针对 JD 调整关键词。",
   },
   {
@@ -289,13 +327,13 @@ const SCENARIOS = [
   {
     id: "email", group: "内容", title: "邮件 / 通知 / 营销",
     when: "邮件、通知、邀请函、营销邮件与 newsletter",
-    keywords: ["邮件", "email", "newsletter", "通知", "邀请函", "营销邮件", "订阅", "mail"],
+    keywords: ["邮件", "email", "newsletter", "通知", "邀请函", "营销邮件", "续费", "客户信", "订阅", "mail"],
     brief: "先定收件人、目的和行动按钮，再写主题与正文；一封信只做一件事，最后检查链接、称呼与退订。",
   },
   {
     id: "music", group: "内容", title: "音乐 / 歌词 / 配乐",
     when: "歌词、歌曲结构、配乐方向、音乐提示词",
-    keywords: ["音乐", "歌词", "歌曲", "编曲", "配乐", "旋律", "music", "lyrics", "song", "soundtrack"],
+    keywords: ["音乐", "歌词", "歌曲", "编曲", "配乐", "旋律", "主题曲", "作曲", "填词", "music", "lyrics", "song", "soundtrack"],
     brief: "先定情绪、曲风和段落结构，再写歌词或提示词；主歌/副歌要有对比，最后检查押韵、时长与版权。",
   },
   {
@@ -313,7 +351,8 @@ const SCENARIOS = [
   {
     id: "general", group: "通用", title: "其他 / 通用任务",
     when: "不确定归哪类、跨多个产出、先讨论方案或要第二意见",
-    keywords: ["通用", "其他", "不确定", "随便", "看看", "方案", "计划", "第二意见", "顾问", "怎么", "如何", "建议", "general"],
+    keywords: ["通用任务", "其他任务", "不确定", "第二意见", "顾问", "general"],
+    fallback: true,
     brief: "先澄清目标、交付物和边界，再决定是否需要拆分；不确定时先给一个最小可验证方案，不硬套模板。",
   },
 ];
@@ -391,6 +430,16 @@ const WORKFLOWS = [
     doneWhen: "所有阶段验收通过，整体目标可演示。",
   },
   {
+    id: "process-design", title: "流程建模 / SOP 固化",
+    picker: "先把流程拆成基元，再固化成带退出条件的 SOP",
+    when: "要把零散需求或口述经验改成可复用流程，或按流程重新分配工具与技能。",
+    keywords: ["流程", "工作流", "sop", "标准化", "固化", "拆解", "需求梳理", "workflow", "process"],
+    brief: "先拆基元（每步的输入、输出、判据），再定验收标准，再写成带阶段产物和退出条件的 SOP；最后才按基元分配插件与技能。",
+    steps: ["拆基元：每步的输入、输出、判据、人工/自动", "定验收：需求边界、验收标准、谁验收", "固化 SOP：阶段目标、关键步骤、阶段产物、退出条件、自检清单", "补缺口：按基元找现成能力，找不到再自造", "分配工具：按基元匹配插件与技能，并标明每项对应的基元"],
+    checkpoint: "基元和验收标准没定清楚前，不开始挑插件和技能。",
+    doneWhen: "每个基元都有承担者（人或工具）和判据，SOP 能照着走通一遍。",
+  },
+  {
     id: "offline", title: "隐私 / 离线",
     picker: "只用本地工具，不联网",
     when: "敏感内容、不能外发，或需要最小联网面。",
@@ -404,6 +453,7 @@ const WORKFLOWS = [
 
 // 自动归类信号：只写能力词，不写具体插件名。
 const SCENARIO_HINTS = {
+  docx: ["gongwen", "公文", "docx", "红头", "发文字号"],
   article: ["writing", "copy", "blog", "article", "文案", "文章"],
   email: ["email", "newsletter", "mail", "邮件", "通知", "邀请函"],
   social: ["social", "xiaohongshu", "twitter", "thread", "种草", "小红书", "推文", "社交"],
@@ -433,6 +483,7 @@ const SCENARIO_HINTS = {
   integration: ["mcp", "integration", "connector", "oauth", "webhook", "集成"],
   chatbot: ["chatbot", "assistant", "rag", "客服", "聊天机器人", "问答"],
   plugin: ["plugin", "extension", "hook", "skill", "command", "插件", "扩展"],
+  process: ["workflow", "sop", "process", "requirement", "spec", "流程", "工作流", "需求", "标准化", "分配"],
   maintain: ["bug", "refactor", "test", "review", "performance", "upgrade", "维护", "重构", "测试"],
   localization: ["i18n", "locale", "translation", "language", "本地化", "翻译"],
   general: ["general", "other", "misc", "通用", "其他"],
@@ -456,16 +507,20 @@ function writeJson(p, data) {
 function agentDir() {
   return process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 }
-function storePath() { return path.join(agentDir(), STORE_FILE); }
+function storePath() {
+  // 测试隔离接口：设置 PI_FUNCTION_STORE 可把目录指到临时文件，
+  // 测试就永远不会碰到真实 store（真实会话有 watcher 在写）。
+  return process.env.PI_FUNCTION_STORE || path.join(agentDir(), STORE_FILE);
+}
 
 // ---------------------------------------------------------------------------
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 5;
+const PROFILE_VERSION = 6;
 let ACTIVE_PROFILE = null;
 
-function profilePath() { return path.join(agentDir(), PROFILE_FILE); }
+function profilePath() { return process.env.PI_FUNCTION_PROFILE || path.join(agentDir(), PROFILE_FILE); }
 
 function hashText(s) {
   let h = 2166136261;
@@ -503,6 +558,9 @@ function buildProfile(store) {
     for (const [roleId, def] of Object.entries(CAPABILITIES)) {
       if (isGsdSkill && roleId !== "gsd") continue;
       if (isSkill && roleId === "writing" && /^(ppt|slide|deck|mermaid|glimpse)/i.test(name)) continue;
+      // 流程建模类技能归 process，不算“多代理编排 / 代码重构”。
+      if (isSkill && (roleId === "orchestration" || roleId === "code-intel")
+        && /^(workflow-refactor|sop-(builder|extractor)|spec-workflow|skill-finder)/i.test(name)) continue;
       if (!isSkill && def.requiresEnv && def.envPackage && def.envPackage.test(name) && !process.env[def.requiresEnv]) continue;
       const strongName = isSkill ? def.skill?.test(norm(name)) : def.package?.test(norm(name));
       if (def.deny && !strongName && def.deny.test(norm(`${name} ${text}`))) continue;
@@ -529,6 +587,9 @@ function buildProfile(store) {
       .sort((a, b) => b.score - a.score || a.roleId.localeCompare(b.roleId))
       .slice(0, isSkill ? 2 : 3);
     for (const item of selected) {
+      // 基础设施角色（context/safety/pretty）只用于打标记，不进入能力名单：
+      // 否则它们会占满角色的 12 个名额，把真正可分配的技能挤出去。
+      if (CAPABILITIES[item.roleId]?.infra) continue;
       const role = roles[item.roleId];
       const rec = { id: name, score: item.score, reasons: item.reasons };
       if (isSkill) role.skills.push(rec); else role.packages.push(rec);
@@ -542,7 +603,8 @@ function buildProfile(store) {
       roleScores: Object.fromEntries(selected.map((x) => [x.roleId, x.score])),
       assignments: selected,
       network: Object.values(roles).some((r) => r.network && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
-      infra: Object.values(roles).some((r) => r.infra && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
+      // infra 不再靠角色名单判断（它们已不进名单），直接用归类结果
+      infra: selected.some((x) => CAPABILITIES[x.roleId]?.infra),
     };
   }
 
@@ -684,15 +746,39 @@ function scoreScenarios(text, scenarios = SCENARIOS) {
         if (!k) continue;
         if (t.includes(k)) { score += 1 + Math.min(k.length, 8) / 10; hits.push(kw); }
       }
-      return { scenario: s, score, hits };
+      // 同分时用命中词总长度决胜：「经营分析报告」比「报告」更具体
+      const weight = hits.reduce((n, hit2) => n + norm(hit2).length, 0);
+      return { scenario: s, score, hits, weight };
     })
     .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || b.weight - a.weight);
 }
 
 const NEED_STOP = new Set([
   "一个", "这个", "那个", "一下", "一些", "可以", "需要", "进行", "使用", "实现", "功能", "问题", "项目", "代码", "文件", "内容", "工作", "任务", "系统", "支持", "相关", "主要", "直接", "重新", "开始", "完成", "处理", "提供", "查看", "检查", "如何", "怎么", "什么", "为什么", "帮我", "然后", "最后", "以及", "并且", "或者", "如果", "已经", "没有", "现在", "我的", "我们", "你们", "他们", "一下", "一点", "有些", "这种", "那种",
 ]);
+
+// 描述侧要忽略的词：几乎每个插件/技能描述里都写得有，命中它们证明不了相关性。
+const GENERIC_TERMS = new Set([
+  "插件", "工具", "技能", "扩展", "命令", "工作流", "流程", "文档", "格式", "功能", "专业", "标准",
+  "自动", "生成", "帮助", "支持", "可以", "需要", "使用", "进行", "完成", "处理", "提供", "包括",
+  "各种", "多个", "不同", "部分", "全部", "用户", "内容", "设计", "分析", "优化", "管理", "技术",
+  "方法", "能力", "场景", "基础", "简单", "快速",
+  "skill", "skills", "tool", "tools", "plugin", "plugins", "workflow", "file", "files", "format",
+  "document", "docs", "data", "code", "test", "tests", "agent", "agents", "api", "cli", "app", "web",
+  "note", "notes", "image", "video", "text", "the", "and", "for",
+]);
+
+function termScoreDistinct(terms, text) {
+  const t = norm(text);
+  // 只保留最长匹配：“当用”这类 3 字切碎片段被“当用户”包含时不计分，
+  // 否则任何描述里的套话都能被对话噪声蹭中。
+  const matched = uniq(terms.filter((term) => term && !GENERIC_TERMS.has(term) && t.includes(term)))
+    .filter((term) => !terms.some((other) => other && other !== term && other.length > term.length && other.includes(term) && t.includes(other)));
+  let score = 0;
+  for (const term of matched) score += 1 + Math.min(term.length, 8) / 10;
+  return { score: Number(score.toFixed(2)), hits: matched.slice(0, 12) };
+}
 
 function needTerms(text) {
   const s = norm(text);
@@ -704,7 +790,10 @@ function needTerms(text) {
       for (let i = 0; i + n <= seg.length; i++) out.push(seg.slice(i, i + n));
     }
   }
-  return uniq(out.filter((t) => t.length >= 2 && !NEED_STOP.has(t)));
+  // 虚词开头的 n-gram（做个/一份/这个/我们…）是纯噪声：它们能匹配上任何描述里的套话。
+  const FUNC_HEAD = /^[的了个份张页次一这那我们你他们做看写说要会能有是在和与就都也还又很太更最把被给对从向到为以]/;
+  const FUNC_TAIL = /[的了个们吗呢吧啊哦嘛]$/;
+  return uniq(out.filter((t) => t.length >= 2 && !NEED_STOP.has(t) && !FUNC_HEAD.test(t) && !FUNC_TAIL.test(t)));
 }
 
 function termScore(terms, text) {
@@ -725,9 +814,29 @@ function analyzeNeed(text, store = { known: {} }) {
   const raw = String(text || "").trim();
   const terms = needTerms(raw);
   const scored = scoreScenarios(raw);
-  const intents = scored.filter((r) => r.score > 0).slice(0, 4);
+  const intents = (() => {
+    // 兜底场景（general）只在没有一个具体场景命中时才充当意图，
+    // 否则一句“帮我看看”就会把 web/memory/task 整套能力拖进组合。
+    const specific = scored.filter((r) => r.score > 0 && !r.scenario.fallback);
+    return (specific.length ? specific : scored.filter((r) => r.score > 0)).slice(0, 4);
+  })();
   const packages = new Map();
   const skills = new Map();
+  // 本次需求涉及的能力角色：不在这些角色里的插件/技能一律不进入动态组合。
+  // 这是“只用相关工具”的主闸门，描述里碰巧含个“工作流”“文件”不再能混进来。
+  const topIntent = intents[0];
+  const roleIntents = topIntent
+    ? intents.filter((r, i) => i === 0 || r.score >= topIntent.score * 0.8)
+    : [];
+  const wantedRoles = new Set(roleIntents.flatMap((r) => SCENARIO_CAPABILITIES[r.scenario.id] || []));
+  const inWantedRole = (info) => {
+    if (!wantedRoles.size) return true;
+    // 没归类（roles 为空）或根本不在画像里的条目不受角色闸门限制，
+    // 否则像公文排版这种“能力独一无二、归不进任何角色”的技能会被永久漏掉。
+    const roles = info?.roles || [];
+    if (!roles.length) return true;
+    return roles.some((role) => wantedRoles.has(role));
+  };
   const privateNeed = /隐私|离线|敏感|保密|内网|不能外发|offline|privacy/.test(norm(raw));
   const useMcp = /\bmcp\b|外部系统|外部服务|外部 api|连接器|接入.*(?:系统|服务)/.test(norm(raw));
   const addPkg = (pkg, score, reason) => {
@@ -749,31 +858,62 @@ function analyzeNeed(text, store = { known: {} }) {
 
   for (const r of intents) {
     const signal = r.hits.slice(0, 4).join(" / ") || r.scenario.id;
-    for (const pkg of r.scenario.plugins) addPkg(pkg, r.score + 1, `任务信号：${r.scenario.title}（${signal}）`);
-    const curated = scenarioSkillIds(store, r.scenario.id).slice(0, 4);
+    const strong = r.score >= DYNAMIC_LIMITS.strongIntent;
+    for (const pkg of r.scenario.plugins) {
+      // 弱命中：插件自身也得命中需求词，否则不进组合。
+      const info = ACTIVE_PROFILE?.itemInfo?.[pkg];
+      const own = termScoreDistinct(terms, `${pkg} ${info?.description || ""}`);
+      if (!strong && own.score === 0) continue;
+      addPkg(pkg, r.score + 1 + own.score, `任务信号：${r.scenario.title}（${signal}）`);
+    }
+    const curated = scenarioSkillIds(store, r.scenario.id).slice(0, DYNAMIC_LIMITS.perIntentSkills);
     curated.forEach((skill, idx) => {
       const meta = store.known?.[`skill:${skill}`] || {};
-      const hit = termScore(terms, `${skill} ${meta.description || ""}`);
+      const hit = termScoreDistinct(terms, `${skill} ${meta.description || ""}`);
+      // 不再无条件兜底：没命中就只保留“确定命中场景”的首个常用技能。
+      if (hit.score === 0 && !(strong && idx === 0)) return;
       const reason = hit.score > 0
         ? `任务信号：${r.scenario.title}（${hit.hits.slice(0, 3).join(" / ")}）`
-        : `任务候选：${r.scenario.title} 的常用技能`;
-      addSkill(skill, hit.score > 0 ? r.score + hit.score : Math.max(0.2, r.score * 0.4 - idx * 0.03), reason);
+        : `任务候选：${r.scenario.title} 的首选技能`;
+      addSkill(skill, hit.score > 0 ? r.score + hit.score : r.score * 0.5, reason);
     });
   }
 
   for (const [pkg, info] of Object.entries(ACTIVE_PROFILE?.itemInfo || {})) {
     if (info?.kind !== "plugin") continue;
     if (info.infra) continue;
+    if (!inWantedRole(info)) continue;
     const roleText = (info.roles || []).map((r) => CAPABILITIES[r]?.label || r).join(" ");
-    const hit = termScore(terms, `${pkg} ${info.description || ""} ${roleText}`);
+    const hit = termScoreDistinct(terms, `${pkg} ${info.description || ""} ${roleText}`);
     if (hit.score >= 1.5) addPkg(pkg, hit.score, `能力描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
   }
 
   for (const [id, meta] of Object.entries(store.known || {})) {
     if (!id.startsWith("skill:") || meta.missing) continue;
     const skill = id.slice(6);
-    const hit = termScore(terms, `${skill} ${meta.description || ""}`);
-    if (hit.score >= 1.5) addSkill(skill, hit.score, `技能描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
+    if (!inWantedRole(ACTIVE_PROFILE?.itemInfo?.[skill])) continue;
+    const hit = termScoreDistinct(terms, `${skill} ${meta.description || ""}`);
+    // 未归类条目没有角色背书，命中门槛提高一档，否则任何描述都能蹭进来
+    const bar = (ACTIVE_PROFILE?.itemInfo?.[skill]?.roles || []).length ? 1.5 : 2.4;
+    if (hit.score >= bar) addSkill(skill, hit.score, `技能描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
+  }
+
+  // 覆盖兜底：首要场景的必需能力，即使描述没命中也要补一个成员进来。
+  // 不补的话，漏用会恰好发生在最该覆盖的那个场景上（例：报告场景缺写作技能）。
+  const topScenario = intents[0]?.scenario;
+  if (topScenario) {
+    for (const role of contractFor(topScenario).required) {
+      const members = [
+        ...(ACTIVE_PROFILE?.roles?.[role]?.skills || []).map((x) => ({ id: x.id, kind: "skill" })),
+        ...(ACTIVE_PROFILE?.roles?.[role]?.packages || []).map((x) => ({ id: x.id, kind: "plugin" })),
+      ];
+      if (!members.length) continue;
+      if (members.some((x) => packages.has(x.id) || skills.has(x.id))) continue;
+      const best = members[0];
+      const why = `必需能力：${CAPABILITIES[role]?.label || role}`;
+      if (best.kind === "skill") addSkill(best.id, 1, why);
+      else addPkg(best.id, 1, why);
+    }
   }
 
   if (!intents.length && !packages.size && !skills.size) {
@@ -783,8 +923,8 @@ function analyzeNeed(text, store = { known: {} }) {
     if (raw.length > 12 && firstPkg("task")) addPkg(firstPkg("task"), 0.4, "多步需求跟踪");
   }
 
-  const pkgList = [...packages.values()].sort((a, b) => b.score - a.score).slice(0, 8);
-  const skillList = [...skills.values()].sort((a, b) => b.score - a.score).slice(0, 8);
+  const pkgList = [...packages.values()].sort((a, b) => b.score - a.score).slice(0, DYNAMIC_LIMITS.packages);
+  const skillList = [...skills.values()].sort((a, b) => b.score - a.score).slice(0, DYNAMIC_LIMITS.skills);
   const confidence = intents.length ? (intents[0].score >= 2.5 ? "high" : intents[0].score >= 1 ? "medium" : "low") : "low";
   return {
     need: raw,
@@ -1060,13 +1200,11 @@ function reconcile(store, items) {
     };
     added.push({ id, label: item.label, scenario, reason: store.known[id].reason });
   }
-  for (const [id, meta] of Object.entries(store.known)) {
-    if (!items.has(id)) meta.missing = true;
-  }
+  // 不在扫描时把条目标成 missing：一次不完整的枚举（非交互/测试环境）会把整个目录
+  // 误判成“已卸载”。可用性由 auditPackages 在装配时实时判断，不靠这张持久表。
   if (changed.length) store.lastReclassified = changed.slice(0, 50);
   return added;
 }
-
 function autoAssignedIds(store, scenarioId) {
   const out = [];
   for (const [id, meta] of Object.entries(store.known)) {
@@ -1118,9 +1256,151 @@ function comboPackages(scenario, store, workflow = null) {
 }
 
 function comboSkillIds(scenario, store, workflow = null) {
-  const base = scenario.dynamic ? (scenario.skillIds || []) : scenarioSkillIds(store, scenario.id);
+  const base = scenario.dynamic
+    ? (scenario.skillIds || [])
+    : scenario.comboIds
+      ? uniq([...(scenario.skillIds || []), ...scenario.comboIds.flatMap((id) => scenarioSkillIds(store, id))])
+      : scenarioSkillIds(store, scenario.id);
   if (!workflow || scenario.noWorkflow) return uniq(base);
   return uniq([...base, ...(workflow.skills || [])]);
+}
+
+// 多选：场景/工作流可以用 + 组合（/function debug+process）。合并时只做并集与去重，不重新打分。
+function comboScenarios(scenarios) {
+  const list = scenarios.filter(Boolean);
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  return {
+    id: list.map((s) => s.id).join("+"),
+    comboIds: list.map((s) => s.id),
+    group: "组合",
+    title: list.map((s) => s.title).join(" + "),
+    when: list.map((s) => s.when).filter(Boolean).join("；"),
+    keywords: [],
+    brief: list.map((s) => `${s.title}：${s.brief}`).join("\n"),
+    plugins: uniq(list.flatMap((s) => s.plugins || [])),
+    skillIds: uniq(list.flatMap((s) => s.skillIds || [])),
+    manual: uniq(list.flatMap((s) => s.manual || [])),
+  };
+}
+
+function comboWorkflows(workflows) {
+  const list = workflows.filter(Boolean);
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  return {
+    id: list.map((w) => w.id).join("+"),
+    title: list.map((w) => w.title).join(" + "),
+    when: list.map((w) => w.when).filter(Boolean).join("；"),
+    brief: list.map((w) => w.brief).filter(Boolean).join(" "),
+    keywords: [],
+    steps: uniq(list.flatMap((w) => w.steps || [])),
+    checkpoint: uniq(list.map((w) => w.checkpoint).filter(Boolean)).join("；"),
+    doneWhen: uniq(list.map((w) => w.doneWhen).filter(Boolean)).join("；"),
+    manual: uniq(list.flatMap((w) => w.manual || [])),
+  };
+}
+
+// 场景能力契约：required 缺一项就是“漏用”，装配前必须明确报出来；
+// forbidden 出现即算噪声（回归测试会断言）。取值可以是能力角色 id，
+// 也可以是具体条目 id（skill:xxx / npm:xxx）。
+const SCENARIO_CONTRACTS = {
+  article: { required: ["writing"], optional: ["web", "memory"], forbidden: ["code-intel"] },
+  report: { required: ["web", "writing"], optional: ["data", "docs", "memory"], forbidden: [] },
+  presentation: { required: ["slides"], optional: ["design", "writing", "web"], forbidden: [] },
+  docs: { required: ["docs"], optional: ["writing", "repo-wiki", "memory"], forbidden: ["slides"] },
+  docx: { required: ["docx"], optional: ["writing", "docs"], forbidden: ["code-intel", "slides"] },
+  webpage: { required: ["design"], optional: ["browser", "writing", "web"], forbidden: ["stock", "script"] },
+  webapp: { required: ["design", "code-intel"], optional: ["browser", "task", "plan-review", "web"], forbidden: [] },
+  mobile: { required: ["design", "code-intel"], optional: ["browser", "task"], forbidden: [] },
+  game: { required: ["code-intel"], optional: ["design", "browser", "testing"], forbidden: [] },
+  design: { required: ["design"], optional: ["slides", "browser", "writing"], forbidden: ["code-intel"] },
+  data: { required: ["data"], optional: ["context", "web", "docs"], forbidden: [] },
+  api: { required: ["code-intel"], optional: ["testing", "docs", "plan-review"], forbidden: [] },
+  automation: { required: ["automation"], optional: ["web", "browser", "code-intel"], forbidden: [] },
+  integration: { required: ["mcp"], optional: ["web"], forbidden: [] },
+  plugin: { required: ["code-intel"], optional: ["testing", "docs", "plan-review", "orchestration"], forbidden: [] },
+  process: { required: ["process"], optional: ["plan-review", "task", "docs"], forbidden: [] },
+  maintain: { required: ["code-intel"], optional: ["testing", "simplify", "context", "plan-review"], forbidden: [] },
+  localization: { required: ["i18n"], optional: ["writing", "web"], forbidden: [] },
+  social: { required: ["writing"], optional: ["design", "web", "memory"], forbidden: ["code-intel"] },
+  novel: { required: ["writing"], optional: ["memory"], forbidden: ["code-intel"] },
+  video: { required: ["writing"], optional: ["slides", "memory"], forbidden: ["code-intel"] },
+  image: { required: ["design"], optional: ["vision"], forbidden: ["code-intel"] },
+  course: { required: ["slides"], optional: ["writing", "docs", "memory"], forbidden: [] },
+  resume: { required: ["writing"], optional: ["docs", "design"], forbidden: [] },
+  event: { required: [], optional: ["writing", "web", "memory", "task"], forbidden: ["code-intel"] },
+  commerce: { required: ["design"], optional: ["web", "data", "browser"], forbidden: ["code-intel"] },
+  dashboard: { required: ["data"], optional: ["design", "web", "code-intel"], forbidden: [] },
+  tool: { required: ["code-intel"], optional: ["testing", "automation"], forbidden: [] },
+  chatbot: { required: ["code-intel"], optional: ["web", "mcp", "memory"], forbidden: [] },
+  email: { required: ["writing"], optional: ["task", "memory"], forbidden: ["code-intel"] },
+  music: { required: ["writing"], optional: ["memory"], forbidden: ["code-intel"] },
+  spreadsheet: { required: ["data"], optional: ["automation", "code-intel"], forbidden: [] },
+  legal: { required: ["writing"], optional: ["docs", "memory"], forbidden: ["code-intel"] },
+  general: { required: [], optional: ["writing", "web", "docs", "memory", "task"], forbidden: [] },
+};
+
+function contractFor(scenario) {
+  const ids = scenario?.comboIds?.length ? scenario.comboIds : [scenario?.id];
+  const list = ids.map((id) => SCENARIO_CONTRACTS[id]).filter(Boolean);
+  if (!list.length) return { required: [], optional: [], forbidden: [] };
+  if (list.length === 1) return list[0];
+  const first = list[0];
+  return {
+    required: uniq(list.flatMap((c) => c.required)),
+    optional: uniq(list.flatMap((c) => c.optional)),
+    forbidden: first.forbidden.filter((role) => list.every((c) => c.forbidden.includes(role))),
+  };
+}
+
+/**
+ * 覆盖审计：区分“根本没装”（not-installed）与“装了但没进本次组合”（not-selected），
+ * 并检查 forbidden 能力是否误入。这是“不漏用”唯一可验收的口径。
+ */
+function auditCoverage(scenario, store, workflow = null) {
+  const contract = contractFor(scenario);
+  const strip = (id) => String(id).replace(/^npm:/, "").replace(/^skill:/, "");
+  const included = new Set([
+    ...comboPackages(scenario, store, workflow).map(strip),
+    ...comboSkillIds(scenario, store, workflow).map(strip),
+  ]);
+  const roleMembers = (role) => uniq([
+    ...(ACTIVE_PROFILE?.roles?.[role]?.packages || []).map((x) => strip(x.id)),
+    ...(ACTIVE_PROFILE?.roles?.[role]?.skills || []).map((x) => strip(x.id)),
+  ]);
+  const label = (role) => CAPABILITIES[role]?.label || role;
+  const isId = (need) => need.includes(":");
+  const membersOf = (need) => (isId(need) ? [strip(need)] : roleMembers(need));
+  const missing = [];
+  const present = [];
+  for (const need of contract.required) {
+    const installed = membersOf(need).filter(Boolean);
+    if (installed.some((id) => included.has(id))) {
+      present.push(need);
+      continue;
+    }
+    if (!installed.length) {
+      missing.push({ need, kind: "not-installed", detail: `缺「${label(need)}」：当前没有可用条目，装配也补不出来` });
+    } else {
+      missing.push({ need, kind: "not-selected", detail: `有「${label(need)}」（${installed.slice(0, 2).join("、")}）但没进本次组合` });
+    }
+  }
+  const forbiddenHit = contract.forbidden.filter((role) => membersOf(role).some((id) => included.has(id)));
+  return { ok: missing.length === 0 && forbiddenHit.length === 0, required: contract.required, present, missing, forbiddenHit };
+}
+
+// 装配后要问清的事：默认三问（交付物 / 验收 / 边界），流程类场景再加一问。
+function followupQuestions(scenario, workflow = null) {
+  const ids = [scenario?.id || "", ...(scenario?.comboIds || [])].join("+");
+  const qs = [
+    "交付物：这次要交的是什么形态——改动、文件、文档，还是一个结论？",
+    `验收：什么算做完${workflow?.doneWhen ? `（按「${workflow.title}」的完成标准：${workflow.doneWhen}）` : ""}？谁来验收？`,
+    "边界：这次明确不做什么，避免范围扩大？",
+  ];
+  if (/process/.test(ids)) qs.push("流程：这条流程现在是谁在跑，每步大概花多久、产出什么？");
+  if (/plugin|webapp|api|maintain/.test(ids)) qs.push("改动面：只改扩展/插件本身，还是要一并改设置、提示词或文档？");
+  return qs.slice(0, 4);
 }
 
 const WORKFLOW_ALIASES = { prototype: "outline", iterate: "review-gate" };
@@ -1138,6 +1418,7 @@ function recommendWorkflow(scenario) {
   if (!scenario) return "direct";
   if (scenario.id === "maintain") return "debug";
   if (scenario.id === "report") return "research";
+  if (scenario.id === "process") return "process-design";
   if (["webpage", "game", "design", "mobile", "image", "dashboard", "commerce"].includes(scenario.id)) return "outline";
   if (["webapp", "api", "plugin", "article", "presentation", "docs", "automation", "integration", "localization", "social", "novel", "video", "course", "resume", "event", "chatbot", "email", "music", "legal", "tool"].includes(scenario.id)) return "outline";
   return "direct";
@@ -1229,6 +1510,15 @@ function buildProposal(pi, scenario, store, workflow = null) {
     if (workflow.checkpoint) lines.push(`- 检查点：${workflow.checkpoint}`);
     if (workflow.doneWhen) lines.push(`- 完成标准：${workflow.doneWhen}`);
   }
+  if (scenario.id === "process" || workflow?.id === "process-design") {
+    lines.push("");
+    lines.push("**分配方法（先拆解再分配）**");
+    ALLOCATION_METHOD.forEach((step, i) => lines.push(`${i + 1}. ${step}`));
+    lines.push("");
+  }
+  lines.push("**装配后会先问你**");
+  followupQuestions(scenario, workflow).forEach((q, i) => lines.push(`${i + 1}. ${q}`));
+  lines.push("");
   if (scenario.dynamic) {
     lines.push(`**需求**：${scenario.when}`);
     lines.push("**需求分析**");
@@ -1244,6 +1534,14 @@ function buildProposal(pi, scenario, store, workflow = null) {
     lines.push(`**任务**：${scenario.when}`);
   }
   lines.push("");
+  const coverage = auditCoverage(scenario, store, workflow);
+  if (coverage.required.length || coverage.forbiddenHit.length) {
+    lines.push("**覆盖检查（漏用检查）**");
+    if (!coverage.missing.length) lines.push(`- 必需能力已覆盖：${coverage.required.join("、") || "（无硬要求）"}`);
+    for (const m of coverage.missing) lines.push(`- ⚠️ ${m.detail}`);
+    if (coverage.forbiddenHit.length) lines.push(`- ⚠️ 不该出现的：${coverage.forbiddenHit.join("、")}`);
+    lines.push("");
+  }
   lines.push("**将启用的插件与功能**");
   const pkgs = comboPackages(scenario, store, workflow);
   if (!pkgs.length) lines.push("- 不启用额外插件（只保留核心工具）");
@@ -1322,7 +1620,11 @@ function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
       "warning",
     );
   }
-  return { next, enabled: [...wanted].filter((n) => !active.includes(n)), disabled, bad };
+  const coverage = auditCoverage(scenario, store, workflow);
+  if (coverage.missing.length) {
+    ctx?.ui?.notify?.("漏用检查：\n" + coverage.missing.map((m) => `- ${m.detail}`).join("\n"), "warning");
+  }
+  return { next, enabled: [...wanted].filter((n) => !active.includes(n)), disabled, bad, coverage };
 }
 
 // ---------------------------------------------------------------------------
@@ -1430,6 +1732,12 @@ export default function functionMenu(pi) {
 
   const scan = (notify) => {
     const items = discoverItems(pi);
+    // 发现结果明显少于已知目录：几乎总是枚举不完整（非交互会话 / 测试桩），
+    // 而不是“全都卸载了”。此时不碰目录、不写盘，避免把整表删成空。
+    const knownCount = Object.keys(store.known || {}).length;
+    if (knownCount && items.size < Math.max(5, knownCount * 0.3)) {
+      return [];
+    }
     const added = reconcile(store, items);
     saveStore(store);
     ensureProfile(store, true);
@@ -1491,6 +1799,23 @@ export default function functionMenu(pi) {
     });
   };
 
+  // 多选：一次一个地选，选完问要不要继续叠加；上限 3，避免把整个工具集再拉回来。
+  const pickMany = async (ctx, pickOne, limit = 3) => {
+    const picked = [];
+    for (let i = 0; i < limit; i += 1) {
+      const one = await pickOne();
+      if (!one) break;
+      picked.push(one);
+      if (picked.length >= limit) break;
+      const more = await ctx.ui.confirm(
+        `已选 ${picked.length} 个：${picked.map((x) => x.title || x.scenario?.title || x.id).join(" + ")}`,
+        "要再叠加一个吗？叠加会同时启用两边的能力（上限 3）。",
+      );
+      if (!more) break;
+    }
+    return picked;
+  };
+
   const pickWorkflow = async (ctx, recommendedId = null) => {
     const sel = await ctx.ui.select("第 1 步：先选工作流（怎么执行）", workflowOptions(recommendedId));
     if (!sel) return null;
@@ -1519,10 +1844,36 @@ export default function functionMenu(pi) {
     announceProposal(scenario, reason, workflow);
     const pkgs = comboPackages(scenario, store, workflow);
     const list = pkgs.length ? pkgs.join("、") : "无额外插件";
+    const cov = auditCoverage(scenario, store, workflow);
+    const coverageLines = [
+      ...cov.missing.map((m) => `⚠️ ${m.detail}`),
+      ...(cov.forbiddenHit.length ? [`⚠️ 不该出现的：${cov.forbiddenHit.join("、")}`] : []),
+    ];
     const title = workflow ? `${workflow.title} × ${scenario.title}` : scenario.title;
     return ctx.ui.confirm(
       `装配「${title}」？`,
-      `工作流：${workflow ? workflow.title : "直接执行"}\n任务：${scenario.title}\n将启用：${list}\n\n确认后只启用工具并注入流程提示，不会自动执行任何需求。`,
+      `工作流：${workflow ? workflow.title : "直接执行"}\n任务：${scenario.title}\n将启用：${list}\n${coverageLines.join("\n")}${coverageLines.length ? "\n" : ""}确认后只启用工具并注入流程提示，不会自动执行任何需求。`,
+    );
+  };
+
+  const runAssemble = async (ctx) => {
+    pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
+    const workflows = await pickMany(ctx, () => pickWorkflow(ctx));
+    if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+    const workflow = comboWorkflows(workflows);
+    const tasks = await pickMany(ctx, () => pickTask(ctx));
+    if (!tasks.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+    const scenario = comboScenarios(tasks.map((t) => t.scenario));
+    const reason = tasks.map((t) => t.reason).join("；") || "菜单选择";
+    const ok = await confirmScenario(ctx, scenario, reason, workflow);
+    if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+    const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
+    activeScenario = scenario;
+    activeWorkflow = workflow;
+    pi.appendEntry("function-scenario", { id: scenario.id, workflow: workflow?.id || null, at: nowIso(), tools: res.next });
+    ctx.ui.notify(
+      `已装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`,
+      "info",
     );
   };
 
@@ -1570,18 +1921,7 @@ export default function functionMenu(pi) {
         if (!picked) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
 
         if (picked === "assemble") {
-          pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
-          const workflow = await pickWorkflow(ctx);
-          if (!workflow) return;
-          const choice = await pickTask(ctx);
-          if (!choice) return;
-          const ok = await confirmScenario(ctx, choice.scenario, "菜单选择", workflow);
-          if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-          const res = applyScenario(pi, ctx, choice.scenario, store, baseline, workflow);
-          activeScenario = choice.scenario;
-          activeWorkflow = workflow;
-          pi.appendEntry("function-scenario", { id: choice.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
-          ctx.ui.notify(`已装配「${workflow.title} × ${choice.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+          await runAssemble(ctx);
           return;
         }
 
@@ -1603,26 +1943,16 @@ export default function functionMenu(pi) {
       if (args === "assemble") {
         scan(false);
         if (!requireUI(ctx)) return;
-        pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
-        const workflow = await pickWorkflow(ctx);
-        if (!workflow) return;
-        const choice = await pickTask(ctx);
-        if (!choice) return;
-        const ok = await confirmScenario(ctx, choice.scenario, "菜单选择", workflow);
-        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-        const res = applyScenario(pi, ctx, choice.scenario, store, baseline, workflow);
-        activeScenario = choice.scenario;
-        activeWorkflow = workflow;
-        pi.appendEntry("function-scenario", { id: choice.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${workflow.title} × ${choice.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+        await runAssemble(ctx);
         return;
       }
 
       if (args === "workflow") {
         scan(false);
         if (!requireUI(ctx)) return;
-        const workflow = await pickWorkflow(ctx);
-        if (!workflow) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const workflows = await pickMany(ctx, () => pickWorkflow(ctx));
+        if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const workflow = comboWorkflows(workflows);
         const scenario = workflowOnlyScenario(workflow);
         const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
         activeScenario = scenario;
@@ -1710,6 +2040,30 @@ export default function functionMenu(pi) {
         return;
       }
 
+      const comboIds = args.split(/[+＋,，、]/).map((s) => s.trim()).filter(Boolean);
+      if (comboIds.length > 1) {
+        const unknown = comboIds.filter((id) => !workflowById(id) && !SCENARIOS.some((s) => s.id === id));
+        if (unknown.length) {
+          ctx.ui.notify(`未知 id：${unknown.join("、")}。可用 /function 查看清单，写法如 /function debug+process`, "error");
+          return;
+        }
+        if (!requireUI(ctx)) return;
+        scan(false);
+        const workflows = comboIds.map((id) => workflowById(id)).filter(Boolean);
+        const scenarios = comboIds.filter((id) => !workflowById(id)).map((id) => SCENARIOS.find((s) => s.id === id)).filter(Boolean);
+        const workflow = comboWorkflows(workflows) || (scenarios.length ? workflowById(recommendWorkflow(scenarios[0])) : null);
+        const scenario = scenarios.length ? comboScenarios(scenarios) : workflowOnlyScenario(workflow);
+        if (!scenario) { ctx.ui.notify("组合无效，未做任何改动", "warning"); return; }
+        const ok = await confirmScenario(ctx, scenario, "多选组合", workflow);
+        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
+        activeScenario = scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: comboIds.join("+"), workflow: workflow?.id || null, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+        return;
+      }
+
       scan(false);
       const analysis = analyzeNeed(args, store);
       const recommended = recommendWorkflow(analysis.intents[0]?.scenario);
@@ -1720,8 +2074,9 @@ export default function functionMenu(pi) {
         return;
       }
 
-      const workflow = await pickWorkflow(ctx, recommended);
-      if (!workflow) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+      const workflows = await pickMany(ctx, () => pickWorkflow(ctx, recommended));
+      if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+      const workflow = comboWorkflows(workflows);
       const scenario = dynamicScenario(args, analysis, workflow);
       const ok = await confirmScenario(ctx, scenario, "按需求动态组合", workflow);
       if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
@@ -1765,6 +2120,13 @@ export default function functionMenu(pi) {
     let scenario = null;
     if (last.id === "workflow" && activeWorkflow) {
       scenario = workflowOnlyScenario(activeWorkflow);
+    } else if (last.id && last.id.includes("+")) {
+      // 多选组合：id 形如 debug+process，重启后要能按原样拼回来。
+      const ids = String(last.id).split("+").filter(Boolean);
+      const comboWfs = ids.map((id) => workflowById(id)).filter(Boolean);
+      const comboScs = ids.filter((id) => !workflowById(id)).map((id) => SCENARIOS.find((s) => s.id === id)).filter(Boolean);
+      if (comboWfs.length) activeWorkflow = comboWorkflows(comboWfs);
+      scenario = comboScs.length ? comboScenarios(comboScs) : (activeWorkflow ? workflowOnlyScenario(activeWorkflow) : null);
     } else if (last.id === "custom" && last.custom?.need) {
       const analysis = analyzeNeed(last.custom.need, store);
       scenario = dynamicScenario(last.custom.need, analysis, activeWorkflow);
@@ -1799,6 +2161,7 @@ export default function functionMenu(pi) {
     promptGuidelines: [
       "Use suggest_scenario at the start of a task when you need to pick which plugin scene fits, or when the user asks whether a plugin or skill applies.",
       "suggest_scenario is read-only: it never changes active tools. To assemble a fixed scene, tell the user to run /function (then pick); for a need, tell them to run /function \"<need>\" so it analyzes and composes dynamically.",
+      "For 流程 / SOP / 需求→工具分配 requests, allocate by 基元 not by name: 拆基元（workflow-refactor）→ 定验收（spec-workflow-guide）→ 固化 SOP（sop-builder / sop-extractor）→ 补缺口（skill-finder），then map each 基元 to a plugin or skill and say which 基元 it serves.",
     ],
     parameters: {
       type: "object",
@@ -1837,6 +2200,9 @@ export default function functionMenu(pi) {
         confident ? "置信度：足够（领先次选 ≥1.5 倍）" : "置信度：不足，建议把候选摆给用户选",
         `推荐工作流：${recommendWorkflow(best.scenario)} · ${WORKFLOWS.find((w) => w.id === recommendWorkflow(best.scenario))?.title || "直接执行"}`,
       ];
+      if (best.scenario.id === "process" || analysis.skills?.some((s) => PROCESS_SKILL_IDS.includes(s.skill))) {
+        lines.push("分配方法：先拆基元（workflow-refactor）→ 定验收（spec-workflow-guide）→ 固化 SOP（sop-builder/sop-extractor）→ 补缺口（skill-finder）→ 再按基元分配插件与技能");
+      }
       if (ranked.length > 1) {
         lines.push("其他候选：" + ranked.slice(1).map((r) => `${r.scenario.id}(${r.score.toFixed(2)})`).join("、"));
       }
@@ -1854,6 +2220,8 @@ export default function functionMenu(pi) {
           lines.push("- 插件：" + (rows.length ? rows.map((x) => `${x.pkg}[${x.state}]`).join("、") : "无额外插件（只保留核心工具）"));
           const skills = scenarioSkillIds(store, r.scenario.id);
           lines.push("- 技能：" + (skills.length ? `${skills.length} 个 — ${summarizeSkills(skills, 4)}` : "无自动归入技能"));
+          const cov = auditCoverage(r.scenario, store);
+          if (cov.missing.length) lines.push("- 漏用：" + cov.missing.map((m) => m.need).join("、"));
           if (bad.length) lines.push("- 需注意：" + bad.map((x) => `${x.pkg} — ${x.detail}`).join("；"));
         }
       }
@@ -1896,6 +2264,11 @@ export default function functionMenu(pi) {
       `## 当前组合（/function 装配）：${activeScenario.workflowOnly ? activeScenario.title : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`}`,
       activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}\n流程：${(activeWorkflow.steps || []).join(" → ")}\n检查点：${activeWorkflow.checkpoint || "按流程执行"}\n完成标准：${activeWorkflow.doneWhen || "达到任务目标"}` : "",
       activeScenario.workflowOnly ? "" : `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
+      activeScenario.id === "process" || activeWorkflow?.id === "process-design"
+        ? `### 分配方法（先拆解再分配）\n${ALLOCATION_METHOD.map((step, i) => `${i + 1}. ${step}`).join("\n")}`
+        : "",
+      `### 开工前先问清（没问清就直接做等于猜）\n${followupQuestions(activeScenario, activeWorkflow).map((q, i) => `${i + 1}. ${q}`).join("\n")}`,
+      "方向：先给一句话说明你打算怎么做（几步、每步产出），确认后再动手；用户已经答过的问题不要重复问。",
       (activeWorkflow?.manual?.length || activeScenario.manual?.length)
         ? `仍需手动：${uniq([...(activeWorkflow?.manual || []), ...(activeScenario.manual || [])]).join("；")}`
         : "",
@@ -1906,4 +2279,5 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+// 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
+export { needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

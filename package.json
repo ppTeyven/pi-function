@@ -1,6 +1,6 @@
 {
   "name": "pi-function",
-  "version": "2.6.0",
+  "version": "2.9.0",
   "description": "Application-scenario + workflow-bundle assembler for the Pi coding agent.",
   "type": "module",
   "license": "MIT",
@@ -32,16 +32,19 @@
   "files": [
     "function-menu.js",
     "test.mjs",
+    "tests",
     "scripts",
     "assets",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "TEST-PLAN.md"
   ],
   "scripts": {
-    "test": "node test.mjs",
-    "render:banner": "node scripts/render-banner.mjs"
+    "test": "node --experimental-strip-types --test \"tests/*.test.mjs\"",
+    "render:banner": "node scripts/render-banner.mjs",
+    "test:all": "npm test"
   },
   "engines": {
     "node": ">=20"

@@ -5,6 +5,7 @@ import path from "node:path";
 import functionMenu from "./function-menu.js";
 import {
   SCENARIOS,
+  SCENARIO_CONTRACTS,
   WORKFLOWS,
   workflowOnlyScenario,
   CAPABILITIES,
@@ -36,7 +37,7 @@ import {
 } from "./function-menu.js";
 
 const ids = SCENARIOS.map((s) => s.id);
-assert.equal(SCENARIOS.length, 32);
+assert.equal(SCENARIOS.length, 34);
 for (const id of ["article", "email", "social", "novel", "video", "music", "image", "course", "resume", "event", "report", "presentation", "docs", "legal", "webpage", "webapp", "commerce", "mobile", "game", "design", "data", "spreadsheet", "dashboard", "api", "automation", "tool", "integration", "chatbot", "plugin", "maintain", "localization", "general"]) {
   assert.ok(ids.includes(id), `missing application scenario ${id}`);
 }
@@ -44,7 +45,7 @@ for (const old of ["feature", "refactor", "bugfix", "review", "frontend"]) {
   assert.ok(!ids.includes(old), `old activity scenario ${old} should be gone`);
 }
 assert.deepEqual(CORE_TOOLS, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
-assert.equal(WORKFLOWS.length, 8);
+assert.equal(WORKFLOWS.length, 9);
 const workflowIds = WORKFLOWS.map((w) => w.id);
 for (const id of ["direct", "outline", "research", "debug", "parallel", "review-gate", "phased", "offline"]) {
   assert.ok(workflowIds.includes(id), id);
@@ -241,7 +242,7 @@ const fakePi = {
 };
 
 const catalog = buildCatalog(fakePi, syntheticStore);
-assert.match(catalog, /32 个组合/);
+assert.match(catalog, /34 个组合/);
 assert.match(catalog, /第 1 步：工作流/);
 assert.match(catalog, /第 2 步：任务场景/);
 assert.match(catalog, /pi-web-access/);
@@ -303,8 +304,21 @@ const multi = analyzeNeed("做一个网页，同时写一篇介绍文章", synth
 const intentIds = multi.intents.map((r) => r.scenario.id);
 assert.ok(intentIds.includes("webpage"), intentIds.join(","));
 assert.ok(intentIds.includes("article"), intentIds.join(","));
-assert.ok(multi.packages.some((x) => x.pkg === "pi-web-access"), "multi-intent should use the web capability");
-assert.ok(multi.skills.some((x) => x.skill === "frontend-design"), "multi-intent should use the design skill");
+// 相关性闸门：需求里没有搜索/资料类词时，不应仅因为场景带 web 角色就拉进联网搜索插件
+assert.ok(!multi.packages.some((x) => x.pkg === "pi-web-access"), "no web-search package without evidence");
+const withSearch = analyzeNeed("先搜索资料并抓取网页内容做调研，再做网页", syntheticStore);
+assert.ok(withSearch.packages.some((x) => x.pkg === "pi-web-access"), "search need should bring the web capability");
+// 覆盖兜底：不管哪个意图排第一，首要场景的 required 能力都必须至少有一个成员入选
+const topScenario = SCENARIOS.find((sc) => sc.id === multi.intents[0].scenario.id);
+for (const role of (SCENARIO_CONTRACTS?.[topScenario.id]?.required) || []) {
+  const members = [
+    ...(profile.roles?.[role]?.packages || []).map((x) => x.id.replace(/^npm:/, "")),
+    ...(profile.roles?.[role]?.skills || []).map((x) => x.id),
+  ];
+  if (!members.length) continue; // 环境没装该能力时不强求
+  const picked = [...multi.packages.map((x) => String(x.pkg).replace(/^npm:/, "")), ...multi.skills.map((x) => x.skill)];
+  assert.ok(members.some((id) => picked.includes(id)), `top scenario ${topScenario.id} 的必需能力 ${role} 未被覆盖`);
+}
 
 const noMatch = analyzeNeed("帮我把客厅灯光调暖一点", syntheticStore);
 assert.equal(noMatch.intents.length, 0);
@@ -347,7 +361,8 @@ const flowCtx = {
       const prefix = selections.shift();
       return options.find((option) => option.startsWith(prefix));
     },
-    confirm: async () => true,
+    // 多选循环会问“要再叠加一个吗”，测试里默认拒绝，只确认最终的装配
+    confirm: async (title, detail) => !String(detail || "").includes("叠加"),
     notify: () => {},
     setEditorText: () => {},
   },
@@ -389,4 +404,4 @@ const flowCtx = {
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 32 application scenarios, 8 workflow bundles, profile capabilities, dynamic needs, core tools, migration");
+console.log("ok: 34 application scenarios, 9 workflow bundles, profile capabilities, dynamic needs, core tools, migration");

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.9.0
+
+- Scenario capability contracts: every scenario now declares `required / optional / forbidden`, and `auditCoverage()` reports `not-installed` vs `not-selected` gaps instead of silently under-allocating.
+- Coverage backfill: when the top scenario's required capability has no member selected, the best member of that role is added (reason: `必需能力：…`).
+- Relevance gates: role-scoped matching, generic-term filtering, longest-match-only scoring, virtual-word n-gram filtering, and per-intent/global budgets (5 packages, 5 skills).
+- Multi-select: `/function debug+process` (also `,`), plus a looping picker (up to 3) for workflows and scenarios; combo records restore after restart.
+- Follow-up questions: assembly preview and system prompt list 3–4 questions (deliverable / acceptance / boundaries / scope).
+- New `docx` scenario and capability role for 公文/正式发文, so red-header formatting tasks are not captured by email/report.
+- Fix: scan no longer marks known entries as missing when enumeration is incomplete; store writes are guarded.
+- Tests: 111 cases across unit / integration / invariants / persistence / e2e / user journeys, with a repository fixture so they run on any machine (`npm test`).
+
 ## 2.6.0
 
 - Bare `/function` now opens a sub-function picker first: scenario assembly, workflow-only, profile, scan, status, restore, or manual assignment.

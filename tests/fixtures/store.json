@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "classifierVersion": 5,
+  "note": "测试夹具：不依赖任何真实安装，保证换台机器也能跑出同样结果。条目名沿用常见插件/技能名，但 description 是人工构造的能力描述。",
+  "known": {
+    "npm:pi-lens": {
+      "kind": "plugin",
+      "label": "pi-lens",
+      "description": "代码符号、类型检查、LSP 诊断、静态分析",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:pi-lens-lsp-navigation": {
+      "kind": "skill",
+      "label": "pi-lens-lsp-navigation",
+      "description": "用 IDE 功能导航代码并运行诊断",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:openwiki": {
+      "kind": "plugin",
+      "label": "openwiki",
+      "description": "仓库 wiki 与代码地图文档",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:humanizer": {
+      "kind": "skill",
+      "label": "humanizer",
+      "description": "去除 AI 味，改写文章、文案与润色",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:pi-web-access": {
+      "kind": "plugin",
+      "label": "pi-web-access",
+      "description": "联网搜索、网页抓取与外链内容提取",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:multi-search-engine": {
+      "kind": "skill",
+      "label": "multi-search-engine",
+      "description": "多搜索引擎交叉检索资料并去重",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:gongwenformat-pro": {
+      "kind": "skill",
+      "label": "gongwenformat-pro",
+      "description": "公文排版：红头文件、发文字号、材料排版、发文格式与 GB/T 9704-2012 国标，Markdown 转 docx",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:ppt-master": {
+      "kind": "skill",
+      "label": "ppt-master",
+      "description": "PPT 幻灯片生成，演示文稿模板与图表页",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:ppt-deck-studio": {
+      "kind": "skill",
+      "label": "ppt-deck-studio",
+      "description": "deck 幻灯片设计与排版",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:excel-data-wizard": {
+      "kind": "skill",
+      "label": "excel-data-wizard",
+      "description": "Excel 表格读取、数据透视、公式计算与图表生成、数据清洗",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:cron": {
+      "kind": "skill",
+      "label": "cron",
+      "description": "定时任务与结构化调度、周期执行、失败重试",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:cd-scraper": {
+      "kind": "skill",
+      "label": "cd-scraper",
+      "description": "爬虫脚本：请求解析、反爬对抗、增量抓取与限速",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:workflow-refactor": {
+      "kind": "skill",
+      "label": "workflow-refactor",
+      "description": "工作流重构：把流程拆成 IPO 基元链，消除人的局限补偿层",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:sop-builder": {
+      "kind": "skill",
+      "label": "sop-builder",
+      "description": "把零散工作要求固化为带退出条件的 SOP 标准流程",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:sop-extractor": {
+      "kind": "skill",
+      "label": "sop-extractor",
+      "description": "把口述流程整理为标准 SOP，含缺口分析与冗余检测",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:spec-workflow-guide": {
+      "kind": "skill",
+      "label": "spec-workflow-guide",
+      "description": "需求、设计与任务文档规范，验收标准先行",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:skill-finder": {
+      "kind": "skill",
+      "label": "skill-finder",
+      "description": "跨平台发现、评估并安装技能",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:design-system": {
+      "kind": "skill",
+      "label": "design-system",
+      "description": "UI 视觉设计、配色方案与排版规范",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:agent-handbook": {
+      "kind": "skill",
+      "label": "agent-handbook",
+      "description": "团队手册与文档规范编写",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:i18n-helper": {
+      "kind": "skill",
+      "label": "i18n-helper",
+      "description": "翻译、本地化与多语言资源处理",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "skill:stock-researcher": {
+      "kind": "skill",
+      "label": "stock-researcher",
+      "description": "股票投研与多源行情数据",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:@plannotator/pi-extension": {
+      "kind": "plugin",
+      "label": "@plannotator/pi-extension",
+      "description": "计划审阅与批注、评审工作流",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:@juicesharp/rpiv-todo": {
+      "kind": "plugin",
+      "label": "@juicesharp/rpiv-todo",
+      "description": "任务清单与进度追踪",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:pi-memory": {
+      "kind": "plugin",
+      "label": "pi-memory",
+      "description": "长期记忆、草稿与语义检索",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:@quintinshaw/pi-dynamic-workflows": {
+      "kind": "plugin",
+      "label": "@quintinshaw/pi-dynamic-workflows",
+      "description": "多代理编排、并行工作流与任务分发",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:pi-simplify": {
+      "kind": "plugin",
+      "label": "pi-simplify",
+      "description": "收尾简化与代码清理",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:billion-context": {
+      "kind": "plugin",
+      "label": "billion-context",
+      "description": "上下文压缩与大输出管理",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:@getpipher/vision": {
+      "kind": "plugin",
+      "label": "@getpipher/vision",
+      "description": "图片理解与视觉描述",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    },
+    "npm:mcp-bridge": {
+      "kind": "plugin",
+      "label": "mcp-bridge",
+      "description": "MCP 外部系统集成与连接器",
+      "scenario": null,
+      "auto": true,
+      "missing": false
+    }
+  },
+  "overrides": {}
+}
