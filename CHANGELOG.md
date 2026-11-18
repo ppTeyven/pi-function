@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.21.5
+
+- `tests/applied.test.mjs`: 10 smoke tests that fail loudly if any change from this session is missing from the running code — installed copy byte-identical to the repo, version == package.json, capability gaps + find-skill wording, the "installed but unused" bug, empty-demand selection, bare words, word-audit completeness, verbs/adjectives, CN/EN aliases, scan classification + completion order + `/fn`.
+- Total 232.
+
 ## 2.21.4
 
 - New `/fn` shortcut: same handler as `/function`, registered **without** `getArgumentCompletions`. The web UI keeps a stale argument-completion panel per command name, so `/fn` (a name it has never cached) goes straight to the workflow × scenario menu on Enter.
