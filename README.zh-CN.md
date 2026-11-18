@@ -25,7 +25,7 @@
 
 ---
 
-把已装的 Pi 插件组织成 **25 个任务场景**。不用再记“这件事该开哪个插件”：说需求，或打开菜单，Pi-function 给出建议清单；你说 **是** 之后才启用。
+把已装的 Pi 插件组织成 **6 种工作流 × 25 个任务场景**。不用再记“这件事该开哪个插件”：先选怎么执行（直接、计划先行、测试先行、并行、评审守门、阶段推进），再选做什么；你说 **是** 之后才启用。
 
 单文件、零依赖、不联网、无遥测、每次会话自动加载。
 
@@ -57,11 +57,11 @@ pi install ./path/to/pi-function
 
 | 命令 | 行为 |
 |---|---|
-| `/function` | 打印 25 个场景全表，然后弹出选择器 |
-| `/function <需求>` | 识别需求 → 展示插件、功能、命令 → 等你确认 → 装配（不执行需求） |
-| `/function <场景id>` | 直接装配已知场景（仍会先确认） |
+| `/function` | 打印全表，然后**先选工作流、再选任务**，确认后装配 |
+| `/function <需求>` | 识别任务 → 先选工作流 → 再选任务（候选排前）→ 展示组合方案并确认 → 装配（不执行需求） |
+| `/function <场景id>` | 预选任务，但仍先选工作流，再装配组合 |
 | `/function scan` | 重扫插件、本地扩展与技能 |
-| `/function status` | 查看当前场景与已启用的插件工具 |
+| `/function status` | 查看当前工作流 × 任务与已启用的插件工具 |
 | `/function assign <名称> <场景id\|none\|infra>` | 手动改某个插件/技能的归属 |
 | `/function off` | 还原装配前的工具集 |
 
@@ -74,8 +74,19 @@ pi install ./path/to/pi-function
 ```text
 /function 把整个项目重构一下
 
-## 场景：大重构 / 迁移
-**适用**：跨文件重构、换框架、批量机械替换
+第 1 步：先选工作流（怎么执行）
+  plan-first · 计划先行 — ★ 推荐 · 2 个插件
+  direct · 直接执行 — 无额外插件
+  ...
+
+第 2 步：再选任务场景（做什么）
+  refactor · 大重构 / 迁移 — 5 个插件 · 2 技能（...）
+  ...
+
+## 装配：计划先行 × 大重构 / 迁移
+**工作流**：先要方案/步骤，确认后再动手
+- 流程：先只出计划，不写代码...
+**任务**：跨文件重构、换框架、批量机械替换
 
 **将启用的插件与功能**
 - `@quintinshaw/pi-dynamic-workflows` — 动态工作流，fan-out 多代理
@@ -92,6 +103,21 @@ pi install ./path/to/pi-function
 ```
 
 只有选“是”才调用 `setActiveTools`；选“否”不做任何改动。装配不会执行需求：选“是”之后，需求文本会被放回输入框，按 Enter 才开始，也可以直接清空。确认框之前还会把完整方案作为一条可见消息打印到会话里，插件清单不会只存在于弹窗中。
+
+## 工作流
+
+先选执行方式，再选任务；两边重复的插件会自动去重。
+
+| id | 工作流 | 何时用 | 追加插件 |
+|---|---|---|---|
+| `direct` | 直接执行 | 需求清楚、范围小、不需要额外流程 | — |
+| `plan-first` | 计划先行 | 先要方案/步骤，确认后再动手 | `@plannotator/pi-extension`, `@juicesharp/rpiv-todo` |
+| `test-first` | 测试先行 | 先复现/写失败测试，再改实现 | `pi-lens`, `@juicesharp/rpiv-todo` |
+| `fanout` | 子代理并行 | 任务能拆成互不冲突的独立分片 | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `@juicesharp/rpiv-todo` |
+| `review-gate` | 评审守门 | 实现后需要独立审查再交付 | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `pi-simplify`, `pi-lens` |
+| `phased` | 阶段推进 | 多阶段长任务，需要规格、计划与验收 | `@opengsd/gsd-core`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension` |
+
+隐私场景会忽略工作流插件；即使选 `fanout` + `privacy`，也不会引入联网/子代理能力。
 
 ## 场景
 
@@ -170,7 +196,7 @@ pi install ./path/to/pi-function
 - **流程提示注入系统提示。** 每个场景带一段操作规则（例如：先复现再修；不要用并行编辑改同一批文件），仅在当前会话生效。
 - **不会卸载插件。** Pi 不支持运行时装卸扩展代码。“装配”是工具可见性 + 提示层面的；代码本身常驻。`/function off` 还原装配前的工具集。
 
-当前场景通过 `pi.appendEntry` 记录，并显示在 `/function status`。
+当前工作流 × 任务组合通过 `pi.appendEntry` 记录，并显示在 `/function status`；会话恢复时两者都会恢复。
 
 ## 自动接纳
 

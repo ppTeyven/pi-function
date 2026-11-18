@@ -25,7 +25,7 @@
 
 ---
 
-Pi-function turns a pile of installed Pi extensions into **25 task scenarios**. Instead of remembering which plugin to enable for which job, you describe the job — or open the menu — and Pi-function proposes the right set. Nothing is enabled until you press **yes**.
+Pi-function turns a pile of installed Pi extensions into **6 execution workflows × 25 task scenarios**. Instead of remembering which plugin to enable for which job, you first choose how to work (direct, plan-first, test-first, fan-out, review-gate, or phased), then what to work on. Nothing is enabled until you press **yes**.
 
 It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
 
@@ -57,11 +57,11 @@ Requires Node 20+ and a Pi version that supports extension commands (`pi.registe
 
 | Command | What happens |
 |---|---|
-| `/function` | Prints the full catalog of all 25 scenarios, then opens a picker |
-| `/function <need>` | Matches the need, shows plugins + functions + commands, waits for confirmation, then assembles (never executes the need) |
-| `/function <scenario-id>` | Assembles a known scenario directly (still asks first) |
+| `/function` | Prints the catalog, then asks **workflow first**, **task second**, and assembles the combination after approval |
+| `/function <need>` | Ranks task scenarios, asks for a workflow, then lets you pick the task (ranked matches first), shows the combined proposal, and assembles after approval; never executes the need |
+| `/function <scenario-id>` | Preselects the task but still asks for a workflow first, then assembles the combination |
 | `/function scan` | Re-scans installed packages, local extensions, and skills |
-| `/function status` | Shows the active scenario and enabled plugin tools |
+| `/function status` | Shows the active workflow × task and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none\|infra>` | Overrides classification for one plugin or skill |
 | `/function off` | Restores the tool set from before assembly |
 
@@ -74,8 +74,19 @@ Typical exchange:
 ```text
 /function 把整个项目重构一下
 
-## 场景：大重构 / 迁移
-**适用**：跨文件重构、换框架、批量机械替换
+第 1 步：先选工作流（怎么执行）
+  plan-first · 计划先行 — ★ 推荐 · 2 个插件
+  direct · 直接执行 — 无额外插件
+  ...
+
+第 2 步：再选任务场景（做什么）
+  refactor · 大重构 / 迁移 — 5 个插件 · 2 技能（...）
+  ...
+
+## 装配：计划先行 × 大重构 / 迁移
+**工作流**：先要方案/步骤，确认后再动手
+- 流程：先只出计划，不写代码...
+**任务**：跨文件重构、换框架、批量机械替换
 
 **将启用的插件与功能**
 - `@quintinshaw/pi-dynamic-workflows` — 动态工作流，fan-out 多代理
@@ -94,6 +105,21 @@ Typical exchange:
 ```
 
 Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly never runs the need: after `Yes`, the requirement is placed back in the editor — press Enter to start, or clear it. `/function` also prints the full proposal as a visible message before the confirmation dialog, so the plugin list stays in the transcript.
+
+## Workflows
+
+Choose the execution style first; the task scenario then adds domain plugins and skills. Duplicate packages are merged.
+
+| id | Workflow | Use when | Adds |
+|---|---|---|---|
+| `direct` | Direct | Clear, small task; no extra process | — |
+| `plan-first` | Plan first | You want a plan approved before edits | `@plannotator/pi-extension`, `@juicesharp/rpiv-todo` |
+| `test-first` | Test first | Reproduce with a failing test, then implement | `pi-lens`, `@juicesharp/rpiv-todo` |
+| `fanout` | Subagent fan-out | Independent slices that can run in parallel | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `@juicesharp/rpiv-todo` |
+| `review-gate` | Review gate | Independent review before delivery | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `pi-simplify`, `pi-lens` |
+| `phased` | Phased / GSD | Multi-phase work with spec, plan, and acceptance | `@opengsd/gsd-core`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension` |
+
+The privacy scenario ignores workflow plugins, so choosing `fanout` with `privacy` still keeps the session offline.
 
 ## Scenarios
 
@@ -172,7 +198,7 @@ Plugins you have not installed are simply skipped at assembly time. The scenario
 - **A brief goes into the system prompt.** Each scenario injects its workflow rules for the current session (for example: reproduce before fixing; never run parallel editors on the same files).
 - **Nothing is uninstalled.** Pi cannot hot-load or hot-unload extension code. "Assembly" means tool visibility plus prompt guidance; the code itself stays resident. `/function off` restores the previous tool set.
 
-The active scenario is recorded with `pi.appendEntry` and shown in `/function status`.
+The active workflow × task combination is recorded with `pi.appendEntry` and shown in `/function status`; session restore restores both.
 
 ## Auto-accept
 
@@ -201,7 +227,7 @@ Classification is versioned. Upgrading reclassifies auto-assigned entries but pr
 | Path | Purpose |
 |---|---|
 | `function-menu.js` | The whole extension: catalog, matcher, classifier, assembler, watcher |
-| `test.mjs` | Zero-dependency regression tests: scenarios, core tools, skill mapping, migration, catalog summary |
+| `test.mjs` | Zero-dependency regression tests: workflows, 25 scenarios, core tools, skill mapping, migration, catalog summary |
 | `~/.pi/agent/function-menu.json` | Runtime store: discovered items, assignments, overrides |
 | `assets/banner.svg` | Generated banner (official Pi mark + white pixel wordmark) |
 | `assets/pi-logo.svg` | Official Pi logo, unchanged from [pi.dev/logo-auto.svg](https://pi.dev/logo-auto.svg) |
@@ -211,7 +237,21 @@ Set `PI_CODING_AGENT_DIR` to relocate the agent directory.
 
 ## Extending
 
-Add a scenario by appending to `SCENARIOS` in `function-menu.js`:
+Add a workflow by appending to `WORKFLOWS`, or a task by appending to `SCENARIOS` in `function-menu.js`:
+
+```js
+{
+  id: "pair",
+  title: "结对执行",
+  when: "边写边让另一个代理复核",
+  keywords: ["结对", "pair"],
+  plugins: ["pi-subagents"],
+  brief: "每完成一个小步就让 reviewer 子代理复核...",
+  manual: [],
+}
+```
+
+Task example:
 
 ```js
 {

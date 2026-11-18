@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0
+
+- Added a workflow-first, task-second flow. `/function` now asks for an execution workflow (`direct`, `plan-first`, `test-first`, `fanout`, `review-gate`, `phased`) before the task scenario.
+- `/function <need>` ranks the task, asks for a workflow, then lets the user choose the task with ranked matches first, instead of auto-assembling the top match.
+- Workflow and task packages are merged; duplicate packages are shown once and marked as workflow additions in the proposal.
+- `activeWorkflow` is recorded with the scenario, restored with the session, included in `before_agent_start`, and shown in `/function status`.
+- Privacy scenarios ignore workflow plugins, so `privacy × fanout` cannot introduce network/subagent capabilities.
+- `suggest_scenario` now reports a recommended workflow alongside task candidates.
+- README (English and Chinese), tests, and package version updated.
+
 ## 1.4.1
 
 - Scenario picker rows now show skill counts and representative skill names alongside plugin counts, for example `data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`; GSD skills are grouped as `GSD N`.

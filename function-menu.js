@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "1.4.1";
+const VERSION = "1.5.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 3;
@@ -309,6 +309,61 @@ const SCENARIOS = [
     plugins: ["pi-web-access", "pi-lens"],
     brief: "先读 changelog 再升：查目标版本 breaking changes，小步升级并每步跑测试；类型错误用 /lens-toggle 打开检查；锁文件冲突按 lockfile 优先。",
     manual: ["/lens-toggle 看类型错误"],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// 工作流目录：先选“怎么执行”，再选“做什么任务”
+// 工作流只负责流程与执行方式；任务场景负责领域插件与技能，两者按并集装配。
+// ---------------------------------------------------------------------------
+const WORKFLOWS = [
+  {
+    id: "direct", title: "直接执行",
+    when: "需求清楚、范围小、不需要额外流程",
+    keywords: ["直接", "快速", "小任务", "direct", "quick"],
+    plugins: [],
+    brief: "直接做最小可验证的改动：先读目标文件，改完立即做针对性验证；不写计划文档，不引入额外流程。",
+    manual: [],
+  },
+  {
+    id: "plan-first", title: "计划先行",
+    when: "先要方案/步骤，确认后再动手",
+    keywords: ["计划", "方案", "先想", "拆解", "plan", "design"],
+    plugins: ["@plannotator/pi-extension", "@juicesharp/rpiv-todo"],
+    brief: "先只出计划，不写代码：写清目标、步骤、验收标准与风险；用 plannotator 让用户审阅，批准后用 todo 拆项执行。",
+    manual: ["/plannotator-plan-mode 审计划", "/todos 查看任务清单"],
+  },
+  {
+    id: "test-first", title: "测试先行",
+    when: "行为明确、需要先复现或补失败测试",
+    keywords: ["测试", "tdd", "先写测试", "复现", "test-first"],
+    plugins: ["pi-lens", "@juicesharp/rpiv-todo"],
+    brief: "先复现/写一个会失败的测试，再改实现让测试通过，最后跑同一组测试回归；不要先改实现再补测试。",
+    manual: ["/lens-toggle 让类型/静态错误即时可见"],
+  },
+  {
+    id: "fanout", title: "子代理并行",
+    when: "任务能拆成互不冲突的独立分片",
+    keywords: ["并行", "子代理", "fan-out", "拆开", "parallel", "subagent"],
+    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "@juicesharp/rpiv-todo"],
+    brief: "只并行真正独立的部分：先列清单，再按目录/模块分片；一个子代理一个范围，禁止同时改同一文件；最后统一汇总并跑全量测试。",
+    manual: ["/council 多顾问辩论", "/workflows run 批量编排"],
+  },
+  {
+    id: "review-gate", title: "评审守门",
+    when: "实现后需要独立审查再交付",
+    keywords: ["评审", "review", "审查", "守门", "第二意见", "gate"],
+    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "pi-simplify", "pi-lens"],
+    brief: "实现完成后不直接交付：先跑 diff/静态检查，再让 fresh reviewer 子代理独立审查；按发现修复后重新验证，最后才总结。",
+    manual: ["/simplify --staged", "/code-review"],
+  },
+  {
+    id: "phased", title: "阶段推进",
+    when: "多阶段、长任务，需要规格/计划/验收分阶段推进",
+    keywords: ["gsd", "阶段", "里程碑", "规格", "phased", "milestone"],
+    plugins: ["@opengsd/gsd-core", "@juicesharp/rpiv-todo", "@plannotator/pi-extension"],
+    brief: "按 GSD 五步走：discuss → plan → execute → verify → ship；每阶段用 fresh context，不把旧对话拖进下一阶段；每阶段结束先确认验收再继续。",
+    manual: ["/gsd next 进入下一步", "/gsd verify-work 做验收", "Windows 下 gsd_dispatch 不可用，改用 /gsd"],
   },
 ];
 
@@ -742,13 +797,45 @@ function scenarioPackages(scenario, store) {
   return uniq([...always, ...scenario.plugins, ...autoAssigned(store, scenario.id)]);
 }
 
+function comboPackages(scenario, store, workflow = null) {
+  const base = scenarioPackages(scenario, store);
+  // 隐私场景连工作流插件也不加，避免意外引入联网/子代理能力
+  if (scenario.noAlways || !workflow || workflow.id === "direct") return base;
+  return uniq([...base, ...(workflow.plugins || [])]);
+}
+
+function recommendWorkflow(scenario) {
+  if (!scenario) return "direct";
+  if (scenario.id === "gsd") return "phased";
+  if (scenario.id === "tests") return "test-first";
+  if (scenario.id === "parallel") return "fanout";
+  if (scenario.id === "review" || scenario.id === "audit") return "review-gate";
+  if (["feature", "refactor", "frontend", "deps"].includes(scenario.id)) return "plan-first";
+  return "direct";
+}
+
+function workflowOptions(recommendedId = null) {
+  const ordered = recommendedId
+    ? [
+        ...WORKFLOWS.filter((w) => w.id === recommendedId),
+        ...WORKFLOWS.filter((w) => w.id !== recommendedId),
+      ]
+    : WORKFLOWS;
+  return ordered.map((w) => {
+    const count = (w.plugins || []).filter((p) => p !== "pi-mcp-adapter").length;
+    const pluginBit = count ? `${count} 个插件` : "无额外插件";
+    const mark = w.id === recommendedId ? "★ 推荐 · " : "";
+    return `${w.id} · ${w.title} — ${mark}${pluginBit}`;
+  });
+}
+
 function coreToolNames(pi) {
   const all = pi.getAllTools().map((t) => t.name);
   return CORE_TOOLS.filter((n) => all.includes(n));
 }
 
-function toolsForScenario(pi, scenario, store) {
-  const pkgs = scenarioPackages(scenario, store);
+function toolsForScenario(pi, scenario, store, workflow = null) {
+  const pkgs = comboPackages(scenario, store, workflow);
   return pi.getAllTools().filter((t) => pkgs.some((p) => matchesPkg(t.sourceInfo, p))).map((t) => t.name);
 }
 
@@ -786,37 +873,45 @@ function describePlugin(pi, pkg, manual = "") {
   return bits.join(" · ");
 }
 
-function buildProposal(pi, scenario, store) {
+function buildProposal(pi, scenario, store, workflow = null) {
   const lines = [];
-  lines.push(`## 场景：${scenario.title}`);
-  lines.push(`**适用**：${scenario.when}`);
+  const comboTitle = workflow ? `${workflow.title} × ${scenario.title}` : scenario.title;
+  lines.push(`## 装配：${comboTitle}`);
+  if (workflow) {
+    lines.push(`**工作流**：${workflow.when}`);
+    lines.push(`- 流程：${workflow.brief}`);
+  }
+  lines.push(`**任务**：${scenario.when}`);
   lines.push("");
   lines.push("**将启用的插件与功能**");
-  const pkgs = scenarioPackages(scenario, store);
+  const pkgs = comboPackages(scenario, store, workflow);
   const extra = pkgs.filter((p) => p !== "pi-mcp-adapter");
   if (!extra.length && !pkgs.includes("pi-mcp-adapter")) lines.push("- 不启用额外插件（只保留核心工具）");
-  for (const pkg of extra) lines.push(`- \`${pkg}\` — ${describePlugin(pi, pkg)}`);
+  for (const pkg of extra) {
+    const fromWorkflow = workflow?.plugins?.includes(pkg) && !scenario.plugins.includes(pkg);
+    lines.push(`- \`${pkg}\`${fromWorkflow ? "（工作流）" : ""} — ${describePlugin(pi, pkg)}`);
+  }
   if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻，不单独计入）");
-  const auto = autoAssigned(store, scenario.id).filter((p) => !scenario.plugins.includes(p));
+  const auto = autoAssigned(store, scenario.id).filter((p) => !comboPackages(scenario, store, workflow).includes(p));
   if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
   const skills = scenarioSkillIds(store, scenario.id);
   if (skills.length) lines.push(`- 自动归入技能 ${skills.length} 个：${summarizeSkills(skills)}（随会话自动加载）`);
   lines.push("- 核心工具始终保留：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。");
-  const brief = scenario.manual?.length ? scenario.manual : [];
-  if (brief.length) {
+  const manual = uniq([...(workflow?.manual || []), ...(scenario.manual || [])]);
+  if (manual.length) {
     lines.push("");
     lines.push("**装配后仍需手动做**");
-    for (const m of brief) lines.push("- " + m);
+    for (const m of manual) lines.push("- " + m);
   }
   lines.push("");
   lines.push("**不会自动执行**：确认只改变工具与提示，需求仍需你按 Enter 或另行发送。");
-  lines.push("**装配含义**：启用上述工具、停用其他插件的可选工具、把本场景流程注入系统提示。插件代码常驻，不会真正卸载。");
+  lines.push("**装配含义**：启用上述工具、停用其他插件的可选工具、把工作流与任务流程一起注入系统提示。插件代码常驻，不会真正卸载。");
   return lines.join("\n");
 }
 
 // 插件可用性诊断：ok = 有工具且已启用；warn = 能跑但有已知限制；
 // inactive = 已注册但全局停用/未完成设置；absent = 未安装/未注册。
-function auditPackages(pi, scenario, store) {
+function auditPackages(pi, scenario, store, workflow = null) {
   const all = pi.getAllTools();
   const active = new Set(pi.getActiveTools());
   const cmds = pi.getCommands();
@@ -824,7 +919,7 @@ function auditPackages(pi, scenario, store) {
   const lens = readJson(path.join(os.homedir(), ".pi-lens", "config.json"), {});
   const advisor = readJson(path.join(agentDir(), "advisor.json"), {});
   const rows = [];
-  for (const pkg of scenarioPackages(scenario, store).filter((p) => p !== "pi-mcp-adapter")) {
+  for (const pkg of comboPackages(scenario, store, workflow).filter((p) => p !== "pi-mcp-adapter")) {
     const tools = all.filter((t) => matchesPkg(t.sourceInfo, pkg)).map((t) => t.name);
     const skillN = cmds.filter((c) => c.source === "skill" && matchesPkg(c.sourceInfo, pkg)).length;
     const cmdN = cmds.filter((c) => c.source === "extension" && matchesPkg(c.sourceInfo, pkg)).length;
@@ -873,18 +968,18 @@ function auditPackages(pi, scenario, store) {
   return rows;
 }
 
-function applyScenario(pi, ctx, scenario, store, baseline) {
+function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
   const all = pi.getAllTools();
   const active = pi.getActiveTools();
   const optional = new Set(all.filter((t) => isOptionalSource(t.sourceInfo)).map((t) => t.name));
-  const wanted = new Set(toolsForScenario(pi, scenario, store));
+  const wanted = new Set(toolsForScenario(pi, scenario, store, workflow));
   const keep = active.filter((n) => !optional.has(n));
   const core = coreToolNames(pi);
   const next = uniq([...keep, ...core, ...wanted]);
   const disabled = active.filter((n) => optional.has(n) && !wanted.has(n));
   pi.setActiveTools(next);
   // 说清楚哪些插件其实用不了，不再静默
-  const bad = auditPackages(pi, scenario, store).filter((r) => r.state !== "ok");
+  const bad = auditPackages(pi, scenario, store, workflow).filter((r) => r.state !== "ok");
   if (bad.length) {
     ctx?.ui?.notify?.(
       "场景中以下插件需要留意：\n" + bad.map((r) => `- ${r.pkg}（${r.state}）：${r.detail}`).join("\n"),
@@ -900,6 +995,14 @@ function applyScenario(pi, ctx, scenario, store, baseline) {
 function buildCatalog(pi, store) {
   const totalSkills = Object.entries(store.known).filter(([id, meta]) => id.startsWith("skill:") && !meta.missing).length;
   const lines = [`## /function 场景菜单（${SCENARIOS.length} 个组合 · ${totalSkills} 个技能）`];
+  lines.push("");
+  lines.push("## 第 1 步：工作流（怎么执行）");
+  for (const w of WORKFLOWS) {
+    const count = (w.plugins || []).filter((p) => p !== "pi-mcp-adapter").length;
+    lines.push(`- **${w.id}** · ${w.title} — ${w.when}${count ? `（${count} 个插件）` : ""}`);
+  }
+  lines.push("");
+  lines.push("## 第 2 步：任务场景（做什么）");
   const groups = uniq(SCENARIOS.map((s) => s.group));
   for (const g of groups) {
     lines.push("");
@@ -937,8 +1040,8 @@ function buildCatalog(pi, store) {
   return lines.join("\n");
 }
 
-export function menuOptions(store) {
-  return SCENARIOS.map((s) => {
+export function menuOptions(store, scenarios = SCENARIOS) {
+  return scenarios.map((s) => {
     const count = scenarioPackages(s, store).filter((p) => p !== "pi-mcp-adapter").length;
     const skills = scenarioSkillIds(store, s.id);
     const pluginBit = count ? `${count} 个插件` : "无需插件";
@@ -952,6 +1055,7 @@ export function menuOptions(store) {
 export default function functionMenu(pi) {
   let store = loadStore();
   let activeScenario = null;
+  let activeWorkflow = null;
   let baseline = [];
   let baselineCaptured = false;
   const captureBaseline = () => {
@@ -1017,36 +1121,48 @@ export default function functionMenu(pi) {
     return false;
   };
 
-  const announceProposal = (scenario, reason) => {
+  const announceProposal = (scenario, reason, workflow) => {
     const head = reason ? `匹配依据：${reason}\n\n` : "";
     pi.sendMessage({
       customType: "function-proposal",
-      content: head + buildProposal(pi, scenario, store),
+      content: head + buildProposal(pi, scenario, store, workflow),
       display: true,
     });
   };
 
-  const identifyScenario = async (ctx, text, ranked) => {
-    if (ranked.length && ranked[0].score >= 1.2 && (!ranked[1] || ranked[0].score >= ranked[1].score * 1.5)) {
-      return { scenario: ranked[0].scenario, reason: ranked[0].hits.slice(0, 5).join(" / ") || ranked[0].scenario.id };
-    }
-    const options = (ranked.length ? ranked.slice(0, 4).map((r) => r.scenario) : SCENARIOS).map(
-      (s) => `${s.id} · ${s.title} — ${s.when}`,
-    );
-    const sel = await ctx.ui.select("没把握，选一个最接近的场景", options);
+  const pickWorkflow = async (ctx, recommendedId = null) => {
+    const sel = await ctx.ui.select("第 1 步：先选工作流（怎么执行）", workflowOptions(recommendedId));
+    if (!sel) return null;
+    const id = sel.split(" · ")[0];
+    return WORKFLOWS.find((w) => w.id === id) || null;
+  };
+
+  const pickTask = async (ctx, ranked = []) => {
+    const ordered = ranked.length
+      ? [
+          ...ranked.map((r) => r.scenario),
+          ...SCENARIOS.filter((s) => !ranked.some((r) => r.scenario.id === s.id)),
+        ]
+      : SCENARIOS;
+    const sel = await ctx.ui.select("第 2 步：再选任务场景（做什么）", menuOptions(store, ordered));
     if (!sel) return null;
     const id = sel.split(" · ")[0];
     const pick = SCENARIOS.find((s) => s.id === id) || null;
-    return pick ? { scenario: pick, reason: "手动选择" } : null;
+    if (!pick) return null;
+    const hit = ranked.find((r) => r.scenario.id === pick.id);
+    return { scenario: pick, reason: hit ? hit.hits.slice(0, 5).join(" / ") || pick.id : "手动选择" };
   };
 
-  const confirmScenario = async (ctx, scenario, reason) => {
-    announceProposal(scenario, reason);
-    const pkgs = scenarioPackages(scenario, store).filter((p) => p !== "pi-mcp-adapter");
+  const identifyScenario = async (ctx, _text, ranked) => pickTask(ctx, ranked);
+
+  const confirmScenario = async (ctx, scenario, reason, workflow) => {
+    announceProposal(scenario, reason, workflow);
+    const pkgs = comboPackages(scenario, store, workflow).filter((p) => p !== "pi-mcp-adapter");
     const list = pkgs.length ? pkgs.join("、") : "无额外插件";
+    const title = workflow ? `${workflow.title} × ${scenario.title}` : scenario.title;
     return ctx.ui.confirm(
-      `装配「${scenario.title}」？`,
-      `将启用：${list}\n\n确认后只启用工具并注入流程提示，不会自动执行任何需求。`,
+      `装配「${title}」？`,
+      `工作流：${workflow ? workflow.title : "直接执行"}\n任务：${scenario.title}\n将启用：${list}\n\n确认后只启用工具并注入流程提示，不会自动执行任何需求。`,
     );
   };
 
@@ -1065,17 +1181,17 @@ export default function functionMenu(pi) {
         scan(false);
         pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
         if (!requireUI(ctx)) return;
-        const sel = await ctx.ui.select("选择一个场景查看/装配", menuOptions(store));
-        if (!sel) return;
-        const id = sel.split(" · ")[0];
-        const scenario = SCENARIOS.find((s) => s.id === id);
-        if (!scenario) return;
-        const ok = await confirmScenario(ctx, scenario, "菜单选择");
+        const workflow = await pickWorkflow(ctx);
+        if (!workflow) return;
+        const picked = await pickTask(ctx);
+        if (!picked) return;
+        const ok = await confirmScenario(ctx, picked.scenario, "菜单选择", workflow);
         if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-        const res = applyScenario(pi, ctx, scenario, store, baseline);
-        activeScenario = scenario;
-        pi.appendEntry("function-scenario", { id: scenario.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+        const res = applyScenario(pi, ctx, picked.scenario, store, baseline, workflow);
+        activeScenario = picked.scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: picked.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${workflow.title} × ${picked.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
         return;
       }
 
@@ -1094,7 +1210,7 @@ export default function functionMenu(pi) {
 
       if (sub === "status") {
         const lines = [];
-        lines.push(`当前场景：${activeScenario ? activeScenario.title : "未装配"}`);
+        lines.push(`当前组合：${activeScenario ? `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}` : "未装配"}`);
         lines.push(`已收录条目：${Object.keys(store.known).length} 个（自动归类 ${Object.values(store.known).filter((m) => m.auto).length}）`);
         const optionalActive = pi.getActiveTools().filter((n) => {
           const t = pi.getAllTools().find((x) => x.name === n);
@@ -1110,6 +1226,7 @@ export default function functionMenu(pi) {
           .filter((n) => pi.getAllTools().some((t) => t.name === n));
         pi.setActiveTools(restored);
         activeScenario = null;
+        activeWorkflow = null;
         // 写 null 墓磑，否则重启后会从会话记录里把旧场景又拉回来
         pi.appendEntry("function-scenario", { id: null, at: nowIso(), tools: restored });
         ctx.ui.notify(`已还原到装配前工具集（${restored.length} 个工具）`, "info");
@@ -1144,12 +1261,15 @@ export default function functionMenu(pi) {
       if (forced) {
         scan(false);
         if (!requireUI(ctx)) return;
-        const ok = await confirmScenario(ctx, forced, "指定场景");
+        const workflow = await pickWorkflow(ctx, recommendWorkflow(forced));
+        if (!workflow) return;
+        const ok = await confirmScenario(ctx, forced, "指定场景", workflow);
         if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-        const res = applyScenario(pi, ctx, forced, store, baseline);
+        const res = applyScenario(pi, ctx, forced, store, baseline, workflow);
         activeScenario = forced;
-        pi.appendEntry("function-scenario", { id: forced.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${forced.title}」`, "info");
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: forced.id, workflow: workflow.id, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${workflow.title} × ${forced.title}」`, "info");
         return;
       }
 
@@ -1160,34 +1280,37 @@ export default function functionMenu(pi) {
         return;
       }
       if (!ranked.length) {
-        ctx.ui.notify("没识别出场景，先把菜单给你；也可以用 /function <场景id> 指定", "warning");
+        ctx.ui.notify("没识别出任务场景，先选工作流，再从菜单挑一个任务", "warning");
         pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
-        const sel = await ctx.ui.select("选一个场景", menuOptions(store));
-        if (!sel) return;
-        const id = sel.split(" · ")[0];
-        const scenario = SCENARIOS.find((s) => s.id === id);
-        if (!scenario) return;
-        const ok = await confirmScenario(ctx, scenario, "菜单选择");
+        const workflow = await pickWorkflow(ctx);
+        if (!workflow) return;
+        const picked = await pickTask(ctx);
+        if (!picked) return;
+        const ok = await confirmScenario(ctx, picked.scenario, "菜单选择", workflow);
         if (!ok) return;
-        const res = applyScenario(pi, ctx, scenario, store, baseline);
-        activeScenario = scenario;
-        pi.appendEntry("function-scenario", { id: scenario.id, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${scenario.title}」`, "info");
+        const res = applyScenario(pi, ctx, picked.scenario, store, baseline, workflow);
+        activeScenario = picked.scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: picked.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${workflow.title} × ${picked.scenario.title}」`, "info");
         return;
       }
+      const workflow = await pickWorkflow(ctx, recommendWorkflow(ranked[0].scenario));
+      if (!workflow) return;
       const picked = await identifyScenario(ctx, args, ranked);
       if (!picked) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-      const ok = await confirmScenario(ctx, picked.scenario, picked.reason);
+      const ok = await confirmScenario(ctx, picked.scenario, picked.reason, workflow);
       if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-      const res = applyScenario(pi, ctx, picked.scenario, store, baseline);
+      const res = applyScenario(pi, ctx, picked.scenario, store, baseline, workflow);
       activeScenario = picked.scenario;
-      pi.appendEntry("function-scenario", { id: picked.scenario.id, at: nowIso(), tools: res.next });
+      activeWorkflow = workflow;
+      pi.appendEntry("function-scenario", { id: picked.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
       const restored = typeof ctx.ui.setEditorText === "function";
       if (restored) ctx.ui.setEditorText(args);
       ctx.ui.notify(
         restored
-          ? `已装配「${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行；已放回输入框，按 Enter 才会开始。`
-          : `已装配「${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行，请手动重新发送。`,
+          ? `已装配「${workflow.title} × ${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行；已放回输入框，按 Enter 才会开始。`
+          : `已装配「${workflow.title} × ${picked.scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个可选工具。需求没有自动执行，请手动重新发送。`,
         "info",
       );
     },
@@ -1204,10 +1327,11 @@ export default function functionMenu(pi) {
     const scenario = SCENARIOS.find((s) => s.id === last.id);
     if (!scenario) return;
     activeScenario = scenario;
-    const res = applyScenario(pi, ctx, scenario, store, baseline);
+    activeWorkflow = last.workflow ? WORKFLOWS.find((w) => w.id === last.workflow) || null : null;
+    const res = applyScenario(pi, ctx, scenario, store, baseline, activeWorkflow);
     const bad = res.bad || [];
     ctx?.ui?.notify?.(
-      `已从会话记录恢复场景：${scenario.title}（${new Date(last.at || Date.now()).toLocaleString()}）` +
+      `已从会话记录恢复组合：${activeWorkflow ? activeWorkflow.title + " × " : ""}${scenario.title}（${new Date(last.at || Date.now()).toLocaleString()}）` +
         (bad.length ? `\n不可用：${bad.map((r) => r.pkg).join("、")}` : ""),
       bad.length ? "warning" : "info",
     );
@@ -1257,6 +1381,7 @@ export default function functionMenu(pi) {
       const lines = [
         `最佳场景：${best.scenario.id} · ${best.scenario.title}（score ${best.score.toFixed(2)}；命中：${uniq(best.hits).slice(0, 5).join(" / ")}）`,
         confident ? "置信度：足够（领先次选 ≥1.5 倍）" : "置信度：不足，建议把候选摆给用户选",
+        `推荐工作流：${recommendWorkflow(best.scenario)} · ${WORKFLOWS.find((w) => w.id === recommendWorkflow(best.scenario))?.title || "直接执行"}`,
       ];
       if (ranked.length > 1) {
         lines.push("其他候选：" + ranked.slice(1).map((r) => `${r.scenario.id}(${r.score.toFixed(2)})`).join("、"));
@@ -1307,9 +1432,12 @@ export default function functionMenu(pi) {
     if (!activeScenario) return;
     const extra = [
       "",
-      `## 当前场景（/function 装配）：${activeScenario.title}`,
-      activeScenario.brief,
-      activeScenario.manual?.length ? `仍需手动：${activeScenario.manual.join("；")}` : "",
+      `## 当前组合（/function 装配）：${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`,
+      activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}` : "",
+      `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
+      (activeWorkflow?.manual?.length || activeScenario.manual?.length)
+        ? `仍需手动：${uniq([...(activeWorkflow?.manual || []), ...(activeScenario.manual || [])]).join("；")}`
+        : "",
       "只使用当前已启用的工具；缺工具时提示用户运行 /function 重新装配。",
     ].filter(Boolean).join("\n");
     return { systemPrompt: event.systemPrompt + "\n" + extra };
@@ -1317,4 +1445,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, PLUGIN_INFO, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario };
+export { SCENARIOS, WORKFLOWS, PLUGIN_INFO, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario };
