@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.27.0
+
+- **An assembly now survives `/reload`.** `applyScenario()` writes `store.active = { id, workflow, at, tools, custom }` to disk, so the record is not tied to process memory. `restoreScenario()` falls back to it whenever the session branch has no `function-scenario` entry — the branch is empty after a reload that did not replay entries, which is exactly when the old code gave up.
+- **Recovery does not wait for `session_start`.** The first `before_agent_start` of a session runs `captureBaseline()` + `restoreScenario(ctx, true)` once (`restoreTried` latch), silently. If `session_start` already restored the branch entry, the fallback never fires.
+- **Restoring is not "using" it again.** `applyScenario(..., { record: false })` skips `recordUsage()`, so a reload does not inflate the usage counters that feed ranking.
+- `/function off` clears `store.active` and writes the `null` tombstone; otherwise the next start would resurrect an assembly the user just turned off.
+- `tests/persist.test.mjs` covers the round trip: write → disk → first-turn restore → `off` clears. Total 244.
+
 ## 2.26.0
 
 - **The wave now moves every 26px block, not whole letters.** `waveAt(col, t)` is driven by the pixel column (`phase = 2πt/period - col × 0.55`), and both renderers apply it per rect: a letter can have one cell at rest and the next one lifted six pixels. Combined with the 55% dimming on the crest, the wordmark reads as a surface passing through the glyphs rather than eight letters bobbing in unison.

@@ -685,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.26.0";
+const EXT_VERSION = "2.27.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2265,7 +2265,7 @@ function auditPackages(pi, scenario, store, workflow = null) {
   return rows;
 }
 
-function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
+function applyScenario(pi, ctx, scenario, store, baseline, workflow = null, opts = {}) {
   const all = pi.getAllTools();
   const active = pi.getActiveTools();
   const optional = new Set(all.filter((t) => isOptionalSource(t.sourceInfo)).map((t) => t.name));
@@ -2283,7 +2283,15 @@ function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
       "warning",
     );
   }
-  recordUsage(store, scenario, workflow);
+  if (opts.record !== false) recordUsage(store, scenario, workflow);
+  // 持久化“当前装配”：/reload 之后进程内存没了，但 store 还在。
+  store.active = {
+    id: scenario.comboIds?.length ? scenario.comboIds.join("+") : scenario.id,
+    workflow: workflow?.id || null,
+    at: nowIso(),
+    tools: next,
+    custom: scenario.dynamic ? { need: scenario.when, packages: scenario.plugins, skills: scenario.skillIds } : null,
+  };
   saveStore(store);
   const coverage = auditCoverage(scenario, store, workflow);
   if (coverage.missing.length) {
@@ -2383,6 +2391,7 @@ export default function functionMenu(pi) {
   ensureProfile(store);
   let activeScenario = null;
   let activeWorkflow = null;
+  let restoreTried = false;
   let baseline = [];
   let baselineCaptured = false;
   const captureBaseline = () => {
@@ -2779,6 +2788,8 @@ export default function functionMenu(pi) {
         pi.setActiveTools(restored);
         activeScenario = null;
         activeWorkflow = null;
+        store.active = null;
+        saveStore(store);
         // 写 null 墓磑，否则重启后会从会话记录里把旧场景又拉回来
         pi.appendEntry("function-scenario", { id: null, at: nowIso(), tools: restored });
         ctx.ui.notify(`已还原到装配前工具集（${restored.length} 个工具）`, "info");
@@ -2895,13 +2906,15 @@ export default function functionMenu(pi) {
     },
   };
 
-  const restoreScenario = (ctx) => {
+  const restoreScenario = (ctx, silent = false) => {
     let last = null;
     try {
       for (const entry of ctx?.sessionManager?.getBranch?.() || []) {
         if (entry?.type === "custom" && entry.customType === "function-scenario") last = entry.data || null;
       }
     } catch { last = null; }
+    // 会话记录里没有（典型：/reload 后新进程、旧条目不在当前分支），退回 store.active
+    if ((!last || !last.id) && store.active?.id) last = store.active;
     if (!last || !last.id) return;
     activeWorkflow = last.workflow ? workflowById(last.workflow) : null;
     let scenario = null;
@@ -2924,7 +2937,8 @@ export default function functionMenu(pi) {
     }
     if (!scenario) return;
     activeScenario = scenario;
-    const res = applyScenario(pi, ctx, scenario, store, baseline, activeWorkflow);
+    const res = applyScenario(pi, ctx, scenario, store, baseline, activeWorkflow, { record: false });
+    if (silent) return;
     const bad = res.bad || [];
     ctx?.ui?.notify?.(
       `已从会话记录恢复组合：${activeWorkflow ? activeWorkflow.title + " × " : ""}${scenario.title}（${new Date(last.at || Date.now()).toLocaleString()}）` +
@@ -3062,7 +3076,11 @@ export default function functionMenu(pi) {
     });
   } catch { /* 旧版本 Pi 没有 tool_call 事件 */ }
 
-  pi.on("before_agent_start", (event) => {
+  pi.on("before_agent_start", (event, ctx) => {
+    if (!activeScenario && !restoreTried) {
+      restoreTried = true;
+      try { captureBaseline(); restoreScenario(ctx, true); } catch {}
+    }
     if (!activeScenario) return;
     const words = activeScenario.analysis?.audit?.words;
     const wordBlock = (() => {
