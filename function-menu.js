@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.1.0";
+const VERSION = "2.1.1";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -1064,6 +1064,20 @@ function workflowOptions(recommendedId = null) {
   });
 }
 
+function workflowOnlyScenario(workflow) {
+  return {
+    id: "workflow",
+    group: "工作流",
+    title: `仅工作流：${workflow.title}`,
+    when: workflow.when,
+    brief: workflow.brief,
+    plugins: [...(workflow.plugins || [])],
+    skillIds: [],
+    manual: [...(workflow.manual || [])],
+    workflowOnly: true,
+  };
+}
+
 function coreToolNames(pi) {
   const all = pi.getAllTools().map((t) => t.name);
   return CORE_TOOLS.filter((n) => all.includes(n));
@@ -1249,7 +1263,7 @@ function buildCatalog(pi, store) {
     for (const [id, m] of unclassified) lines.push(`- ${id}（${m.reason || "无命中"}）`);
   }
   lines.push("");
-  lines.push("用法：`/function <需求>` 自动识别；`/function <场景id>` 指定；`/function scan` 重扫；`/function off` 还原。");
+  lines.push("用法：`/function` 工作流 + 场景；`/function workflow` 只选工作流；`/function <需求>` 自动识别；`/function scan` 重扫；`/function off` 还原。");
   return lines.join("\n");
 }
 
@@ -1381,9 +1395,9 @@ export default function functionMenu(pi) {
   };
 
   const functionCommand = {
-    description: "Pi-function：单独 /function 用工作流 × 场景菜单；带需求文本时动态分析并组合插件/技能",
+    description: "Pi-function：/function 用工作流 × 场景菜单；/function workflow 只选工作流；带需求文本时动态分析并组合插件/技能",
     getArgumentCompletions: (prefix) => {
-      const base = ["scan", "status", "off", "assign"];
+      const base = ["workflow", "scan", "status", "off", "assign"];
       return base.filter((v) => v.startsWith(prefix || "")).map((v) => ({ value: v, label: v }));
     },
     handler: async (rawArgs, ctx) => {
@@ -1408,6 +1422,20 @@ export default function functionMenu(pi) {
         return;
       }
 
+      if (args === "workflow") {
+        scan(false);
+        if (!requireUI(ctx)) return;
+        const workflow = await pickWorkflow(ctx);
+        if (!workflow) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const scenario = workflowOnlyScenario(workflow);
+        const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
+        activeScenario = scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: "workflow", workflow: workflow.id, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已启用工作流「${workflow.title}」：${scenario.plugins.length} 个插件、${res.enabled.length} 个工具；未绑定任务场景。`, "info");
+        return;
+      }
+
       if (args === "scan") {
         const added = scan(false);
         ctx.ui.notify(added.length ? `扫描完成：新增 ${added.length} 个，已自动归类` : "扫描完成：没有新插件/技能", "info");
@@ -1423,7 +1451,12 @@ export default function functionMenu(pi) {
 
       if (args === "status") {
         const lines = [];
-        lines.push(`当前组合：${activeScenario ? `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}${activeScenario.dynamic ? "（动态）" : ""}` : "未装配"}`);
+        const label = activeScenario
+          ? activeScenario.workflowOnly
+            ? activeScenario.title
+            : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}${activeScenario.dynamic ? "（动态）" : ""}`
+          : "未装配";
+        lines.push(`当前组合：${label}`);
         if (activeScenario?.dynamic) {
           lines.push(`需求：${activeScenario.when}`);
           lines.push(`动态插件：${activeScenario.plugins.length ? activeScenario.plugins.join(", ") : "（无）"}`);
@@ -1528,7 +1561,9 @@ export default function functionMenu(pi) {
     if (!last || !last.id) return;
     activeWorkflow = last.workflow ? WORKFLOWS.find((w) => w.id === last.workflow) || null : null;
     let scenario = null;
-    if (last.id === "custom" && last.custom?.need) {
+    if (last.id === "workflow" && activeWorkflow) {
+      scenario = workflowOnlyScenario(activeWorkflow);
+    } else if (last.id === "custom" && last.custom?.need) {
       const analysis = analyzeNeed(last.custom.need, store);
       scenario = dynamicScenario(last.custom.need, analysis, activeWorkflow);
       if (Array.isArray(last.custom.packages)) scenario.plugins = last.custom.packages;
@@ -1656,9 +1691,9 @@ export default function functionMenu(pi) {
     if (!activeScenario) return;
     const extra = [
       "",
-      `## 当前组合（/function 装配）：${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`,
+      `## 当前组合（/function 装配）：${activeScenario.workflowOnly ? activeScenario.title : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`}`,
       activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}` : "",
-      `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
+      activeScenario.workflowOnly ? "" : `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
       (activeWorkflow?.manual?.length || activeScenario.manual?.length)
         ? `仍需手动：${uniq([...(activeWorkflow?.manual || []), ...(activeScenario.manual || [])]).join("；")}`
         : "",
@@ -1669,4 +1704,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

@@ -54,9 +54,10 @@ pi install ./path/to/pi-function
 | 命令 | 行为 |
 |---|---|
 | `/function` | 打印场景目录 → 先选工作流 → 再选应用场景 → 确认后装配 |
+| `/function workflow` | 只选工作流并启用，不绑定任务场景 |
 | `/function <需求>` | 按需求识别多个应用方向 → 只问工作流 → 按能力画像组合插件/技能 → 确认后装配；不打开固定场景选择，也不自动执行需求 |
 | `/function scan` | 重新扫描已安装插件、本地扩展和技能，并重建能力画像 |
-| `/function status` | 查看当前工作流 × 场景、已启用的插件工具 |
+| `/function status` | 查看当前工作流 × 场景（或仅工作流模式）、已启用的插件工具 |
 | `/function assign <名称> <场景id\|none>` | 手动覆盖某个插件/技能的绑定 |
 | `/function off` | 还原到装配前的工具集 |
 

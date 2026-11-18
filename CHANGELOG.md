@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+- Added `/function workflow`: shows only the workflow picker, enables the selected workflow, and does not bind a task scenario.
+- `/function status` and session restore now understand workflow-only mode; the workflow brief is injected without a task section.
+- Added a regression test ensuring workflow mode never opens the task picker.
+
 ## 2.1.0
 
 - Expanded application scenarios from 17 to 32: email, social posts, novels/stories, video/podcast, music/lyrics, posters/covers, courses, resumes, events, ecommerce, dashboards, spreadsheets, legal documents, small tools/CLI, and AI chatbots.

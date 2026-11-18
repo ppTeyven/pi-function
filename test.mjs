@@ -239,6 +239,16 @@ const flowCtx = {
 }
 {
   prompts.length = 0;
+  selections.push("review-gate");
+  await commands.function.handler("workflow", flowCtx);
+  assert.equal(prompts.length, 1, "workflow mode must not open a task picker");
+  assert.match(prompts[0], /工作流/);
+  assert.doesNotMatch(prompts[0], /任务/);
+  assert.equal(entries.at(-1).data.id, "workflow");
+  assert.equal(entries.at(-1).data.workflow, "review-gate");
+}
+{
+  prompts.length = 0;
   selections.push("prototype");
   await commands.function.handler('"做一个网页"', flowCtx);
   assert.match(prompts[0], /工作流/);

@@ -54,9 +54,10 @@ Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiv
 | Command | What happens |
 |---|---|
 | `/function` | Prints the catalog, asks for a workflow, then an application scenario, and assembles after approval |
+| `/function workflow` | Asks only for a workflow and enables it without binding a task scenario |
 | `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
 | `/function scan` | Re-scans installed packages, local extensions, and skills, then rebuilds the profile |
-| `/function status` | Shows the active workflow × scenario and enabled plugin tools |
+| `/function status` | Shows the active workflow × scenario (or workflow-only mode) and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none>` | Manually overrides one profile binding |
 | `/function off` | Restores the tool set from before assembly |
 
