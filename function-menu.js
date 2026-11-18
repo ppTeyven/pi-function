@@ -685,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.21.5";
+const EXT_VERSION = "2.21.6";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2647,8 +2647,10 @@ export default function functionMenu(pi) {
         assign: "手动归类插件/技能",
       };
       const p = String(prefix || "").trim();
-      // 第一项必须是“直接用 /function”：Web/TUI 的补全会丢掉空 value 的行，
-      // 所以用 menu 这个显式子命令占第一行，Enter/Tab 一下就进菜单。
+      // 裸 /function 不弹候选：回车直接进「工作流 × 场景」菜单。
+      // （前端会把这张表缓存一次且 /reload 不刷新，弹出来反而抢走回车；见 CHANGELOG 2.21.6）
+      if (!p) return null;
+      // 有前缀时才给候选，menu 保留作兼容写法。
       const items = [
         { value: "menu", label: "直接使用", description: "＝不填参数：工作流 × 场景菜单" },
         ...["assemble", ...FUNCTION_SUBCOMMANDS.map((s) => s.id)]

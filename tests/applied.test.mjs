@@ -109,6 +109,7 @@ test("A10 scan 归类与 /function 补全都已生效（英文描述归角色、
     getAllTools: () => [], getActiveTools: () => [], setActiveTools() {},
     getCommands: () => [], getAllSkills: () => [],
   });
-  assert.equal(reg.function.getArgumentCompletions("")[0].value, "menu");
+  assert.equal(reg.function.getArgumentCompletions(""), null, "裸 /function 不该弹候选");
+  assert.deepEqual(reg.function.getArgumentCompletions("s").map((i) => i.value), ["scan", "status", "stats"]);
   assert.equal(reg.fn.getArgumentCompletions, undefined);
 });

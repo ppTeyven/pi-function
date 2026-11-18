@@ -23,11 +23,12 @@ const capture = () => {
   return state.cmd;
 };
 
-test("K1 不输前缀时，第一项就是“直接使用”（等价于不填参数）", () => {
+test("K1 裸 /function 不弹候选（回车直接进菜单，不给缓存留把柄）", () => {
   const cmd = capture();
-  const items = cmd.getArgumentCompletions("");
-  assert.equal(items[0].value, "menu", `第一项实际是 ${items[0].value}`);
-  assert.match(items[0].description, /场景菜单/);
+  assert.equal(cmd.getArgumentCompletions(""), null);
+  assert.equal(cmd.getArgumentCompletions("   "), null);
+  const items = cmd.getArgumentCompletions("m");
+  assert.deepEqual(items.map((i) => i.value), ["menu"]);
 });
 
 test("K2 前缀过滤：第一项换成对应子命令，其它不相关项消失", () => {
@@ -39,7 +40,7 @@ test("K2 前缀过滤：第一项换成对应子命令，其它不相关项消�
 
 test("K3 子命令不重复，且都能按前缀过滤", () => {
   const cmd = capture();
-  const all = cmd.getArgumentCompletions("").map((i) => i.value);
+  const all = cmd.getArgumentCompletions("a").concat(cmd.getArgumentCompletions("m"), cmd.getArgumentCompletions("w"), cmd.getArgumentCompletions("p"), cmd.getArgumentCompletions("s"), cmd.getArgumentCompletions("o")).map((i) => i.value).filter((v, i, arr) => arr.indexOf(v) === i);
   assert.equal(new Set(all).size, all.length, "有重复项");
   assert.ok(all.includes("menu") && all.includes("assemble") && all.includes("assign") && all.includes("off"));
   assert.equal(cmd.getArgumentCompletions("zzz"), null);
