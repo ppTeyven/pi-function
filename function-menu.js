@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -32,9 +32,9 @@ const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const CAPABILITIES = {
   "code-intel": { label: "代码理解 / 静态检查", package: /lens|symbol|lsp|ast|code.?intel|navigat/i, tool: /symbol|diagnostic|module_report|project_report|ast_grep|read_symbol|lsp/i, skill: /lens|symbol|ast-grep|lsp|codebase|architect|refactor/i, terms: /代码|符号|类型|静态检查|codebase|symbol|lsp/i },
   "repo-wiki": { label: "仓库 Wiki / 代码地图", package: /wiki/i, tool: /wiki/i, skill: /wiki/i, terms: /wiki|仓库地图|codebase map/i },
-  memory: { label: "长期记忆 / 草稿", package: /memory|memo/i, tool: /memory_|scratchpad/i, skill: /memory|handoff|knowledge/i, terms: /记忆|沉淀|长期|备忘/i },
+  memory: { label: "长期记忆 / 草稿", package: /memory|memo/i, tool: /memory_|scratchpad/i, skill: /memory|handoff|knowledge/i, terms: /记忆|沉淀|长期|备忘/i, deny: /ima|知识库|connector|web|search/i },
   "side-chat": { label: "旁路问答", package: /btw|side.?chat/i, command: /btw|side/i, skill: /btw|side/i, terms: /旁问|side question|不打断/i },
-  web: { label: "联网搜索 / 抓取", package: /web|search|fetch|crawl|http/i, tool: /web_|search|fetch/i, skill: /research|web|search/i, terms: /搜索|联网|网页|资料/i, network: true },
+  web: { label: "联网搜索 / 抓取", package: /web|search|fetch|crawl|http/i, tool: /web_|search|fetch/i, skill: /research|web|search/i, terms: /搜索|联网|网页|资料/i, deny: /gongwen|公文|convert|humaniz|design|frontend/i, network: true },
   subagent: { label: "子代理 / 独立复核", package: /subagent|agent/i, tool: /subagent|contact_supervisor|bg_wait/i, skill: /subagent|council/i, terms: /子代理|subagent|独立复核/i },
   orchestration: { label: "多代理编排", package: /workflow|orchestrat|dynamic/i, tool: /workflow/i, skill: /workflow|parallel|fanout/i, terms: /编排|workflow|并行/i },
   task: { label: "任务清单 / 进度", package: /todo|task/i, tool: /^todo$|todos/i, skill: /todo|task/i, terms: /清单|任务|进度|todo/i },
@@ -43,21 +43,21 @@ const CAPABILITIES = {
   browser: { label: "浏览器 / 页面操作", package: /browser|kernel|playwright|computer/i, tool: /browser|computer|playwright/i, skill: /browser|playwright|e2e/i, terms: /浏览器|截图|点击|页面验收/i, network: true, requiresEnv: "KERNEL_API_KEY", envPackage: /kernel/i },
   vision: { label: "图片理解", package: /vision|image|multimodal/i, tool: /describe_image|vision/i, skill: /vision|image/i, terms: /图片|视觉|截图|image/i, network: true },
   simplify: { label: "收尾简化", package: /simplify/i, command: /simplify/i, skill: /simplify/i, terms: /简化|收尾|cleanup/i },
-  advisor: { label: "第二意见", package: /advisor/i, tool: /advisor/i, terms: /顾问|第二意见|选型/i },
-  mcp: { label: "MCP / 外部系统", package: /mcp/i, tool: /^mcp$|mcp_/i, terms: /mcp|外部系统|第三方服务/i },
+  advisor: { label: "第二意见", package: /advisor/i, tool: /advisor/i, skill: /advisor/i, terms: /顾问|第二意见|选型/i },
+  mcp: { label: "MCP / 外部系统", package: /mcp/i, tool: /^mcp$|mcp_/i, skill: /mcp/i, terms: /mcp|外部系统|第三方服务/i },
   i18n: { label: "本地化 / 多语言", package: /i18n|locale|language/i, command: /languages/i, skill: /i18n|locale|translation/i, terms: /翻译|本地化|多语言|i18n/i },
   gsd: { label: "规格驱动 / 阶段流程", package: /gsd|spec.?driven/i, tool: /gsd_/i, skill: /^gsd-/i, terms: /gsd|规格|里程碑|阶段/i },
   safety: { label: "安全 / 危险操作拦截", package: /safety|guard|security/i, tool: /safety/i, terms: /安全|拦截|guard/i, infra: true },
   pretty: { label: "主题 / 终端美化", package: /pretty|theme/i, tool: /pretty/i, terms: /主题|美化|theme/i, infra: true },
   ask: { label: "选项澄清", package: /ask.?user|question/i, tool: /ask_user_question/i, terms: /澄清|选项|question/i },
-  design: { label: "视觉 / UI / 品牌", package: /design|frontend|\bui\b|\bcss\b/i, tool: /design|style/i, skill: /design|frontend|\bcss\b|\bui\b|de-slop/i, terms: /设计|视觉|品牌|配色|排版|\bui\b|\bcss\b/i },
-  writing: { label: "写作 / 编辑 / 文案", package: /writing|content|docs/i, command: /write|article/i, skill: /writing|copy|blog|article|editor|handoff|mermaid|docs/i, terms: /写作|文章|文案|编辑|润色/i },
-  slides: { label: "演示 / 幻灯片", package: /slide|deck|presentation|ppt/i, skill: /ppt|slide|deck|presentation/i, terms: /ppt|幻灯片|演示|路演/i },
-  docs: { label: "文档 / 教程 / 知识库", package: /docs|wiki/i, tool: /wiki|docs/i, skill: /docs|documentation|readme|handoff|mermaid|connector/i, terms: /文档|教程|手册|wiki|readme/i },
+  design: { label: "视觉 / UI / 品牌", package: /design|frontend|\bui\b|\bcss\b/i, tool: /design|style/i, skill: /design|frontend|\bcss\b|\bui\b|de-slop/i, terms: /设计|视觉|品牌|配色|排版|\bui\b|\bcss\b/i, deny: /gongwen|公文|format|convert|markdown|humaniz|ima|search|research/i },
+  writing: { label: "写作 / 编辑 / 文案", package: /writing|content|docs/i, command: /write|article/i, skill: /writing|copy|blog|article|editor|humaniz|handoff|mermaid|docs/i, terms: /写作|文章|文案|编辑|润色/i, deny: /gongwen|公文|convert|markdown|format|slide|ppt|deck|mermaid|glimpse/i },
+  slides: { label: "演示 / 幻灯片", package: /slide|deck|presentation|ppt/i, skill: /ppt|slide|deck|presentation/i, terms: /ppt|幻灯片|演示|路演/i, deny: /gongwen|公文|convert|format|mermaid|markdown/i },
+  docs: { label: "文档 / 教程 / 知识库", package: /docs|wiki/i, tool: /wiki|docs/i, skill: /docs|documentation|readme|handoff|mermaid|connector|ima/i, terms: /文档|教程|手册|wiki|readme/i, deny: /gongwen|公文|convert|format|search|research/i },
   release: { label: "发布 / CI / 版本", package: /release|publish|deploy|\bci\b/i, command: /release|publish/i, skill: /release|publish|commit|branch|\bci\b/i, terms: /发布|上线|版本|\bci\b|部署/i },
-  testing: { label: "测试 / 验证", package: /test|qa/i, tool: /test/i, skill: /test|tdd|qa|prove|coverage/i, terms: /测试|用例|验证|覆盖/i },
+  testing: { label: "测试 / 验证", package: /test|qa/i, tool: /test/i, skill: /test|tdd|qa|prove|coverage/i, terms: /测试|用例|验证|覆盖/i, deny: /search|research|multi|stock|ima|gongwen|humaniz/i },
   automation: { label: "自动化 / 爬虫 / 定时", package: /automation|scrape|crawl|schedule|cron/i, tool: /cron|schedule|scrape|crawl/i, skill: /automation|scrape|crawl/i, terms: /自动化|爬虫|定时|批处理/i },
-  data: { label: "数据 / 图表 / 分析", package: /data|analytics|chart|sql|pandas/i, tool: /sql|query|chart|dataset/i, skill: /\bdata\b|analytics|csv|chart|pandas|notebook/i, terms: /数据|图表|统计|csv|sql|分析/i },
+  data: { label: "数据 / 图表 / 分析", package: /data|analytics|chart|sql|pandas/i, tool: /sql|query|chart|dataset/i, skill: /\bdata\b|analytics|csv|chart|pandas|notebook/i, terms: /数据|图表|统计|csv|sql|分析/i, deny: /search|research|multi|stock|newsletter/i },
   perf: { label: "性能 / 基准", package: /perf|benchmark|profile/i, tool: /benchmark|profile/i, skill: /perf|benchmark|profile/i, terms: /性能|基准|延迟|profile/i },
 };
 
@@ -462,7 +462,7 @@ function storePath() { return path.join(agentDir(), STORE_FILE); }
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 4;
+const PROFILE_VERSION = 5;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return path.join(agentDir(), PROFILE_FILE); }
@@ -499,40 +499,48 @@ function buildProfile(store) {
       name, meta.label || "", meta.description || "", meta.text || "",
       ...(meta.tools || []), ...(meta.commands || []), ...(meta.skills || []),
     ].join(" ")).slice(0, 6000);
-    let matched = false;
-    const matchedRoles = [];
+    const candidates = [];
     for (const [roleId, def] of Object.entries(CAPABILITIES)) {
       if (isGsdSkill && roleId !== "gsd") continue;
       if (isSkill && roleId === "writing" && /^(ppt|slide|deck|mermaid|glimpse)/i.test(name)) continue;
       if (!isSkill && def.requiresEnv && def.envPackage && def.envPackage.test(name) && !process.env[def.requiresEnv]) continue;
+      const strongName = isSkill ? def.skill?.test(norm(name)) : def.package?.test(norm(name));
+      if (def.deny && !strongName && def.deny.test(norm(`${name} ${text}`))) continue;
       let score = 0;
       const reasons = [];
       const hit = (re, value, weight, why) => {
         if (re && value && re.test(norm(value))) { score += weight; reasons.push(why); }
       };
       if (isSkill) {
-        hit(def.skill, name, 4, "技能名");
+        hit(def.skill, name, 5, "技能名");
         hit(def.terms, text, 1, "描述");
       } else {
-        hit(def.package, name, 4, "包名");
-        for (const tool of meta.tools || []) hit(def.tool, tool, 2, "工具");
-        for (const cmd of meta.commands || []) hit(def.command, cmd, 2, "命令");
+        hit(def.package, name, 5, "包名");
+        for (const tool of meta.tools || []) hit(def.tool, tool, 3, "工具");
+        for (const cmd of meta.commands || []) hit(def.command, cmd, 3, "命令");
         for (const skill of meta.skills || []) hit(def.skill, skill, 2, "技能");
         hit(def.terms, text, 1, "描述");
       }
-      if (score <= 0) continue;
-      matched = true;
-      matchedRoles.push(roleId);
-      const role = roles[roleId];
-      const rec = { id: name, score, reasons: uniq(reasons) };
+      if (score < (def.minScore ?? 2)) continue;
+      candidates.push({ roleId, score, reasons: uniq(reasons) });
+    }
+    // 一个包/技能最多进入 3 个包角色或 2 个技能角色，按证据强度取前几名。
+    const selected = candidates
+      .sort((a, b) => b.score - a.score || a.roleId.localeCompare(b.roleId))
+      .slice(0, isSkill ? 2 : 3);
+    for (const item of selected) {
+      const role = roles[item.roleId];
+      const rec = { id: name, score: item.score, reasons: item.reasons };
       if (isSkill) role.skills.push(rec); else role.packages.push(rec);
     }
-    if (!matched) unassigned.push(rawId);
+    if (!selected.length) unassigned.push(rawId);
     itemInfo[name] = {
       id: name,
       kind: isSkill ? "skill" : "plugin",
       description: meta.description || "",
-      roles: uniq(matchedRoles),
+      roles: selected.map((x) => x.roleId),
+      roleScores: Object.fromEntries(selected.map((x) => [x.roleId, x.score])),
+      assignments: selected,
       network: Object.values(roles).some((r) => r.network && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
       infra: Object.values(roles).some((r) => r.infra && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
     };
@@ -1364,6 +1372,33 @@ function buildCatalog(pi, store) {
   return lines.join("\n");
 }
 
+function buildProfileReport(store) {
+  const profile = ensureProfile(store) || buildProfile(store);
+  const active = Object.entries(store.known).filter(([, m]) => m && !m.missing).length;
+  const lines = [
+    `## 能力画像（v${PROFILE_VERSION} · ${profile.fingerprint}）`,
+    `- 条目：${active} 个；已归类 ${active - profile.unassigned.length} 个，未归类 ${profile.unassigned.length} 个`,
+    `- 文件：\`${profilePath()}\``,
+    "",
+    "### 角色 → 插件 / 技能",
+  ];
+  for (const role of Object.values(profile.roles)) {
+    const pkgs = role.packages.map((p) => `${p.id}(${p.score})`);
+    const skills = role.skills.slice(0, 8).map((s) => `skill:${s.id}`);
+    if (!pkgs.length && !skills.length) continue;
+    lines.push(`- **${role.label}** \`${role.id}\`${role.infra ? "（基础设施，不进场景套餐）" : ""}`);
+    if (pkgs.length) lines.push(`  - 插件：${pkgs.join("、")}`);
+    if (skills.length) lines.push(`  - 技能：${skills.join("、")}${role.skills.length > 8 ? " …" : ""}`);
+  }
+  if (profile.unassigned.length) {
+    lines.push("", "### 未归类");
+    lines.push(profile.unassigned.map((id) => `- ${id}`).join("\n"));
+  }
+  lines.push("", "规则：包名 5 / 工具或命令 3 / 技能名 5 / 描述 1；每个条目最多取 3 个包角色或 2 个技能角色；角色级 deny 过滤误匹配。");
+  lines.push("调整：`/function scan` 重建；手动绑定用 `/function assign <名称> <场景id>`。");
+  return lines.join("\n");
+}
+
 export function menuOptions(store, scenarios = SCENARIOS) {
   return scenarios.map((s) => {
     const count = scenarioPackages(s, store).length;
@@ -1492,9 +1527,9 @@ export default function functionMenu(pi) {
   };
 
   const functionCommand = {
-    description: "Pi-function：/function 用工作流 × 场景菜单；/function workflow 只选工作流；带需求文本时动态分析并组合插件/技能",
+    description: "Pi-function：/function 用工作流 × 场景菜单；/function workflow 只选工作流；/function profile 查看能力画像；带需求文本时动态分析并组合插件/技能",
     getArgumentCompletions: (prefix) => {
-      const base = ["workflow", "scan", "status", "off", "assign"];
+      const base = ["workflow", "profile", "scan", "status", "off", "assign"];
       return base.filter((v) => v.startsWith(prefix || "")).map((v) => ({ value: v, label: v }));
     },
     handler: async (rawArgs, ctx) => {
@@ -1543,6 +1578,12 @@ export default function functionMenu(pi) {
             display: true,
           });
         }
+        return;
+      }
+
+      if (args === "profile") {
+        ensureProfile(store);
+        pi.sendMessage({ customType: "function-profile", content: buildProfileReport(store), display: true });
         return;
       }
 
@@ -1801,4 +1842,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

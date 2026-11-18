@@ -69,6 +69,7 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 | `/function` | Prints the catalog, asks for a workflow, then an application scenario, and assembles after approval |
 | `/function workflow` | Asks only for a workflow, enables its bundle, and does not bind a task scenario |
 | `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
+| `/function profile` | Shows the generated capability profile: roles, scores, unassigned items, and profile path |
 | `/function scan` | Re-scans installed packages, local extensions, and skills, then rebuilds the profile |
 | `/function status` | Shows the active workflow × scenario (or workflow-only mode) and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none>` | Manually overrides one profile binding |
@@ -125,6 +126,7 @@ webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-de
 | Need | Command |
 |---|---|
 | See the active assembly | `/function status` |
+| Inspect how plugins and skills were classified | `/function profile` |
 | Restore the pre-assembly tool set | `/function off` |
 | Pick up newly installed plugins/skills | `/function scan` |
 | Correct one binding | `/function assign <package-or-skill> <scenario-id>`; use `none` to exclude it |
@@ -221,6 +223,19 @@ The profile contains role → package/skill bindings, descriptions, and a finger
 The catalog and workflow bundles are hydrated from this profile at runtime. That is why the same `webpage` or `article` ID can use different tools on different machines without changing the extension source.
 
 Manual overrides are stored in `~/.pi/agent/function-menu.json` and survive profile rebuilds.
+
+### How items are organized
+
+Pi-function deliberately avoids a hard-coded plugin list. Each package/skill is scored against capability roles using several independent signals:
+
+- package or skill name: **5 points**;
+- registered tool or command name: **3 points**;
+- skill names contributed by a package: **2 points**;
+- description terms: **1 point**.
+
+A role must reach a minimum score (default **2**) before it is considered. Role-level `deny` rules then reject known false positives — for example, a search skill must not become a testing tool, and a document-formatting skill must not become a design tool. Strong name matches take precedence over description-based denies. Each item is capped at **3 package roles** or **2 skill roles**, keeping one package from polluting many scenarios. Packages that require an environment variable (such as a cloud browser key) are skipped when the variable is missing; their local skills remain available.
+
+Run `/function profile` to inspect the result. The report shows every role, the matched packages/skills with scores, the unassigned list, and the profile file path. Manual corrections remain available through `/function assign`.
 
 ## Dynamic needs
 

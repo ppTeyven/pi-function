@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.0
+
+- Stronger profile classification: weighted name/tool/command/skill/description signals, minimum score, role-level deny rules, and caps of 3 package roles / 2 skill roles.
+- Fixed false positives: search skills no longer become testing/data capabilities; document-formatting skills no longer become design/docs; knowledge-base connectors no longer become generic memory; strong name matches (e.g. memory packages) override description denies.
+- Added `/function profile` to inspect roles, scores, unassigned items, and the profile path.
+- Added tests for noisy-description classification and profile-version rebuild.
+
 ## 2.4.0
 
 - Merged `prototype` into `outline` (structure or minimum prototype first) and `iterate` into `review-gate` (review or feedback loop). Eight workflows: direct, outline, research, debug, parallel, review-gate, phased, offline.

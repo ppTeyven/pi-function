@@ -170,6 +170,25 @@ const browserProfile = buildProfile({
 assert.ok(!browserProfile.roles.browser.packages.some((p) => p.id === "@onkernel/browser-loop"), "env-gated browser package must be skipped");
 assert.ok(browserProfile.roles.browser.skills.some((s) => s.id === "playwright-cli"), "browser skills must remain");
 if (savedKernel !== undefined) process.env.KERNEL_API_KEY = savedKernel;
+
+// Role deny/threshold rules: noisy descriptions must not leak into unrelated roles.
+const noiseProfile = buildProfile({
+  known: {
+    "skill:multi-search-engine": { kind: "skill", label: "multi-search-engine", description: "多源搜索、交叉验证与结果去重", missing: false },
+    "skill:gongwenformat-pro": { kind: "skill", label: "gongwenformat-pro", description: "公文排版与 Word 格式化", missing: false },
+    "skill:ima-skill": { kind: "skill", label: "ima-skill", description: "IMA 知识库、笔记与资料检索", missing: false },
+    "skill:humanizer": { kind: "skill", label: "humanizer", description: "去除 AI 味，润色中文写作", missing: false },
+  },
+  overrides: {},
+  classifierVersion: CLASSIFIER_VERSION,
+});
+const noiseInfo = noiseProfile.itemInfo;
+assert.deepEqual(noiseInfo["multi-search-engine"].roles, ["web"], "search must not leak into testing/data");
+assert.ok(!noiseInfo["gongwenformat-pro"].roles.includes("design"), "gongwen formatting is not design");
+assert.ok(!noiseInfo["gongwenformat-pro"].roles.includes("docs"), "gongwen formatting is not docs");
+assert.deepEqual(noiseInfo["ima-skill"].roles, ["docs"], "IMA belongs to docs, not memory");
+assert.deepEqual(noiseInfo["humanizer"].roles, ["writing"], "humanizer belongs to writing");
+assert.ok(noiseInfo["multi-search-engine"].roles.length <= 2, "skills cap at two roles");
 assert.ok(profile.roles.design.skills.some((s) => s.id === "frontend-design"), "design role missed skill");
 hydrateCatalog(profile);
 for (const workflow of WORKFLOWS) {
