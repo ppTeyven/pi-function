@@ -55,7 +55,7 @@ test("C5 通用词有记录，不是被过滤掉", () => {
 test("C6 没提到的词全部保留，pending 只影响“问几个”不影响记录", () => {
   const w = m.wordAudit("做成 1920x1080 的封面，写一句 slogan");
   assert.ok(w.unmatched.length > 2, `unmatched=${w.unmatched.length}`);
-  assert.equal(w.pending, w.unmatched.length - 2);
+  assert.equal(w.pending, w.unmatched.length - 3);
   assert.equal(w.accounted, w.total);
 });
 

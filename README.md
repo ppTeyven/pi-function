@@ -351,12 +351,36 @@ counts    = tally by bucket     // sum(counts) === total, always
 |---|---|---|
 | `matched` | 1…15% of items mention it, with the strongest one | — (evidence) |
 | `generic` | >15% mention it → cannot locate an item | no, but recorded |
-| `unmatched` | no item mentions it | top 2; the rest stay in `pending` |
+| `unmatched` | no item mentions it | top 3; the rest stay in `pending` |
 | `filler` | 虚词/量词 after prefix/suffix trimming | no, recorded |
 | `single` | single CJK characters (never used as evidence) | no, recorded |
 | `deed` | verb/adjective lexicon hit (incl. single-char `画/剪/译` via `SINGLE_DEEDS`) | via `source: "deed"` gaps |
 
 The invariant is tested, not documented: `tests/complete.test.mjs` asserts `accounted === total` and `sum(counts) === total` over a corpus that includes numbers, English, full-width punctuation and empty input. Lose a word and the suite goes red.
+
+Recorded is not the same as used, so the audit block also goes into the system prompt:
+
+```
+### 逐词核对（需求里每个词都查过）
+对得上：水印→skill:watermark-remover、报告→skill:gongwenformat-pro
+本机没提到：唢呐、竖琴、皮影、木雕、泥塑（另有 2 个已记录、本次未逐条问）
+这些词如果确实要做，先向用户确认或找能力，不要默默忽略。
+```
+
+### Cross-language aliases (`ALIASES`)
+
+Matching is string-based, so a Chinese request and an English skill description never meet: you install a skill that says `Remove watermark from photos`, you ask for `去水印`, and nothing matches. `ALIASES` closes that hole in both directions:
+
+```js
+watermark ↔ 水印     subtitle ↔ 字幕    thumbnail ↔ 缩略图   qrcode ↔ 二维码
+translate ↔ 翻译      proofread ↔ 校对    summarize ↔ 摘要     refactor ↔ 重构
+scrape ↔ 抓取         deploy ↔ 部署       dashboard ↔ 看板     darkmode ↔ 深色模式
+… (~55 pairs)
+```
+
+- `catalogTexts()` exposes `scan` = flattened text **plus** the other-language forms, so one comparison covers both.
+- `wordAudit`, `capabilityScan` and `capabilityCovered` all read `scan`, so `去水印` matches `watermark` and `remove the watermark` matches `水印`.
+- The table only widens *matching*; it never adds score, never adds tags, never inserts tokens into the audit. A pair that does not exist in the table is simply not matched — which is why the table is data, not logic, and can be extended without touching code.
 
 #### Verbs and adjectives count too
 
@@ -473,7 +497,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 200 cases, repository fixture — runs on any machine
+npm test          # 208 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -491,6 +515,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `words.test.mjs` | word segmentation, per-word buckets, unmatched-word asks | 9 |
 | `deeds.test.mjs` | verbs/adjectives → roles, deed gaps, panel wording | 9 |
 | `complete.test.mjs` | completeness invariant: every token accounted for | 9 |
+| `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

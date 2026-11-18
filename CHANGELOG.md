@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.20.0
+
+- **Cross-language aliases.** `ALIASES` (~55 bidirectional pairs: `watermark ↔ 水印`, `thumbnail ↔ 缩略图`, `scrape ↔ 抓取`, `darkmode ↔ 深色模式`, …). `catalogTexts()` now exposes `scan` (flattened text + the other-language forms) and `wordAudit`, `capabilityScan`, `capabilityCovered` all match against it, so a Chinese request matches an English skill description and vice versa. The table only widens matching: no score, no tags, no extra tokens.
+- Lazy alias initialisation (`aliasPairs()`) — the lexicon tables sit above `norm`/`flatText` in the file, and eager evaluation hit TDZ at import time.
+- Unmatched words are asked about up to **3** per run (was 2) and `pending` reports the remainder; the whole set is also injected into the system prompt (`### 逐词核对` with 对得上 / 动作风格 / 本机没提到 lines), so nothing is recorded and then forgotten.
+- New `tests/coverage.test.mjs` (8 cases). Total 208.
+
 ## 2.19.0
 
 - **Completeness invariant.** `wordAudit` now keeps a per-token ledger (`byToken`) and derives its buckets from it, so `accounted === total` and `sum(counts) === total` hold for any input. Previously three things could vanish: single characters (excluded from both matching and questions), `generic` words (recorded as "seen" only) and unmatched words past the top 5.
