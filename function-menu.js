@@ -1600,6 +1600,24 @@ export default function functionMenu(pi) {
         }
       }
 
+      if (args === "assemble") {
+        scan(false);
+        if (!requireUI(ctx)) return;
+        pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
+        const workflow = await pickWorkflow(ctx);
+        if (!workflow) return;
+        const choice = await pickTask(ctx);
+        if (!choice) return;
+        const ok = await confirmScenario(ctx, choice.scenario, "菜单选择", workflow);
+        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const res = applyScenario(pi, ctx, choice.scenario, store, baseline, workflow);
+        activeScenario = choice.scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: choice.scenario.id, workflow: workflow.id, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${workflow.title} × ${choice.scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+        return;
+      }
+
       if (args === "workflow") {
         scan(false);
         if (!requireUI(ctx)) return;
