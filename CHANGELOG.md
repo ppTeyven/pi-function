@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.21.2
+
+- `/function` argument completion: the first row is now `menu` ("直接使用 /function" = 工作流 × 场景菜单), so Tab/Enter lands on the menu instead of `assemble`. The literal empty-value row didn't survive the web UI's list rendering (the provider returns it, the renderer drops it), so an explicit subcommand is used instead.
+- `menu` is handled exactly like no argument: `/function menu` opens the subcommand menu and is never treated as a requirement.
+- `tests/completions.test.mjs` now 4 cases. Total 220.
+
 ## 2.21.1
 
 - `/function` argument completion now puts the bare command first (`value: ""`), so Tab/Enter on an empty prefix uses plain `/function` and opens the workflow × scenario menu. Subcommands (`assemble / workflow / profile / scan / status / stats / off / assign`) keep their order after it; an empty entry is filtered out as soon as a prefix is typed.

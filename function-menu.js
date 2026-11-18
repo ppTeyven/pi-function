@@ -2644,20 +2644,22 @@ export default function functionMenu(pi) {
         off: "还原工具集",
         assign: "手动归类插件/技能",
       };
-      const p = String(prefix || "");
+      const p = String(prefix || "").trim();
+      // 第一项必须是“直接用 /function”：Web/TUI 的补全会丢掉空 value 的行，
+      // 所以用 menu 这个显式子命令占第一行，Enter/Tab 一下就进菜单。
       const items = [
-        // 列表第一项就是 /function 本身：不填参数直接进菜单，Tab/Enter 即可用。
-        { value: "", label: "直接使用", description: "不填参数：工作流 × 场景菜单（推荐）" },
+        { value: "menu", label: "直接使用", description: "＝不填参数：工作流 × 场景菜单" },
         ...["assemble", ...FUNCTION_SUBCOMMANDS.map((s) => s.id)]
           .filter((v, i, a) => a.indexOf(v) === i)
           .map((v) => ({ value: v, label: v, description: desc[v] || "" })),
-      ];
-      const filtered = items.filter((i) => i.value.startsWith(p));
-      return filtered.length ? filtered : null;
+      ].filter((i) => i.value.startsWith(p));
+      return items.length ? items : null;
     },
     handler: async (rawArgs, ctx) => {
       captureBaseline();
       let args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
+      // menu = 补全第一项“直接使用”，与不填参数等价
+      if (args === "menu") args = "";
 
       if (!args) {
         scan(false);

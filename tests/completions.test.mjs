@@ -23,25 +23,43 @@ const capture = () => {
   return state.cmd;
 };
 
-test("K1 不输前缀时，第一项是空的 value（就是 /function 本身）", () => {
+test("K1 不输前缀时，第一项就是“直接使用”（等价于不填参数）", () => {
   const cmd = capture();
   const items = cmd.getArgumentCompletions("");
-  assert.equal(items[0].value, "", `第一项实际是 ${items[0].value}`);
-  assert.match(items[0].description, /不填参数/);
+  assert.equal(items[0].value, "menu", `第一项实际是 ${items[0].value}`);
+  assert.match(items[0].description, /场景菜单/);
 });
 
-test("K2 空项只在不输前缀时出现（输了前缀就过滤掉）", () => {
+test("K2 前缀过滤：第一项换成对应子命令，其它不相关项消失", () => {
   const cmd = capture();
-  const items = cmd.getArgumentCompletions("s");
-  assert.ok(!items.some((i) => i.value === ""), "有前缀时不该出现空项");
-  assert.deepEqual(items.map((i) => i.value), ["scan", "status", "stats"]);
+  assert.deepEqual(cmd.getArgumentCompletions("s").map((i) => i.value), ["scan", "status", "stats"]);
+  assert.deepEqual(cmd.getArgumentCompletions("m").map((i) => i.value), ["menu"]);
+  assert.deepEqual(cmd.getArgumentCompletions("a").map((i) => i.value), ["assemble", "assign"]);
 });
 
 test("K3 子命令不重复，且都能按前缀过滤", () => {
   const cmd = capture();
   const all = cmd.getArgumentCompletions("").map((i) => i.value);
   assert.equal(new Set(all).size, all.length, "有重复项");
-  assert.ok(all.includes("assemble") && all.includes("assign") && all.includes("off"));
-  assert.deepEqual(cmd.getArgumentCompletions("a").map((i) => i.value), ["assemble", "assign"]);
+  assert.ok(all.includes("menu") && all.includes("assemble") && all.includes("assign") && all.includes("off"));
   assert.equal(cmd.getArgumentCompletions("zzz"), null);
+});
+
+test("K4 menu 参数等同于不填参数（走子命令菜单，不当成需求文本）", async () => {
+  const state = { run: null, messages: [], notices: [] };
+  const pi = {
+    registerTool() {},
+    registerCommand(name, cmd) { if (name === "function") state.run = cmd.handler || cmd; },
+    on() {},
+    appendEntry() {},
+    sendMessage: (msg) => state.messages.push(msg),
+    getAllTools: () => [], getActiveTools: () => [], setActiveTools() {},
+    getCommands: () => [], getAllSkills: () => [],
+  };
+  m.default(pi);
+  const ctx = { hasUI: false, ui: { notify: (t) => state.notices.push(t) } };
+  await state.run("menu", ctx);
+  assert.equal(state.messages.length, 0, "menu 不该被当成需求文本生成装配说明");
+  await state.run("帮我做个海报", ctx);
+  assert.ok(state.messages.length > 0, "普通文本应该照旧走动态分析");
 });
