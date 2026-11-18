@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.gif?v=2.25.0" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif?v=2.26.0" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 
@@ -558,7 +558,7 @@ node scripts/render-banner-gif.mjs    # assets/banner.gif (README uses this one)
 
 GitHub strips `<style>` from SVGs, so the CSS animation in `banner.svg` only runs in a browser or editor. The GIF carries its own timing, so the README animation actually plays; both are drawn from `scripts/banner-geometry.mjs`, and `banner.test.mjs` B8 fails if the two ever drift apart. The GIF renderer has no dependencies — it rasterises the same rectangles and writes GIF89a by hand (LZW + NETSCAPE loop), 927×260, ~210 KB, 4.8s loop.
 
-The motion is a travelling wave: every letter stays on screen for the whole loop and only rises six pixels, with the crest dimmed to 55% so it reads as a soft swell rather than a flicker. Nothing appears, disappears or cross-fades — a per-column cross-fade was tried first and rejected, because half-transparent columns read as a bar sliding over the letters. Letters sit one cell apart (26px), so the word reads tight.
+The motion is a travelling wave through the pixel grid: every 26px block of the wordmark rises six pixels on its **own phase**, so a single letter can have its cells at different heights. The crest is dimmed to 55%, which is what gives the wordmark its surface — blocks tilt and shade as the wave passes, instead of whole letters bobbing together. Letters sit one cell apart (26px), so the word reads tight. Nothing appears, disappears or cross-fades: a per-column cross-fade was tried first and rejected, because half-transparent columns read as a bar sliding over the letters.
 
 `banner.test.mjs` B10 decodes the GIF's own LZW stream and asserts two things no palette inspection would catch: every frame still has the wordmark (letters never vanish), and every pixel in the text band is a neutral step between white and the background — the dimming is the only grey, no colour fringe rides along. `TEXT_Y` must stay even, because the 2×2 box filter would otherwise blend half a pixel of grey into every stroke edge.
 

@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   WORD, CELL, GAP, TEXT_X, TEXT_Y, WIDTH, HEIGHT, RADIUS, PAD_X,
-  BG, BORDER, INK, PI_FILLS, PI_MARK, layout, TIMING,
+  BG, BORDER, INK, PI_FILLS, PI_MARK, layout, TIMING, columnOf,
 } from "./banner-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,8 +38,8 @@ const WORD_BOTTOM = TEXT_Y + 7 * CELL;
 const ms = (seconds) => Math.round(seconds * 1000);
 const DEG = Math.PI / 180;
 
-/** Phase delay of letter `i`, in seconds (negative delay = phase offset in CSS). */
-const phaseSeconds = (i) => (i * TIMING.wavePhaseStep) / (2 * Math.PI) * TIMING.wavePeriod;
+/** Phase delay of pixel column `col`, in seconds (negative delay = phase offset). */
+const phaseSeconds = (col) => (col * TIMING.wavePhaseStep) / (2 * Math.PI) * TIMING.wavePeriod;
 
 const style = STATIC
   ? ""
@@ -68,20 +68,16 @@ const mark = PI_MARK.polygons
   })
   .join(String.fromCharCode(10) + "    ");
 
-// 每个字母一个 <g>，用负延迟做相位差 → 波浪从左往右走
+// 每个 26px 方块一个 <g>：delay 由像素列号决定，所以同一字母内也会错峰
 const wordmark = letters
-  .map((letter, li) => {
-    const inner = letter.runs
-      .map(
-        (r) =>
-          `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" data-letter="${li}"/>`,
-      )
-      .join(String.fromCharCode(10) + "      ");
-    return `    <g${cls("wave", ` style="animation-delay:-${phaseSeconds(li).toFixed(3)}s"`)}>
-${inner}
-    </g>`;
-  })
-  .join(String.fromCharCode(10));
+  .flatMap((letter, li) =>
+    letter.runs.map((r) => {
+      const delay = phaseSeconds(columnOf(r.x)).toFixed(3);
+      const c = STATIC ? "" : ` class="wave" style="animation-delay:-${delay}s"`;
+      return `<g${c}><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" data-letter="${li}"/></g>`;
+    }),
+  )
+  .join(String.fromCharCode(10) + "    ");
 
 const dots = PI_FILLS
   .map((fill, i) => {

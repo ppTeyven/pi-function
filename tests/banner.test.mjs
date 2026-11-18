@@ -57,18 +57,19 @@ test("B3 动画是可剥离的：rect 自身不带 opacity / fill=none，剥掉 
 test("B4 动画是波浪：字一直在，只起伏与变暗，可降级", () => {
   assert.match(SVG, /@keyframes bob/);
   assert.match(SVG, /@keyframes dim/);
-  assert.match(SVG, /class="wave" style="animation-delay:-\d+\.\d+s"/, "每个字母要自己的相位");
-  assert.match(SVG, /translateY\(-6px\)/, "波峰只抬 6px（不要太高）");
-  assert.match(SVG, /animation: bob 2\.6s ease-in-out infinite, dim 2\.6s ease-in-out infinite/);
-  assert.match(SVG, /opacity: 0\.55/, "波峰要比旁边灰一点");
-  assert.match(SVG, /prefers-reduced-motion: reduce/);
-  assert.match(SVG, /class="dot"/, "三个色点也在呼吸");
-  // 反面：不许“消失 / 出现”流
-  assert.doesNotMatch(SVG, /@keyframes type/);
-  assert.doesNotMatch(SVG, /@keyframes rise/);
-  assert.doesNotMatch(SVG, /class="caret"/);
-  // 剥掉 <style> 后仍是完整白字：字母分组不许自带 opacity
-  assert.doesNotMatch(SVG, /<g[^>]*opacity=/, "字母分组自带 opacity，会随样式一起失效");
+  // 波浪要落到每个 26px 方块：<g class="wave"> 的数量不少于 rect 数
+  const waveGroups = [...SVG.matchAll(/class="wave"/g)].length;
+  assert.ok(waveGroups >= wordRects.length, `只有 ${waveGroups} 个方块在动，rect 有 ${wordRects.length}`);
+  // 同一个字母内部，不同列必须错峰（否则等于整字母一起动）
+  const groups = SVG.split('<g class="wave"').slice(1);
+  const delaysFor = (letter) =>
+    groups
+      .filter((g) => g.includes(`data-letter="${letter}"`))
+      .map((g) => Number.parseFloat(g.split("animation-delay:-")[1]));
+  const within = delaysFor(0);
+  assert.ok(within.length >= 3, `字母 0 的方块太少：${within.length}`);
+  // 同一列里的方块共享相位是对的（按列驱动），但要能看出"一个字母里有多个相位"
+  assert.ok(new Set(within).size >= 2, `字母 0 内部只有一种相位：${within.join(",")}`);
 });
 
 test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {

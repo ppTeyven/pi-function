@@ -119,31 +119,39 @@ export function layout() {
 /**
  * Animation timings shared by the SVG (CSS) and the GIF (raster).
  *
- * The motion is a travelling wave: every letter stays on screen the whole
- * time and only bobs a few pixels, with the crest dimmed towards grey. No
- * appearing/disappearing, no cross-fade — a half-transparent column reads as
- * a bar covering the letters.
+ * The motion is a travelling wave through the pixel grid itself: every 26px
+ * block of the wordmark bobs on its own phase, so a single letter can have its
+ * cells at different heights. The crest is dimmed towards grey, which is what
+ * gives the wordmark its surface: blocks tilt and shade as the wave passes.
+ * No appearing/disappearing, no cross-fade — a half-transparent column reads
+ * as a bar covering the letters.
  */
 export const TIMING = {
   wavePeriod: 2.6, // seconds for one full wave (the GIF loop is exactly this)
   waveAmplitude: 6, // px the crest rises — under a quarter of a pixel cell
-  wavePhaseStep: 0.62, // radians of phase between neighbouring letters
+  wavePhaseStep: 0.55, // radians of phase between neighbouring pixel columns
   waveDim: 0.45, // how much darker the crest is than a letter at rest
   breathe: 2.6, // dots share the wave period so the loop is seamless
   dotDelay: [0, 0.2, 0.4], // seconds
 };
 
 /**
- * Wave state of letter `i` at time `t`: how far it rises and how bright it is.
- * The lift is quantised to whole 2px steps so the 2x2 box filter never blends
- * half a pixel of grey into a stroke — the dimming is the only grey, and it is
- * deliberate.
+ * Wave state of one pixel column at time `t`: how far its blocks rise and how
+ * bright they are. Driven per column, not per letter — that is what makes the
+ * wave read as a surface passing through the glyphs instead of whole letters
+ * bobbing. The lift is quantised to whole 2px steps so the 2x2 box filter never
+ * blends half a pixel of grey into a stroke; the dimming is deliberate.
  */
-export function waveAt(i, t) {
-  const phase = (2 * Math.PI * t) / TIMING.wavePeriod - i * TIMING.wavePhaseStep;
+export function waveAt(col, t) {
+  const phase = (2 * Math.PI * t) / TIMING.wavePeriod - col * TIMING.wavePhaseStep;
   const crest = Math.max(0, Math.sin(phase));
   const lift = Math.round((TIMING.waveAmplitude * crest) / 2) * 2;
   return { dy: -lift, alpha: 1 - TIMING.waveDim * crest };
+}
+
+/** Pixel column of a block, 0-based from the wordmark's left ink edge. */
+export function columnOf(x) {
+  return Math.round((x - TEXT_X) / CELL);
 }
 
 /** Seconds of animation per loop (the GIF ships exactly this many frames). */

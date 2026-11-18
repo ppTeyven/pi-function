@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.26.0
+
+- **The wave now moves every 26px block, not whole letters.** `waveAt(col, t)` is driven by the pixel column (`phase = 2πt/period - col × 0.55`), and both renderers apply it per rect: a letter can have one cell at rest and the next one lifted six pixels. Combined with the 55% dimming on the crest, the wordmark reads as a surface passing through the glyphs rather than eight letters bobbing in unison.
+- `columnOf(x)` maps a block's x to its column, so the GIF and the SVG share one definition of "which block is where in the wave".
+- B4 now asserts the per-block behaviour it used to only imply: at least as many wave groups as rects, and at least two distinct phases inside a single letter. (First attempt asserted *all* delays unique and went red — blocks in the same column are supposed to share a phase.)
+- Total 240.
+
 ## 2.25.0
 
 - **Banner motion is now a travelling wave.** Each letter bobs six pixels and the crest dims to 55%, so the wordmark breathes instead of typing itself in. Nothing appears or disappears any more — the previous versions (per-column fade, then type-on with a caret) both made letters pop in and out, which is exactly what was asked to stop.

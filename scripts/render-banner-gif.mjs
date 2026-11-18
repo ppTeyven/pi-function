@@ -21,7 +21,7 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
   CELL, TEXT_X, TEXT_Y, WIDTH, HEIGHT, RADIUS, BG, BORDER, INK, PI_FILLS, PI_MARK, PI_BOX, piPoints,
-  layout, TIMING, waveAt, LOOP_SECONDS,
+  layout, TIMING, waveAt, columnOf, LOOP_SECONDS,
 } from "./banner-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -164,10 +164,13 @@ function render(t) {
     for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) put(xx, yy, white, a);
   };
   // 波浪：字始终在屏幕上，只有起伏与明暗；波峰往上抬 6px 并压暗
-  letters.forEach((letter, i) => {
-    const { dy, alpha } = waveAt(i, t);
-    for (const r of letter.runs) fillRect(r.x, r.y + dy, r.w, r.h, alpha);
-  });
+  // 每个 26px 方块按自己的列相位起伏：同一字母的格子可以不在同一高度
+  for (const letter of letters) {
+    for (const r of letter.runs) {
+      const { dy, alpha } = waveAt(columnOf(r.x), t);
+      fillRect(r.x, r.y + dy, r.w, r.h, alpha);
+    }
+  }
 
   // Pi mark: static
   for (const poly of PI) {
