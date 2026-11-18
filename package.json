@@ -1,6 +1,6 @@
 {
   "name": "pi-function",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Pi-function — application-scenario + workflow assembler for the Pi coding agent. Fixed scenario IDs, per-user capability profile, and dynamic free-text composition across installed plugins and skills.",
   "type": "module",
   "license": "MIT",

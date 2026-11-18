@@ -47,6 +47,8 @@ for (const id of ["direct", "outline", "prototype", "parallel", "review-gate", "
 }
 assert.ok(workflowOptions("outline")[0].startsWith("outline · "));
 assert.match(workflowOptions("outline")[0], /★ 推荐/);
+assert.match(workflowOptions("outline")[0], /先出提纲/);
+assert.match(workflowOptions("direct")[0], /需求清楚、范围小/);
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "review-gate");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "webpage")), "prototype");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "article")), "outline");

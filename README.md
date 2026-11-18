@@ -19,7 +19,7 @@
     <a href="#scenarios">Scenarios</a> ·
     <a href="#workflows">Workflows</a> ·
     <a href="#per-user-profile">Profile</a> ·
-    <a href="README.zh-CN.md">中文</a>
+    <a href="README.zh-CN.md">Chinese</a>
   </p>
 </div>
 
@@ -81,21 +81,21 @@ Picker rows show plugin and skill counts. A typical fixed-menu exchange:
 ```text
 /function
 
-第 1 步：先选工作流（怎么执行）
-  outline · 结构先行 — ★ 推荐 · 1 个插件
-  direct · 直接产出 — 无额外插件
+Step 1: choose a workflow (how to execute)
+  outline · Outline first — ★ recommended · 1 plugin
+  direct · Direct output — no extra plugins
   ...
 
-第 2 步：再选应用场景（做什么）
-  webpage · 网页 / 落地页 / 官网 — 2 个插件 · 3 技能（frontend-design、...）
+Step 2: choose an application scenario (what to make)
+  webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-design, ...)
   ...
 
-## 装配：结构先行 × 网页 / 落地页 / 官网
-**工作流**：先给出结构/目录/页面清单，确认后再产出
-**场景**：官网、落地页、营销页、响应式页面
+## Assembly: Outline first × Web page / landing page / site
+**Workflow**: produce an outline/page list first, confirm it, then build
+**Scenario**: marketing site, landing page, responsive page
 
-**将启用的插件与功能**
-- ... — 能力描述、工具、命令、技能
+**Plugins and capabilities to enable**
+- ... — capability description, tools, commands, skills
 ...
 ```
 
@@ -112,7 +112,7 @@ Picker rows show plugin and skill counts. A typical fixed-menu exchange:
 Each row looks roughly like this:
 
 ```text
-webpage · 网页 / 落地页 / 官网 — 2 plugins · 3 skills (frontend-design, ...)
+webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-design, ...)
 ```
 
 - The leading `webpage` is a stable scenario ID shared by every user.
@@ -158,38 +158,38 @@ Scenarios are application/output types, not engineering activities.
 
 | Group | IDs | What you are making |
 |---|---|---|
-| 内容 | `article` | 文章、文案、博客、公众号 |
-| 内容 | `email` | 邮件、通知、邀请函、营销邮件 |
-| 内容 | `social` | 小红书、微博、推特、种草与运营文案 |
-| 内容 | `novel` | 小说、故事、剧本、角色与世界观 |
-| 内容 | `video` | 视频脚本、播客、分镜、字幕 |
-| 内容 | `music` | 歌词、歌曲结构、配乐方向 |
-| 内容 | `course` | 课程、教学、课件、培训 |
-| 内容 | `resume` | 简历、求职、面试、作品集 |
-| 内容 | `event` | 活动、旅行、婚礼与生活策划 |
-| 内容 | `report` | 报告、调研、白皮书、方案 |
-| 内容 | `presentation` | 演示、PPT、路演 |
-| 内容 | `docs` | 文档、教程、知识库、交接 |
-| 内容 | `legal` | 合同、条款、隐私政策、合规说明 |
-| 产品 | `webpage` | 网页、落地页、官网 |
-| 产品 | `webapp` | Web 应用、管理后台、SaaS |
-| 产品 | `commerce` | 电商、商品页、店铺、结算 |
-| 产品 | `dashboard` | 仪表盘、BI、报表、指标监控 |
-| 产品 | `mobile` | App、小程序、移动端 |
-| 产品 | `game` | 游戏、互动体验、小游戏 |
-| 视觉 | `design` | 视觉设计、品牌、UI 稿 |
-| 视觉 | `image` | 海报、封面、插图、配图 |
-| 视觉 | `data` | 数据、图表、分析结果 |
-| 视觉 | `spreadsheet` | 表格、Excel、公式、对账 |
-| 系统 | `api` | API、后端、CLI、SDK |
-| 系统 | `automation` | 自动化、爬虫、定时任务 |
-| 系统 | `tool` | 小工具、脚本、命令行、格式转换 |
-| 系统 | `integration` | 集成、MCP、外部系统 |
-| 系统 | `chatbot` | AI 对话、知识库问答、客服机器人 |
-| 系统 | `plugin` | Pi 插件、扩展、工具 |
-| 维护 | `maintain` | 维护现有项目、修 bug、重构、测试 |
-| 维护 | `localization` | 本地化、翻译、多语言 |
-| 通用 | `general` | 其他任务 |
+| Content | `article` | Articles, copy, blogs, newsletters |
+| Content | `email` | Emails, notifications, invitations, campaigns |
+| Content | `social` | Social posts, threads, short-form copy |
+| Content | `novel` | Fiction, stories, scripts, characters, worldbuilding |
+| Content | `video` | Video scripts, podcasts, storyboards, subtitles |
+| Content | `music` | Lyrics, song structure, scoring direction |
+| Content | `course` | Courses, lessons, teaching material, training |
+| Content | `resume` | Resumes, job search, interviews, portfolios |
+| Content | `event` | Events, travel, weddings, life planning |
+| Content | `report` | Reports, research, white papers, proposals |
+| Content | `presentation` | Presentations, slide decks, pitches |
+| Content | `docs` | Documentation, tutorials, knowledge bases, handoff |
+| Content | `legal` | Contracts, terms, privacy policies, compliance notes |
+| Product | `webpage` | Web pages, landing pages, marketing sites |
+| Product | `webapp` | Web apps, admin dashboards, SaaS |
+| Product | `commerce` | Ecommerce, product pages, storefronts, checkout |
+| Product | `dashboard` | Dashboards, BI, reports, metric monitoring |
+| Product | `mobile` | Apps, mini-programs, mobile experiences |
+| Product | `game` | Games, interactive experiences, mini-games |
+| Visual | `design` | Visual design, branding, UI mockups |
+| Visual | `image` | Posters, covers, illustrations, assets |
+| Visual | `data` | Data, charts, analysis results |
+| Visual | `spreadsheet` | Spreadsheets, Excel, formulas, reconciliation |
+| System | `api` | APIs, backends, CLIs, SDKs |
+| System | `automation` | Automation, scraping, scheduled jobs |
+| System | `tool` | Small tools, scripts, CLIs, format conversion |
+| System | `integration` | Integrations, MCP, external systems |
+| System | `chatbot` | AI chat, knowledge-base Q&A, support bots |
+| System | `plugin` | Pi plugins, extensions, tools |
+| Maintenance | `maintain` | Maintain existing projects, fix bugs, refactor, test |
+| Maintenance | `localization` | Localization, translation, multilingual work |
+| General | `general` | Everything else |
 
 ## Workflows
 
@@ -197,13 +197,13 @@ The workflow is the execution style; the scenario adds domain capabilities. Dupl
 
 | id | Workflow | Use when |
 |---|---|---|
-| `direct` | 直接产出 | Clear, small output; no extra process |
-| `outline` | 结构先行 | Outline/plan first, then produce |
-| `prototype` | 原型先行 | Visual or interactive output; iterate on a prototype |
-| `parallel` | 并行探索 | Independent slices can run at the same time |
-| `review-gate` | 评审守门 | Independent review before delivery |
-| `phased` | 阶段推进 | Multi-stage work with spec, plan, and acceptance |
-| `offline` | 隐私 / 离线 | Nothing leaves the machine; network capabilities are excluded |
+| `direct` | Direct output | Clear, small scope; act now without a separate plan |
+| `outline` | Outline first | Produce an outline or plan, confirm it, then expand |
+| `prototype` | Prototype first | Build a viewable/clickable minimum, then iterate |
+| `parallel` | Parallel exploration | Independent slices or alternative solutions run concurrently |
+| `review-gate` | Review gate | Independent review before delivery |
+| `phased` | Phased delivery | Spec → plan → stage-by-stage acceptance for long work |
+| `offline` | Privacy / offline | Local tools only; network capabilities are excluded |
 
 ## Per-user profile
 
@@ -221,7 +221,7 @@ Manual overrides are stored in `~/.pi/agent/function-menu.json` and survive prof
 
 ## Dynamic needs
 
-`/function "做一个产品官网，并写一篇发布文章"` does not choose one scenario. It:
+`/function "build a product site and write a launch article"` does not choose one scenario. It:
 
 1. detects multiple application signals (for example `webpage` + `article`);
 2. collects matching capability roles, packages, and skills from the profile;

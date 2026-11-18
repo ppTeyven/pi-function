@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+- Workflow picker rows now explain **when to choose each workflow**, not just the title and plugin count.
+- Rewrote workflow `when`/`brief` text in plain language and updated both README workflow tables.
+- Made `README.md` fully English, including picker examples, scenario tables, workflow tables, and dynamic-need examples.
+
 ## 2.1.1
 
 - Added `/function workflow`: shows only the workflow picker, enables the selected workflow, and does not bind a task scenario.

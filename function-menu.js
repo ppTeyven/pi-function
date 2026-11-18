@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.1.1";
+const VERSION = "2.1.2";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -308,43 +308,50 @@ const SCENARIOS = [
 const WORKFLOWS = [
   {
     id: "direct", title: "直接产出",
-    when: "需求清楚、范围小、可以直接做",
+    picker: "需求清楚、范围小；直接做，不先写计划",
+    when: "需求清楚、范围小，想马上看到结果；不先写计划，做完立即自检。",
     keywords: ["直接", "快速", "小任务", "direct", "quick"],
-    brief: "直接做最小可验证的产出：先读目标材料，完成后立即检查；不写额外计划文档。",
+    brief: "直接做最小可验证的产出：先读目标材料，完成后立即检查；不写额外计划文档，不扩大范围。",
   },
   {
     id: "outline", title: "结构先行",
-    when: "先要提纲、方案、目录或步骤，确认后再展开",
+    picker: "先出提纲或方案，确认后再展开",
+    when: "先要提纲、方案、目录或实施步骤；方向确认后再展开全文或代码。",
     keywords: ["提纲", "结构", "方案", "计划", "目录", "outline", "plan"],
-    brief: "先只出结构/方案，不展开全文或代码；写清目标、章节、验收标准与风险，确认后再执行。",
+    brief: "先只出结构/方案，不展开全文或代码；写清目标、章节/模块、验收标准与风险，等用户确认后再执行。",
   },
   {
     id: "prototype", title: "原型先行",
-    when: "先做最小样、草稿或可点击原型，再迭代",
+    picker: "先做最小原型，确认方向再补细节",
+    when: "视觉或交互产物，先做能看/能点的最小版本，确认方向后再迭代。",
     keywords: ["原型", "草稿", "最小样", "先做一版", "prototype", "draft", "mvp"],
-    brief: "先做能看/能点的最小版本，优先验证方向与手感；确认后补细节，不在第一版追求完整。",
+    brief: "先做能看/能点的最小版本，优先验证方向与手感；确认后再补细节，不在第一版追求完整。",
   },
   {
     id: "parallel", title: "并行探索",
-    when: "可以拆成互不冲突的独立部分，或需要多方案对比",
+    picker: "拆成独立部分，多路同时推进",
+    when: "任务能拆成互不依赖的几块，或需要多方案对比；多个执行者同时推进，最后统一汇总验收。",
     keywords: ["并行", "多方案", "子代理", "拆开", "parallel", "fanout", "variants"],
     brief: "只并行真正独立的部分：先列清单和边界，一个执行者一个范围；最后统一汇总、去重并验证。",
   },
   {
     id: "review-gate", title: "评审守门",
-    when: "产出后需要独立审查再交付",
+    picker: "完成后独立审查，再交付",
+    when: "产出后需要独立审查再交付；适合高风险改动、发布前检查和重要文档。",
     keywords: ["评审", "审查", "守门", "第二遍", "review", "gate"],
     brief: "完成后不直接交付：先自查，再让独立审查者按清单复核；修复发现后重新验证，最后才总结。",
   },
   {
     id: "phased", title: "阶段推进",
-    when: "多阶段长任务，需要规格、计划、验收分阶段推进",
+    picker: "先规格和计划，再分阶段验收",
+    when: "多阶段长任务，需要规格、计划、逐阶段验收；适合新项目、复杂迁移和持续开发。",
     keywords: ["阶段", "里程碑", "规格", "长任务", "phased", "milestone", "spec"],
     brief: "先规格再计划，再分阶段执行与验收；每阶段结束确认结果再继续，不把旧上下文拖进下一阶段。",
   },
   {
     id: "offline", title: "隐私 / 离线",
-    when: "敏感内容、不能外发、需要最小联网面",
+    picker: "只用本地工具，不联网",
+    when: "敏感内容、不能外发、需要最小联网面；只启用本地能力，必须联网时先征得同意。",
     keywords: ["隐私", "离线", "敏感", "保密", "内网", "offline", "privacy"],
     brief: "默认不联网、不使用外部服务；只启用本地核心工具，必须联网时先说明并征得同意。",
   },
@@ -1058,9 +1065,9 @@ function workflowOptions(recommendedId = null) {
     : WORKFLOWS;
   return ordered.map((w) => {
     const count = (w.plugins || []).length;
-    const pluginBit = count ? `${count} 个插件` : "无额外插件";
+    const pluginBit = count ? ` · ${count} 个插件` : "";
     const mark = w.id === recommendedId ? "★ 推荐 · " : "";
-    return `${w.id} · ${w.title} — ${mark}${pluginBit}`;
+    return `${w.id} · ${w.title} — ${mark}${w.picker || w.when}${pluginBit}`;
   });
 }
 
