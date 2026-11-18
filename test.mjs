@@ -19,6 +19,7 @@ import {
   scenarioSkillIds,
   comboPackages,
   comboSkillIds,
+  isIdCombo,
   workflowOptions,
   recommendWorkflow,
   normalizeWorkflowId,
@@ -218,6 +219,8 @@ assert.ok(parallel.plugins.includes("pi-subagents"), "parallel should include su
 assert.ok(reviewGate.plugins.includes("pi-subagents"), "review should share subagents");
 assert.ok(phased.plugins.includes("@opengsd/gsd-core"), "phased should include GSD");
 assert.ok(parallel.plugins.filter((p) => reviewGate.plugins.includes(p)).length > 0, "workflows may share packages");
+assert.equal(isIdCombo("debug+process"), true);
+assert.equal(isIdCombo("还是挡住的、另外我对动态效果不满意重做。"), false);
 assert.deepEqual(comboPackages(webpage, syntheticStore, parallel).includes("pi-subagents"), true);
 assert.deepEqual(comboPackages(webpage, syntheticStore, reviewGate).includes("pi-subagents"), true);
 assert.ok(comboSkillIds(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "outline")).includes("frontend-design"));

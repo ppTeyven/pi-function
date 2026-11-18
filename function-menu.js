@@ -1548,6 +1548,11 @@ function recordUsage(store, scenario, workflow = null) {
 }
 
 // 多选：场景/工作流可以用 + 组合（/function debug+process）。合并时只做并集与去重，不重新打分。
+function isIdCombo(text) {
+  const parts = String(text || "").split(/[+＋]/).map((s) => s.trim()).filter(Boolean);
+  return parts.length > 1 && parts.every((id) => /^[a-z][a-z0-9_-]*$/i.test(id));
+}
+
 function comboScenarios(scenarios) {
   const list = scenarios.filter(Boolean);
   if (!list.length) return null;
@@ -2810,8 +2815,10 @@ export default function functionMenu(pi) {
         return;
       }
 
-      const comboIds = args.split(/[+＋,，、]/).map((s) => s.trim()).filter(Boolean);
-      if (comboIds.length > 1) {
+      // Only ASCII ids joined by + are a combo. Chinese punctuation such as
+      // "、" is ordinary need text, not an id separator.
+      const comboIds = args.split(/[+＋]/).map((s) => s.trim()).filter(Boolean);
+      if (isIdCombo(args)) {
         const unknown = comboIds.filter((id) => !workflowById(id) && !SCENARIOS.some((s) => s.id === id));
         if (unknown.length) {
           ctx.ui.notify(`未知 id：${unknown.join("、")}。可用 /function 查看清单，写法如 /function debug+process`, "error");
@@ -3100,4 +3107,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { EXT_VERSION, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { EXT_VERSION, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, isIdCombo, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
