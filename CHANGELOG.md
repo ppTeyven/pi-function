@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0
+
+- Merged `prototype` into `outline` (structure or minimum prototype first) and `iterate` into `review-gate` (review or feedback loop). Eight workflows: direct, outline, research, debug, parallel, review-gate, phased, offline.
+- Kept `prototype` and `iterate` as restore aliases, so existing session records still resolve.
+- Browser packages that require `KERNEL_API_KEY` are no longer bound when the key is absent; browser skills such as Playwright remain available.
+- Bumped the profile fingerprint version so existing profiles rebuild automatically.
+- README/CHANGELOG and tests updated; no hard-coded package assignments added.
+
 ## 2.3.0
 
 - Restored workflow bundles after feedback that workflows *are* plugin/skill packages; the problem was the binding quality, not the bundling itself.

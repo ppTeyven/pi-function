@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
 const CLASSIFIER_VERSION = 4;
@@ -40,7 +40,7 @@ const CAPABILITIES = {
   task: { label: "任务清单 / 进度", package: /todo|task/i, tool: /^todo$|todos/i, skill: /todo|task/i, terms: /清单|任务|进度|todo/i },
   "plan-review": { label: "计划 / 方案审阅", package: /plannotator|plan|approval/i, tool: /plannotator|plan/i, skill: /plan|spec|architect/i, terms: /计划|方案|审阅|批准/i },
   context: { label: "大输出 / 上下文管理", package: /context/i, tool: /ctx_|context/i, skill: /context|ctx/i, terms: /上下文|大输出|日志/i, infra: true },
-  browser: { label: "浏览器 / 页面操作", package: /browser|kernel|playwright|computer/i, tool: /browser|computer|playwright/i, skill: /browser|playwright|e2e/i, terms: /浏览器|截图|点击|页面验收/i, network: true },
+  browser: { label: "浏览器 / 页面操作", package: /browser|kernel|playwright|computer/i, tool: /browser|computer|playwright/i, skill: /browser|playwright|e2e/i, terms: /浏览器|截图|点击|页面验收/i, network: true, requiresEnv: "KERNEL_API_KEY", envPackage: /kernel/i },
   vision: { label: "图片理解", package: /vision|image|multimodal/i, tool: /describe_image|vision/i, skill: /vision|image/i, terms: /图片|视觉|截图|image/i, network: true },
   simplify: { label: "收尾简化", package: /simplify/i, command: /simplify/i, skill: /simplify/i, terms: /简化|收尾|cleanup/i },
   advisor: { label: "第二意见", package: /advisor/i, tool: /advisor/i, terms: /顾问|第二意见|选型/i },
@@ -103,26 +103,22 @@ const SCENARIO_CAPABILITIES = {
 const WORKFLOW_SKILL_PATTERNS = {
   direct: { allow: null },
   outline: { allow: /plan|spec|architect|outline|prd|todo|task|review/i, deny: /convert|connector|gongwen|ppt|slide|web-search|stock|\bima\b/i },
-  prototype: { allow: /prototype|frontend|design|\bui\b|browser|playwright|mockup|sketch|wireframe|glimpse|de-slop/i, deny: /convert|gongwen|ppt|slide|web-search|stock|\bima\b/i },
   research: { allow: /search|research|wiki|source|evidence|mermaid|knowledge|note/i, deny: /convert|gongwen|connector|\bima\b/i },
   debug: { allow: /debug|lsp|symbol|ast|codebase|diagnos|test|tdd|prove|trace/i, deny: /multi-search|web-search|research|stock|connector|\bima\b|gongwen|convert/i },
   parallel: { allow: /subagent|council|workflow|delegate|parallel|orchestrat/i },
-  "review-gate": { allow: /review|audit|verify|prove|qa|test|lens|lsp|simplify|council|subagent/i, deny: /multi-search|web-search|research|stock|connector|\bima\b|gongwen|convert|ppt|slide|workflow/i },
+  "review-gate": { allow: /review|audit|verify|prove|qa|test|lens|lsp|simplify|council|subagent|iterate|refine/i, deny: /multi-search|web-search|research|stock|connector|\bima\b|gongwen|convert|ppt|slide|workflow/i },
   phased: { allow: /gsd|spec|plan|phase|milestone|verify|execute/i, deny: /web-search|stock|connector|gongwen|convert/i },
-  iterate: { allow: /iterate|review|critique|simplify|polish|edit|refine|plan/i, deny: /multi-search|web-search|research|stock|connector|\bima\b|gongwen|convert/i },
   offline: { allow: /memory|handoff|note|knowledge|scratch/i, deny: /connector|\bima\b|web|search|stock/i },
 };
 
 const WORKFLOW_CAPABILITIES = {
   direct: [],
   outline: ["plan-review", "task", "memory"],
-  prototype: ["browser", "vision", "design"],
   research: ["web", "repo-wiki", "memory", "docs"],
   debug: ["code-intel", "testing", "context", "simplify"],
   parallel: ["subagent", "orchestration", "task"],
-  "review-gate": ["subagent", "orchestration", "code-intel", "testing", "simplify"],
+  "review-gate": ["subagent", "orchestration", "code-intel", "testing", "simplify", "plan-review"],
   phased: ["gsd", "plan-review", "task", "context"],
-  iterate: ["plan-review", "testing", "simplify", "memory"],
   offline: ["memory"],
 };
 
@@ -335,24 +331,14 @@ const WORKFLOWS = [
     doneWhen: "目标要求全部覆盖，且完成一次自检。",
   },
   {
-    id: "outline", title: "结构先行",
-    picker: "先出提纲或方案，确认后再展开",
-    when: "先要提纲、方案、目录或实施步骤，方向确认后再展开。",
-    keywords: ["提纲", "结构", "方案", "计划", "目录", "outline", "plan"],
-    brief: "先只出结构或方案，不展开全文或代码；确认后再执行。",
-    steps: ["提炼目标、受众和验收标准", "只输出提纲/目录/实施方案", "等待用户确认方向", "按确认的结构展开"],
-    checkpoint: "结构未确认前不写正文、不写实现。",
-    doneWhen: "结构覆盖目标，且用户明确确认。",
-  },
-  {
-    id: "prototype", title: "原型先行",
-    picker: "先做最小原型，确认方向再补细节",
-    when: "视觉或交互产物，先做能看、能点的最小版本。",
-    keywords: ["原型", "草稿", "最小样", "先做一版", "prototype", "draft", "mvp"],
-    brief: "先验证方向和手感，再补完整度；第一版不追求大而全。",
-    steps: ["写清要验证的假设", "做出能看/能点的最小版本", "收集反馈或自评", "补细节并复验"],
-    checkpoint: "原型未确认前不堆功能、不做精修。",
-    doneWhen: "方向被确认，核心路径可走通。",
+    id: "outline", title: "结构 / 原型先行",
+    picker: "先出提纲或最小原型，确认方向再展开",
+    when: "先要提纲、方案、目录、实施步骤，或先做能看能点的最小原型。",
+    keywords: ["提纲", "结构", "方案", "计划", "目录", "原型", "草稿", "最小样", "先做一版", "outline", "plan", "prototype", "draft", "mvp"],
+    brief: "先只出结构、方案或最小原型，不展开全文和完整实现；确认方向后再补细节。",
+    steps: ["提炼目标、受众和验收标准", "输出提纲/方案，或做出能看能点的最小原型", "等待用户确认方向", "按确认的结构展开并补细节"],
+    checkpoint: "结构或原型未确认前，不写完整正文、不堆功能、不做精修。",
+    doneWhen: "方向被确认，结构覆盖目标或核心路径可走通。",
   },
   {
     id: "research", title: "证据先行",
@@ -385,14 +371,14 @@ const WORKFLOWS = [
     doneWhen: "各工作包合并后通过统一验收。",
   },
   {
-    id: "review-gate", title: "评审守门",
-    picker: "完成后独立审查，再交付",
-    when: "高风险改动、发布前检查或重要文档，交付前需要第二遍审查。",
-    keywords: ["评审", "审查", "守门", "第二遍", "review", "gate"],
-    brief: "先自查，再做独立审查；发现问题就修复并重新验证，最后才交付。",
-    steps: ["完成初稿或改动", "按清单做独立审查", "修复发现的问题", "重新验证后交付"],
-    checkpoint: "审查未通过不交付；审查者不能只看作者总结。",
-    doneWhen: "审查清单全部通过，且修复后重新验证。",
+    id: "review-gate", title: "评审 / 迭代守门",
+    picker: "完成后独立审查，按反馈改关键差距，再交付",
+    when: "高风险改动、发布前检查、重要文档，或需要按反馈多轮打磨。",
+    keywords: ["评审", "审查", "守门", "第二遍", "迭代", "打磨", "反馈", "改一版", "review", "gate", "iterate", "refine"],
+    brief: "先自查，再做独立审查或收集反馈；只改最影响结果的部分，重新验证后交付。",
+    steps: ["完成初稿或改动", "按清单独立审查，或对照标准收集反馈", "只修关键问题与差距", "重新验证后交付"],
+    checkpoint: "审查未通过不交付；没有新反馈或明确差距时停止迭代。",
+    doneWhen: "审查清单通过，且修复后重新验证；或达到验收标准且改动可追溯。",
   },
   {
     id: "phased", title: "阶段推进",
@@ -403,16 +389,6 @@ const WORKFLOWS = [
     steps: ["写规格与验收标准", "拆分阶段计划和依赖", "逐阶段执行", "每阶段验收后续接"],
     checkpoint: "上一阶段未验收，不开始下一阶段。",
     doneWhen: "所有阶段验收通过，整体目标可演示。",
-  },
-  {
-    id: "iterate", title: "迭代打磨",
-    picker: "先出一版，再按反馈改",
-    when: "有明确评价标准或用户反馈，需要多轮修改逐渐逼近目标。",
-    keywords: ["迭代", "打磨", "反馈", "修改", "改一版", "iterate", "refine"],
-    brief: "每轮只改最影响结果的部分；保留版本差异，避免越改越散。",
-    steps: ["出第一版", "对照标准或收集反馈", "只改最关键的差距", "定稿并记录变更"],
-    checkpoint: "没有新反馈或明确差距时停止迭代。",
-    doneWhen: "达到验收标准，且改动可追溯。",
   },
   {
     id: "offline", title: "隐私 / 离线",
@@ -486,7 +462,7 @@ function storePath() { return path.join(agentDir(), STORE_FILE); }
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 3;
+const PROFILE_VERSION = 4;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return path.join(agentDir(), PROFILE_FILE); }
@@ -528,6 +504,7 @@ function buildProfile(store) {
     for (const [roleId, def] of Object.entries(CAPABILITIES)) {
       if (isGsdSkill && roleId !== "gsd") continue;
       if (isSkill && roleId === "writing" && /^(ppt|slide|deck|mermaid|glimpse)/i.test(name)) continue;
+      if (!isSkill && def.requiresEnv && def.envPackage && def.envPackage.test(name) && !process.env[def.requiresEnv]) continue;
       let score = 0;
       const reasons = [];
       const hit = (re, value, weight, why) => {
@@ -1138,11 +1115,22 @@ function comboSkillIds(scenario, store, workflow = null) {
   return uniq([...base, ...(workflow.skills || [])]);
 }
 
+const WORKFLOW_ALIASES = { prototype: "outline", iterate: "review-gate" };
+
+function normalizeWorkflowId(id) {
+  return WORKFLOW_ALIASES[id] || id;
+}
+
+function workflowById(id) {
+  const normalized = normalizeWorkflowId(id);
+  return WORKFLOWS.find((w) => w.id === normalized) || null;
+}
+
 function recommendWorkflow(scenario) {
   if (!scenario) return "direct";
   if (scenario.id === "maintain") return "debug";
   if (scenario.id === "report") return "research";
-  if (["webpage", "game", "design", "mobile", "image", "dashboard", "commerce"].includes(scenario.id)) return "prototype";
+  if (["webpage", "game", "design", "mobile", "image", "dashboard", "commerce"].includes(scenario.id)) return "outline";
   if (["webapp", "api", "plugin", "article", "presentation", "docs", "automation", "integration", "localization", "social", "novel", "video", "course", "resume", "event", "chatbot", "email", "music", "legal", "tool"].includes(scenario.id)) return "outline";
   return "direct";
 }
@@ -1472,7 +1460,7 @@ export default function functionMenu(pi) {
     const sel = await ctx.ui.select("第 1 步：先选工作流（怎么执行）", workflowOptions(recommendedId));
     if (!sel) return null;
     const id = sel.split(" · ")[0];
-    return WORKFLOWS.find((w) => w.id === id) || null;
+    return workflowById(id);
   };
 
   const pickTask = async (ctx, ranked = []) => {
@@ -1668,7 +1656,7 @@ export default function functionMenu(pi) {
       }
     } catch { last = null; }
     if (!last || !last.id) return;
-    activeWorkflow = last.workflow ? WORKFLOWS.find((w) => w.id === last.workflow) || null : null;
+    activeWorkflow = last.workflow ? workflowById(last.workflow) : null;
     let scenario = null;
     if (last.id === "workflow" && activeWorkflow) {
       scenario = workflowOnlyScenario(activeWorkflow);
@@ -1813,4 +1801,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

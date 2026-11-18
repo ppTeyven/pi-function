@@ -20,6 +20,8 @@ import {
   comboSkillIds,
   workflowOptions,
   recommendWorkflow,
+  normalizeWorkflowId,
+  workflowById,
   summarizeSkills,
   buildCatalog,
   buildProposal,
@@ -42,9 +44,9 @@ for (const old of ["feature", "refactor", "bugfix", "review", "frontend"]) {
   assert.ok(!ids.includes(old), `old activity scenario ${old} should be gone`);
 }
 assert.deepEqual(CORE_TOOLS, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
-assert.equal(WORKFLOWS.length, 10);
+assert.equal(WORKFLOWS.length, 8);
 const workflowIds = WORKFLOWS.map((w) => w.id);
-for (const id of ["direct", "outline", "prototype", "research", "debug", "parallel", "review-gate", "phased", "iterate", "offline"]) {
+for (const id of ["direct", "outline", "research", "debug", "parallel", "review-gate", "phased", "offline"]) {
   assert.ok(workflowIds.includes(id), id);
   assert.ok(!ids.includes(id), `${id} must not collide with a task id`);
   assert.ok(WORKFLOWS.find((w) => w.id === id).steps.length >= 3, `${id} needs process steps`);
@@ -56,7 +58,10 @@ assert.match(workflowOptions("outline")[0], /先出提纲/);
 assert.match(workflowOptions("direct")[0], /需求清楚、范围小/);
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "debug");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "report")), "research");
-assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "webpage")), "prototype");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "webpage")), "outline");
+assert.equal(normalizeWorkflowId("prototype"), "outline");
+assert.equal(normalizeWorkflowId("iterate"), "review-gate");
+assert.equal(workflowById("prototype").id, "outline");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "article")), "outline");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "general")), "direct");
 assert.equal(typeof CAPABILITIES, "object");
@@ -150,6 +155,21 @@ const profile = buildProfile(syntheticStore);
 assert.ok(profile.roles.web.packages.some((p) => p.id === "pi-web-access"), "web role missed web package");
 assert.ok(profile.roles.subagent.packages.some((p) => p.id === "pi-subagents"), "subagent role missed package");
 assert.ok(profile.roles.gsd.packages.some((p) => p.id === "@opengsd/gsd-core"), "gsd role missed package");
+
+// Env-gated browser package must not bind when KERNEL_API_KEY is absent.
+const savedKernel = process.env.KERNEL_API_KEY;
+delete process.env.KERNEL_API_KEY;
+const browserProfile = buildProfile({
+  known: {
+    "npm:@onkernel/browser-loop": { kind: "plugin", label: "@onkernel/browser-loop", description: "browser automation", tools: ["browser"], missing: false },
+    "skill:playwright-cli": { kind: "skill", label: "playwright-cli", description: "browser automation and e2e", missing: false },
+  },
+  overrides: {},
+  classifierVersion: CLASSIFIER_VERSION,
+});
+assert.ok(!browserProfile.roles.browser.packages.some((p) => p.id === "@onkernel/browser-loop"), "env-gated browser package must be skipped");
+assert.ok(browserProfile.roles.browser.skills.some((s) => s.id === "playwright-cli"), "browser skills must remain");
+if (savedKernel !== undefined) process.env.KERNEL_API_KEY = savedKernel;
 assert.ok(profile.roles.design.skills.some((s) => s.id === "frontend-design"), "design role missed skill");
 hydrateCatalog(profile);
 for (const workflow of WORKFLOWS) {
@@ -159,7 +179,6 @@ for (const workflow of WORKFLOWS) {
 assert.match(workflowOptions("outline")[0], /插件/);
 assert.equal(WORKFLOW_SKILL_PATTERNS.debug.deny.test("primary"), false, "deny pattern must not match primary");
 assert.equal(WORKFLOW_SKILL_PATTERNS.debug.deny.test("multi-search-engine"), true, "debug must reject search skills");
-assert.equal(WORKFLOW_SKILL_PATTERNS.prototype.deny.test("markdown-converter"), true, "prototype must reject converters");
 
 const webpage = SCENARIOS.find((s) => s.id === "webpage");
 assert.ok(scenarioPackages(webpage, syntheticStore).includes("pi-web-access"), "webpage did not hydrate web package");
@@ -181,7 +200,7 @@ assert.ok(phased.plugins.includes("@opengsd/gsd-core"), "phased should include G
 assert.ok(parallel.plugins.filter((p) => reviewGate.plugins.includes(p)).length > 0, "workflows may share packages");
 assert.deepEqual(comboPackages(webpage, syntheticStore, parallel).includes("pi-subagents"), true);
 assert.deepEqual(comboPackages(webpage, syntheticStore, reviewGate).includes("pi-subagents"), true);
-assert.ok(comboSkillIds(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype")).includes("frontend-design"));
+assert.ok(comboSkillIds(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "outline")).includes("frontend-design"));
 
 const summary = summarizeSkills(["gsd-quick", "gsd-plan-phase", "frontend-design"]);
 assert.match(summary, /frontend-design/);
@@ -215,7 +234,7 @@ assert.match(webpageOption, /网页/);
 assert.match(webpageOption, /个插件/);
 assert.match(webpageOption, /技能/);
 
-const proposal = buildProposal(fakePi, webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype"));
+const proposal = buildProposal(fakePi, webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "outline"));
 assert.match(proposal, /原型先行 × 网页/);
 assert.match(proposal, /工作流/);
 assert.match(proposal, /流程：/);
@@ -224,7 +243,7 @@ assert.match(proposal, /完成标准：/);
 assert.match(proposal, /核心工具始终保留/);
 assert.match(proposal, /web_search|pi-web-access/);
 
-const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, webpage, syntheticStore, undefined, WORKFLOWS.find((w) => w.id === "prototype"));
+const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, webpage, syntheticStore, undefined, WORKFLOWS.find((w) => w.id === "outline"));
 for (const name of [...core, "web_search"]) assert.ok(applied.next.includes(name), `applyScenario lost ${name}`);
 assert.ok(!applied.next.includes("subagent"), "unrelated optional tool should be disabled");
 
@@ -333,12 +352,12 @@ const flowCtx = {
 }
 {
   prompts.length = 0;
-  selections.push("prototype");
+  selections.push("outline");
   await commands.function.handler('"做一个网页"', flowCtx);
   assert.match(prompts[0], /工作流/);
   assert.equal(prompts.length, 1, "free-text need must not open a task picker");
   assert.equal(entries.at(-1).data.id, "custom");
-  assert.equal(entries.at(-1).data.workflow, "prototype");
+  assert.equal(entries.at(-1).data.workflow, "outline");
 }
 {
   prompts.length = 0;
@@ -350,4 +369,4 @@ const flowCtx = {
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 32 application scenarios, 10 workflow bundles, profile capabilities, dynamic needs, core tools, migration");
+console.log("ok: 32 application scenarios, 8 workflow bundles, profile capabilities, dynamic needs, core tools, migration");

@@ -55,7 +55,7 @@ Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiv
 
 1. Install the extension, then run `/reload` (or restart Pi) so `/function` is recognized.
 2. Run `/function`. It prints the catalog, then opens the first picker.
-3. **Choose a workflow** — how this run should proceed (outline, prototype, review gate, and so on). The workflow brings its own process bundle; the scenario adds domain capabilities.
+3. **Choose a workflow** — how this run should proceed (outline/prototype, research, review gate, and so on). The workflow brings its own process bundle; the scenario adds domain capabilities.
 4. **Choose an application scenario** — what you want to make (webpage, article, game, report, and so on).
 5. Review the assembly proposal. Nothing changes until you approve it.
 6. After assembly, describe the task. The extension never executes your request by itself.
@@ -198,14 +198,12 @@ A workflow is a **process plus an execution bundle**. It binds generic capabilit
 | id | Workflow | Process | Bundle roles (resolved from your profile) | Use when |
 |---|---|---|---|---|
 | `direct` | Direct output | Read goal → produce → self-check | Core tools only | Clear, small scope; no separate plan |
-| `outline` | Outline first | Clarify goal → outline only → confirm → expand | Plan review, task tracking, memory | You need a structure, outline, or implementation plan first |
-| `prototype` | Prototype first | Minimum artifact → validate direction → add detail | Browser, vision, design | Visual or interactive work where direction comes first |
+| `outline` | Outline / prototype first | Clarify goal → outline or minimum artifact → confirm → expand | Plan review, task tracking, memory | You need a structure, outline, implementation plan, or a minimum prototype first |
 | `research` | Evidence first | Questions → multiple sources → cross-check → cited conclusion | Web, repository knowledge, memory, docs | Facts are uncertain, sources must be compared, or claims need provenance |
 | `debug` | Debug and fix | Reproduce → isolate root cause → minimal fix → regression | Code intelligence, verification, context, simplification | A clear failure, error, or abnormal behavior |
 | `parallel` | Parallel exploration | Partition work → run in parallel → merge and dedupe → verify | Subagents, orchestration, task tracking | Independent slices or alternative solutions |
-| `review-gate` | Review gate | Draft → independent review → fix → re-verify | Subagents, orchestration, code intelligence, verification, simplification | High-risk changes, pre-release checks, important documents |
+| `review-gate` | Review / iteration gate | Draft → independent review or feedback → fix key gaps → re-verify → deliver | Subagents, orchestration, code intelligence, verification, simplification, plan review | High-risk changes, pre-release checks, important documents, or feedback-driven polish |
 | `phased` | Phased delivery | Spec → plan → staged execution → stage acceptance | Phase engine, plan review, task tracking, context | Multi-stage work, complex migrations, ongoing development |
-| `iterate` | Iterative polish | First version → feedback or criteria → fix the key gap → finalize | Plan review, verification, simplification, memory | Clear criteria or feedback across several rounds |
 | `offline` | Privacy / offline | Inventory local resources → stay offline → finish local work → list network gaps | Local memory only (no network capabilities) | Sensitive content, no external sharing, minimal network exposure |
 
 > The table lists capability roles, not package names. Your profile resolves each role to the packages and skills actually installed on your machine; different users can get different bindings while the workflow IDs and semantics stay fixed.
