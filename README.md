@@ -55,19 +55,19 @@ Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiv
 
 1. Install the extension, then run `/reload` (or restart Pi) so `/function` is recognized.
 2. Run `/function`. It prints the catalog, then opens the first picker.
-3. **Choose a workflow** — how this run should proceed (outline, prototype, review gate, and so on).
+3. **Choose a workflow** — how this run should proceed (outline, prototype, review gate, and so on). The workflow brings its own process bundle; the scenario adds domain capabilities.
 4. **Choose an application scenario** — what you want to make (webpage, article, game, report, and so on).
 5. Review the assembly proposal. Nothing changes until you approve it.
 6. After assembly, describe the task. The extension never executes your request by itself.
 
-If you only want an execution style, run `/function workflow`; it asks for a workflow and does not bind a task scenario.
+If you only want an execution style, run `/function workflow`; it asks for a workflow, enables that bundle, and does not bind a task scenario.
 
 ### Commands
 
 | Command | What happens |
 |---|---|
 | `/function` | Prints the catalog, asks for a workflow, then an application scenario, and assembles after approval |
-| `/function workflow` | Asks only for a workflow and enables it without binding a task scenario |
+| `/function workflow` | Asks only for a workflow, enables its bundle, and does not bind a task scenario |
 | `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
 | `/function scan` | Re-scans installed packages, local extensions, and skills, then rebuilds the profile |
 | `/function status` | Shows the active workflow × scenario (or workflow-only mode) and enabled plugin tools |
@@ -76,7 +76,7 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 
 `/pi-function` is an alias.
 
-Workflow rows explain the process; scenario rows show plugin and skill counts. A typical fixed-menu exchange:
+Workflow rows explain the process and show their bundle plugin/skill counts; scenario rows show domain plugin and skill counts. A typical fixed-menu exchange:
 
 ```text
 /function
@@ -193,20 +193,22 @@ Scenarios are application/output types, not engineering activities.
 
 ## Workflows
 
-A workflow defines **how to work**, never which plugins or skills to use. The same workflow can be used with any application scenario; plugins and skills come from the scenario and the per-user profile.
+A workflow is a **process plus an execution bundle**. It binds generic capability roles (not hard-coded package names); your profile resolves those roles into the packages and skills installed on this machine. The application scenario then adds domain capabilities. Bundles may overlap: debug and review-gate both need code intelligence and verification, which is intentional.
 
-| id | Workflow | Process | Use when |
-|---|---|---|---|
-| `direct` | Direct output | Read goal → produce → self-check | Clear, small scope; no separate plan |
-| `outline` | Outline first | Clarify goal → outline only → confirm → expand | You need a structure, outline, or implementation plan first |
-| `prototype` | Prototype first | Minimum artifact → validate direction → add detail | Visual or interactive work where direction comes first |
-| `research` | Evidence first | Questions → multiple sources → cross-check → cited conclusion | Facts are uncertain, sources must be compared, or claims need provenance |
-| `debug` | Debug and fix | Reproduce → isolate root cause → minimal fix → regression | A clear failure, error, or abnormal behavior |
-| `parallel` | Parallel exploration | Partition work → run in parallel → merge and dedupe → verify | Independent slices or alternative solutions |
-| `review-gate` | Review gate | Draft → independent review → fix → re-verify | High-risk changes, pre-release checks, important documents |
-| `phased` | Phased delivery | Spec → plan → staged execution → stage acceptance | Multi-stage work, complex migrations, ongoing development |
-| `iterate` | Iterative polish | First version → feedback or criteria → fix the key gap → finalize | Clear criteria or feedback across several rounds |
-| `offline` | Privacy / offline | Inventory local resources → stay offline → finish local work → list network gaps | Sensitive content, no external sharing, minimal network exposure |
+| id | Workflow | Process | Bundle roles (resolved from your profile) | Use when |
+|---|---|---|---|---|
+| `direct` | Direct output | Read goal → produce → self-check | Core tools only | Clear, small scope; no separate plan |
+| `outline` | Outline first | Clarify goal → outline only → confirm → expand | Plan review, task tracking, memory | You need a structure, outline, or implementation plan first |
+| `prototype` | Prototype first | Minimum artifact → validate direction → add detail | Browser, vision, design | Visual or interactive work where direction comes first |
+| `research` | Evidence first | Questions → multiple sources → cross-check → cited conclusion | Web, repository knowledge, memory, docs | Facts are uncertain, sources must be compared, or claims need provenance |
+| `debug` | Debug and fix | Reproduce → isolate root cause → minimal fix → regression | Code intelligence, verification, context, simplification | A clear failure, error, or abnormal behavior |
+| `parallel` | Parallel exploration | Partition work → run in parallel → merge and dedupe → verify | Subagents, orchestration, task tracking | Independent slices or alternative solutions |
+| `review-gate` | Review gate | Draft → independent review → fix → re-verify | Subagents, orchestration, code intelligence, verification, simplification | High-risk changes, pre-release checks, important documents |
+| `phased` | Phased delivery | Spec → plan → staged execution → stage acceptance | Phase engine, plan review, task tracking, context | Multi-stage work, complex migrations, ongoing development |
+| `iterate` | Iterative polish | First version → feedback or criteria → fix the key gap → finalize | Plan review, verification, simplification, memory | Clear criteria or feedback across several rounds |
+| `offline` | Privacy / offline | Inventory local resources → stay offline → finish local work → list network gaps | Local memory only (no network capabilities) | Sensitive content, no external sharing, minimal network exposure |
+
+> The table lists capability roles, not package names. Your profile resolves each role to the packages and skills actually installed on your machine; different users can get different bindings while the workflow IDs and semantics stay fixed.
 
 ## Per-user profile
 
@@ -218,7 +220,7 @@ On first load and on every scan, Pi-function reads the installed packages, exten
 
 The profile contains role → package/skill bindings, descriptions, and a fingerprint. When a new plugin or skill appears, the fingerprint changes and the profile is rebuilt automatically. The file is per-user and should not be committed.
 
-The catalog is hydrated from this profile at runtime. That is why the same `webpage` or `article` ID can use different tools on different machines without changing the extension source.
+The catalog and workflow bundles are hydrated from this profile at runtime. That is why the same `webpage` or `article` ID can use different tools on different machines without changing the extension source.
 
 Manual overrides are stored in `~/.pi/agent/function-menu.json` and survive profile rebuilds.
 

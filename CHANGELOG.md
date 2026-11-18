@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0
+
+- Restored workflow bundles after feedback that workflows *are* plugin/skill packages; the problem was the binding quality, not the bundling itself.
+- Each workflow now binds process-capability roles with intentional overlap (for example debug and review-gate share code intelligence and verification).
+- Hydration caps each workflow at 8 packages and 8 skills, picks one package per role, and applies generic allow/deny patterns so research/search, document-conversion, and knowledge-connector skills do not leak into execution workflows.
+- Workflow packages and skills are merged with the selected application scenario; workflow-only mode now enables the workflow bundle instead of preserving an arbitrary tool set.
+- Workflow picker rows show bundle plugin/skill counts; proposals mark workflow-only packages and skills.
+- Added regression tests for coherent bundles and intentional overlap; `/function` remains 32 application scenarios × 10 workflows.
+
 ## 2.2.0
 
 - Workflows are now **process-only**: they no longer own or activate plugin/skill bundles. The same workflow works with any application scenario, and scenario capabilities are identical across workflows.

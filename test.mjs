@@ -8,6 +8,7 @@ import {
   WORKFLOWS,
   workflowOnlyScenario,
   CAPABILITIES,
+  WORKFLOW_SKILL_PATTERNS,
   CORE_TOOLS,
   CLASSIFIER_VERSION,
   buildProfile,
@@ -16,6 +17,7 @@ import {
   scenarioPackages,
   scenarioSkillIds,
   comboPackages,
+  comboSkillIds,
   workflowOptions,
   recommendWorkflow,
   summarizeSkills,
@@ -45,13 +47,12 @@ const workflowIds = WORKFLOWS.map((w) => w.id);
 for (const id of ["direct", "outline", "prototype", "research", "debug", "parallel", "review-gate", "phased", "iterate", "offline"]) {
   assert.ok(workflowIds.includes(id), id);
   assert.ok(!ids.includes(id), `${id} must not collide with a task id`);
-  assert.ok(!("plugins" in WORKFLOWS.find((w) => w.id === id)), `${id} must not bundle plugins`);
   assert.ok(WORKFLOWS.find((w) => w.id === id).steps.length >= 3, `${id} needs process steps`);
 }
 assert.ok(workflowOptions("outline")[0].startsWith("outline · "));
 assert.match(workflowOptions("outline")[0], /★ 推荐/);
 assert.match(workflowOptions("outline")[0], /先出提纲/);
-assert.doesNotMatch(workflowOptions("outline")[0], /个插件/);
+
 assert.match(workflowOptions("direct")[0], /需求清楚、范围小/);
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "debug");
 assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "report")), "research");
@@ -86,6 +87,48 @@ const syntheticStore = {
       tools: ["gsd_invoke"],
       missing: false,
     },
+    "npm:pi-lens": {
+      kind: "plugin",
+      label: "pi-lens",
+      description: "code intelligence lsp diagnostics",
+      tools: ["symbol_search"],
+      missing: false,
+    },
+    "npm:@juicesharp/rpiv-todo": {
+      kind: "plugin",
+      label: "@juicesharp/rpiv-todo",
+      description: "task list and progress",
+      tools: ["todo"],
+      missing: false,
+    },
+    "npm:@plannotator/pi-extension": {
+      kind: "plugin",
+      label: "@plannotator/pi-extension",
+      description: "plan review and approval",
+      tools: ["plannotator_submit_plan"],
+      missing: false,
+    },
+    "npm:pi-simplify": {
+      kind: "plugin",
+      label: "pi-simplify",
+      description: "simplify and cleanup",
+      commands: ["simplify"],
+      missing: false,
+    },
+    "npm:pi-memory": {
+      kind: "plugin",
+      label: "pi-memory",
+      description: "long term memory and notes",
+      tools: ["memory_write"],
+      missing: false,
+    },
+    "npm:openwiki": {
+      kind: "plugin",
+      label: "openwiki",
+      description: "repository wiki and code map",
+      tools: ["openwiki_search"],
+      missing: false,
+    },
     "skill:frontend-design": {
       kind: "skill",
       label: "frontend-design",
@@ -109,16 +152,36 @@ assert.ok(profile.roles.subagent.packages.some((p) => p.id === "pi-subagents"), 
 assert.ok(profile.roles.gsd.packages.some((p) => p.id === "@opengsd/gsd-core"), "gsd role missed package");
 assert.ok(profile.roles.design.skills.some((s) => s.id === "frontend-design"), "design role missed skill");
 hydrateCatalog(profile);
+for (const workflow of WORKFLOWS) {
+  assert.ok(Array.isArray(workflow.plugins), `${workflow.id} needs a plugin bundle`);
+  assert.ok(Array.isArray(workflow.skills), `${workflow.id} needs a skill bundle`);
+}
+assert.match(workflowOptions("outline")[0], /插件/);
+assert.equal(WORKFLOW_SKILL_PATTERNS.debug.deny.test("primary"), false, "deny pattern must not match primary");
+assert.equal(WORKFLOW_SKILL_PATTERNS.debug.deny.test("multi-search-engine"), true, "debug must reject search skills");
+assert.equal(WORKFLOW_SKILL_PATTERNS.prototype.deny.test("markdown-converter"), true, "prototype must reject converters");
 
 const webpage = SCENARIOS.find((s) => s.id === "webpage");
 assert.ok(scenarioPackages(webpage, syntheticStore).includes("pi-web-access"), "webpage did not hydrate web package");
 assert.ok(scenarioSkillIds(syntheticStore, "webpage").includes("frontend-design"), "webpage did not hydrate design skill");
 assert.ok(!scenarioPackages(webpage, syntheticStore).includes("pi-subagents"), "webpage should not pull unrelated subagent package");
-assert.deepEqual(comboPackages(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype")).includes("pi-web-access"), true);
-const baseCombo = comboPackages(webpage, syntheticStore);
-for (const workflow of WORKFLOWS) {
-  assert.deepEqual(comboPackages(webpage, syntheticStore, workflow), baseCombo, `${workflow.id} must not change the plugin combo`);
-}
+const outline = WORKFLOWS.find((w) => w.id === "outline");
+const research = WORKFLOWS.find((w) => w.id === "research");
+const debug = WORKFLOWS.find((w) => w.id === "debug");
+const parallel = WORKFLOWS.find((w) => w.id === "parallel");
+const reviewGate = WORKFLOWS.find((w) => w.id === "review-gate");
+const phased = WORKFLOWS.find((w) => w.id === "phased");
+assert.ok(outline.plugins.includes("@juicesharp/rpiv-todo"), "outline should include task tracking");
+assert.ok(research.plugins.includes("pi-web-access"), "research should include web");
+assert.ok(research.plugins.includes("openwiki"), "research should include repo wiki");
+assert.ok(debug.plugins.includes("pi-lens"), "debug should include code intelligence");
+assert.ok(parallel.plugins.includes("pi-subagents"), "parallel should include subagents");
+assert.ok(reviewGate.plugins.includes("pi-subagents"), "review should share subagents");
+assert.ok(phased.plugins.includes("@opengsd/gsd-core"), "phased should include GSD");
+assert.ok(parallel.plugins.filter((p) => reviewGate.plugins.includes(p)).length > 0, "workflows may share packages");
+assert.deepEqual(comboPackages(webpage, syntheticStore, parallel).includes("pi-subagents"), true);
+assert.deepEqual(comboPackages(webpage, syntheticStore, reviewGate).includes("pi-subagents"), true);
+assert.ok(comboSkillIds(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype")).includes("frontend-design"));
 
 const summary = summarizeSkills(["gsd-quick", "gsd-plan-phase", "frontend-design"]);
 assert.match(summary, /frontend-design/);
@@ -168,8 +231,9 @@ assert.ok(!applied.next.includes("subagent"), "unrelated optional tool should be
 activeTools = ["read", "mcp"];
 const workflowOnly = workflowOnlyScenario(WORKFLOWS.find((w) => w.id === "review-gate"));
 const appliedWorkflow = applyScenario(fakePi, { ui: { notify: () => {} } }, workflowOnly, syntheticStore, undefined, workflowOnly);
-assert.ok(appliedWorkflow.next.includes("mcp"), "workflow-only mode must preserve existing optional tools");
-assert.equal(workflowOnly.plugins.length, 0, "workflow-only mode must not bundle plugins");
+assert.ok(appliedWorkflow.next.includes("subagent"), "workflow-only mode should apply the workflow bundle");
+assert.ok(workflowOnly.plugins.includes("pi-subagents"));
+assert.ok(Array.isArray(workflowOnly.skillIds));
 
 const skillCommandPi = {
   getAllTools: () => [],
@@ -286,4 +350,4 @@ const flowCtx = {
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 32 application scenarios, 10 process workflows, profile capabilities, dynamic needs, core tools, migration");
+console.log("ok: 32 application scenarios, 10 workflow bundles, profile capabilities, dynamic needs, core tools, migration");
