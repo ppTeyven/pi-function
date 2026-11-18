@@ -209,6 +209,15 @@ const flowCtx = {
   assert.equal(entries.at(-1).data.id, "feature");
   assert.ok(flowActive.includes("todo"), "workflow + task assembly lost todo");
 }
+{
+  prompts.length = 0;
+  selections.push("phased", "bugfix");
+  await commands.function.handler('"修 bug"', flowCtx);
+  assert.match(prompts[0], /工作流/);
+  assert.match(prompts[1], /任务/);
+  assert.equal(entries.at(-1).data.workflow, "phased");
+  assert.equal(entries.at(-1).data.id, "bugfix");
+}
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
