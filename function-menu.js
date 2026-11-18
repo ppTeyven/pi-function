@@ -700,6 +700,7 @@ function loadStore() {
     overrides: raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {},
     // 使用反馈（阶段 D）：装配计数与手动归类计数
     usage: raw.usage && typeof raw.usage === "object" ? raw.usage : {},
+    itemUse: raw.itemUse && typeof raw.itemUse === "object" ? raw.itemUse : {},
     manualAdds: raw.manualAdds && typeof raw.manualAdds === "object" ? raw.manualAdds : {},
     isNew: false,
   };
@@ -1274,9 +1275,24 @@ const USAGE_BOOST_CAP = 1.2;
 function usageBoost(store, scenarioId, id) {
   if (!scenarioId) return 0;
   const key = String(id).replace(/^npm:/, "");
-  const used = store?.usage?.[scenarioId]?.[key] || 0;
+  const picked = store?.usage?.[scenarioId]?.[key] || 0;
+  const called = store?.itemUse?.[scenarioId]?.[key] || 0;
   const manual = store?.manualAdds?.[scenarioId]?.[key] || 0;
-  return Math.min(USAGE_BOOST_CAP, 0.25 * Math.log1p(used) + (manual ? 0.8 : 0));
+  // 真实调用过的权重最高：被选上但从没调用过，只拿很小的一点分。
+  return Math.min(USAGE_BOOST_CAP, 0.5 * Math.log1p(called) + 0.1 * Math.log1p(picked) + (manual ? 0.8 : 0));
+}
+
+// 把一次真实工具调用记到"当前装配场景 × 所属包"名下。
+function recordToolUse(store, scenarioId, toolName, allTools = []) {
+  if (!scenarioId || !toolName) return null;
+  const tool = allTools.find((t) => t.name === toolName);
+  const p = String(tool?.sourceInfo?.path || "");
+  const hit = /node_modules[\/](?:@[^\/]+[\/])?([^\/]+)/.exec(p);
+  const item = hit ? hit[1] : toolName;
+  store.itemUse = store.itemUse || {};
+  const bucket = store.itemUse[scenarioId] = store.itemUse[scenarioId] || {};
+  bucket[item] = (bucket[item] || 0) + 1;
+  return item;
 }
 
 function recordUsage(store, scenario, workflow = null) {
@@ -2014,6 +2030,7 @@ export default function functionMenu(pi) {
         if (reset) {
           store.usage = {};
           store.manualAdds = {};
+          store.itemUse = {};
           saveStore(store);
           ctx.ui.notify("已清空使用统计", "info");
           return;
@@ -2029,6 +2046,8 @@ export default function functionMenu(pi) {
           }
         }
         const manual = Object.entries(store.manualAdds || {}).flatMap(([sid, bucket]) => Object.entries(bucket).map(([k, v]) => `${k}→${sid}×${v}`));
+        const used = Object.entries(store.itemUse || {}).flatMap(([sid, bucket]) => Object.entries(bucket).map(([k, v]) => `${k}(${sid})×${v}`));
+        lines.push(used.length ? `真实调用：${used.slice(0, 8).join("、")}` : "真实调用：无记录");
         lines.push(manual.length ? `手动指定：${manual.slice(0, 8).join("、")}` : "手动指定：无");
         lines.push("加分规则：0.25×log(1+装配次数) + 0.8（手动指定），上限 1.2");
         pi.sendMessage({ customType: "function-stats", content: lines.join(String.fromCharCode(10)), display: true });
@@ -2318,6 +2337,24 @@ export default function functionMenu(pi) {
     stopWatcher();
   });
 
+  // 真实使用反馈（阶段 D 强信号）：Pi 每次工具调用都会触发这个钩子。
+  // 不支持该事件的版本不会调用它，也不影响其它功能。
+  let useWrites = 0;
+  try {
+    pi.on("tool_call", (event) => {
+      try {
+        if (!activeScenario) return;
+        const sid = activeScenario.comboIds?.length ? activeScenario.comboIds.join("+") : activeScenario.id;
+        const toolName = event?.toolName || event?.tool?.name || event?.name;
+        const item = recordToolUse(store, sid, toolName, pi.getAllTools?.() || []);
+        if (item) {
+          useWrites += 1;
+          if (useWrites % 5 === 0) saveStore(store); // 每 5 次落盘一次，避免频繁写
+        }
+      } catch { /* 反馈不能影响主流程 */ }
+    });
+  } catch { /* 旧版本 Pi 没有 tool_call 事件 */ }
+
   pi.on("before_agent_start", (event) => {
     if (!activeScenario) return;
     const extra = [
@@ -2341,4 +2378,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { usageBoost, recordUsage, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

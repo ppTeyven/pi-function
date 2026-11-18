@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.0
+
+- Stage D upgraded to a real signal: the extension hooks Pi's `tool_call` event, maps the tool back to its owning package (by tool path, scoped packages included) and records counts per assembled scenario (`itemUse`).
+- Bonus now weights actual usage highest: `min(1.2, 0.5·ln(1+called) + 0.1·ln(1+assembled) + 0.8 if manually assigned)`. Being picked but never called earns very little.
+- `/function stats` lists real calls, assembly counts and manual assignments; `stats reset` clears all three. Counts flush to disk every 5 calls.
+- Old Pi versions without `tool_call` still work (hook registration is wrapped).
+- Tests: 3 more feedback cases (path→package mapping, hook registration/no-scenario guard, priority ordering). Total 124.
+
 ## 2.10.0
 
 - Stage D usage feedback: every assembly records which packages/skills it enabled (`usage`), and `/function assign` records manual corrections (`manualAdds`). Both add a bounded bonus when scoring the same scenario again — `min(1.2, 0.25·ln(1+n) + 0.8 if assigned)`, deliberately below a name match (5 points).

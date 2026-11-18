@@ -309,15 +309,18 @@ npm test                                  # fixtures stay green
 Every assembly records which items it put in (`usage` in `function-menu.json`), and `/function assign` records manual corrections (`manualAdds`). Both add a bounded bonus when scoring the same scenario again:
 
 ```
-bonus = min(1.2, 0.25 × ln(1 + times_assembled) + 0.8 if manually assigned)
+bonus = min(1.2,
+            0.5 × ln(1 + times_actually_called)      // strongest signal
+          + 0.1 × ln(1 + times_assembled)            // weak: picked but maybe never used
+          + 0.8  if manually assigned)
 ```
 
-The cap is deliberately below a name match (5 points), so feedback nudges ordering and never overrides evidence. Inspect or clear it with `/function stats` / `/function stats reset`. Nothing leaves your machine; the counters live in the same local store.
+Actual calls come from Pi's `tool_call` hook, mapped back to the owning package by its tool path. The cap is deliberately below a name match (5 points), so feedback nudges ordering and never overrides evidence. Inspect or clear it with `/function stats` / `/function stats reset`. Nothing leaves your machine; the counters live in the same local store.
 
 ## Development
 
 ```bash
-npm test          # 121 cases, repository fixture — runs on any machine
+npm test          # 124 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -327,7 +330,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `contracts.test.mjs` | unit / config integrity | 29 |
 | `allocation.test.mjs` | contracts, golden needs, invariants, persistence | 44 |
 | `journeys.test.mjs` | real user requests (PPT deck, big project, vague one-liner…) | 29 |
-| `feedback.test.mjs` | usage feedback: boost caps, manual overrides, stats/reset | 10 |
+| `feedback.test.mjs` | usage feedback: real tool calls, boost caps, stats/reset | 13 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
