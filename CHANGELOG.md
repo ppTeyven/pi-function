@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.21.1
+
+- `/function` argument completion now puts the bare command first (`value: ""`), so Tab/Enter on an empty prefix uses plain `/function` and opens the workflow × scenario menu. Subcommands (`assemble / workflow / profile / scan / status / stats / off / assign`) keep their order after it; an empty entry is filtered out as soon as a prefix is typed.
+- New `tests/completions.test.mjs` (3 cases). Total 219.
+
 ## 2.21.0
 
 - **The catalog side now uses the same vocabulary as the request side.** `buildProfile` scores `expandItemText(...)` (text + `ALIASES` counterparts) and consults `tagRoleHits(...)` (nouns/verbs/adjectives → roles via `TAG_VOCAB`), so `/function scan` classifies a skill described as `Remove watermark from photos` into `vision` and one described only as `精简、校对` into `writing`.
