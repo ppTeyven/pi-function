@@ -161,13 +161,23 @@ const ACTION_ROLES = {
   重构: "code-intel", 调试: "code-intel", 诊断: "code-intel",
   审查: "plan-review", 审计: "plan-review", 测试: "testing",
   监控: "automation", 搜索: "web", 检索: "web",
+  // 音视频
+  混音: "audio", 降噪: "audio", 配乐: "audio", 转写: "audio", 转录: "audio", 配音: "audio", 抽帧: "video", 字幕: "video",
+  // 数据
+  聚合: "data", 关联: "data", 分组: "data", 筛选: "data", 指标: "data", 漏斗: "data", 看板: "data", 报表: "data", 采样: "data", 标注: "data",
+  // 文档
+  目录: "docs", 索引: "docs", 术语: "docs", 脚注: "docs", 参考文献: "docs", 附录: "docs", 一致性: "docs",
+  // 自动化
+  轮询: "automation", 重试: "automation", 回滚: "automation", 灰度: "automation",
 };
 
 const STYLE_ROLES = {
   极简: "design", 简洁: "design", 干净: "design", 高级: "design", 精致: "design", 优雅: "design",
   可爱: "design", 复古: "design", 科技感: "design", 商务: "design", 活泼: "design", 治愈: "design",
   小清新: "design", 扁平: "design", 拟物: "design", 性冷淡: "design",
+  简约: "design", 清爽: "design", 赛博: "design", 国潮: "design", 手绘: "design", 水彩: "design",
   正式: "docx", 口语: "writing", 幽默: "writing", 克制: "writing", 专业: "writing", 自然: "writing",
+  严谨: "writing", 简洁有力: "writing",
 };
 
 // 单字也要认：“画一张图”“剪个视频”“译成英文”里的单字就是动作。
@@ -187,7 +197,11 @@ const TAG_VOCAB = {
   代码: "code-intel", 诊断: "code-intel", 重构: "code-intel", lsp: "code-intel", 符号: "code-intel",
   流程: "process", sop: "process", 标准化: "process", 基元: "process",
   搜索: "web", 检索: "web", 抓网页: "web",
-  图片: "vision", 识图: "vision",
+  图片: "vision", 识图: "vision", 水印: "vision", 缩略图: "vision", 截图: "vision", 修图: "vision",
+  照片: "vision", 相片: "vision", 图像: "vision", 修图工具: "vision",
+  字幕: "video", 分镜: "video", 片头: "video", 片尾: "video",
+  播客: "audio", 配音: "audio", 音频: "audio",
+  简历: "docx", 合同: "docx", 发票: "docx",
   mcp: "mcp", 外部系统: "mcp", 集成: "mcp",
   任务: "task", 待办: "task", 清单: "task",
   记忆: "memory", 备忘: "memory",
@@ -213,6 +227,13 @@ const ALIASES = {
   scrape: "抓取", crawl: "爬取", deploy: "部署", backup: "备份", migrate: "迁移",
   responsive: "自适应", accessibility: "无障碍", darkmode: "深色模式",
   newsletter: "简报", landing: "落地页", form: "表单", invoice_ocr: "发票识别",
+  render: "渲染", encode: "转码", trim: "剪辑", voiceover: "配音", transcribe: "转写", mix: "混音",
+  screenshot: "截图", resize: "缩放", crop: "裁剪", retouch: "修图",
+  denoise: "降噪", soundtrack: "配乐", subtitle_file: "字幕文件",
+  aggregate: "聚合", pivot: "透视", funnel: "漏斗", metric: "指标", cohort: "留存",
+  dedupe: "去重", normalize: "清洗", dataset: "数据集",
+  glossary: "术语", footnote: "脚注", citation: "参考文献", toc: "目录", appendix: "附录",
+  memo: "备忘", brief: "简报", schedule: "调度", retry: "重试", rollback: "回滚", canary: "灰度",
 };
 
 // 惰性初始化：本文件顶部的词典比 norm/flatText 先执行，不能用它们初始化。
@@ -238,6 +259,26 @@ function aliasesFor(text) {
 
 function aliasVariants(term) {
   return uniq([term, ...aliasesFor(term)]);
+}
+
+// 条目侧的统一比对文本：原文 + 另一语言写法。
+// 扫描（buildProfile）与分类（classifyItem）都用它，否则英文描述的技能永远进不了中文角色。
+function expandItemText(text) {
+  const base = norm(text);
+  const extra = aliasesFor(base).join(" ");
+  return extra ? `${base} ${norm(extra)}` : base;
+}
+
+// 名词/动词/形容词 -> 角色：描述里出现「润色」「极简」「去重」也算证据。
+function tagRoleHits(text) {
+  const t = norm(text);
+  const out = {};
+  for (const [word, role] of Object.entries(TAG_VOCAB)) {
+    if (!word || !t.includes(word)) continue;
+    (out[role] = out[role] || []).push(word);
+  }
+  for (const role of Object.keys(out)) out[role] = uniq(out[role]);
+  return out;
 }
 
 function tagsOf(text) {
@@ -644,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 const PROFILE_FILE = "function-menu.profile.json";
-const PROFILE_VERSION = 9;
+const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
 
 function profilePath() { return process.env.PI_FUNCTION_PROFILE || path.join(agentDir(), PROFILE_FILE); }
@@ -677,10 +718,11 @@ function buildProfile(store) {
     const name = rawId.replace(/^npm:/, "").replace(/^skill:/, "");
     if (!isSkill && rawId.startsWith("local:")) continue;
     const isGsdSkill = isSkill && /^gsd-/.test(name);
-    const text = norm([
+    const text = expandItemText([
       name, meta.label || "", meta.description || "", meta.text || "",
       ...(meta.tools || []), ...(meta.commands || []), ...(meta.skills || []),
     ].join(" ")).slice(0, 6000);
+    const tagHits = tagRoleHits(text);
     const candidates = [];
     for (const [roleId, def] of Object.entries(CAPABILITIES)) {
       if (isGsdSkill && roleId !== "gsd") continue;
@@ -706,7 +748,19 @@ function buildProfile(store) {
         for (const skill of meta.skills || []) hit(def.skill, skill, 2, "技能");
         hit(def.terms, text, 1, "描述");
       }
+      // 词表证据分两档：
+      // - 两个以上独立词命中 = 基础证据（能让“只有动词/形容词描述”的条目归得进角色）
+      // - 单个词只加码排序，不改成员资格（否则 openwiki 因「wiki」就多出角色）
+      const words = tagHits[roleId] || [];
+      if (words.length >= 2) {
+        score += 2;
+        reasons.push(`词表命中：${words.slice(0, 3).join("/")}`);
+      }
       if (score < (def.minScore ?? 2)) continue;
+      if (words.length === 1) {
+        score += 1;
+        reasons.push(`词表命中：${words[0]}`);
+      }
       candidates.push({ roleId, score, reasons: uniq(reasons) });
     }
     // 一个包/技能最多进入 3 个包角色或 2 个技能角色，按证据强度取前几名。
@@ -2648,7 +2702,14 @@ export default function functionMenu(pi) {
 
       if (args === "scan") {
         const added = scan(false);
-        ctx.ui.notify(added.length ? `扫描完成：新增 ${added.length} 个，已自动归类` : "扫描完成：没有新插件/技能", "info");
+        const profile = ensureProfile(store);
+        const unassigned = profile?.unassigned || [];
+        const total = Object.keys(profile?.itemInfo || {}).length;
+        const head = added.length ? `扫描完成：新增 ${added.length} 个，已自动归类` : "扫描完成：没有新插件/技能";
+        const tail = unassigned.length
+          ? `\n未归类 ${unassigned.length}/${total} 个（用 /function assign <item> <scenario> 指定）：${unassigned.slice(0, 5).join("、")}${unassigned.length > 5 ? " …" : ""}`
+          : `\n全部 ${total} 个条目都归入了能力角色`;
+        ctx.ui.notify(head + tail, unassigned.length ? "warning" : "info");
         if (added.length) {
           pi.sendMessage({
             customType: "function-scan",
@@ -3050,4 +3111,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

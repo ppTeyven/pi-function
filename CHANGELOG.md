@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.21.0
+
+- **The catalog side now uses the same vocabulary as the request side.** `buildProfile` scores `expandItemText(...)` (text + `ALIASES` counterparts) and consults `tagRoleHits(...)` (nouns/verbs/adjectives → roles via `TAG_VOCAB`), so `/function scan` classifies a skill described as `Remove watermark from photos` into `vision` and one described only as `精简、校对` into `writing`.
+- Two-tier evidence keeps precision: two or more distinct tag words is base evidence; a single word only reorders candidates, so `整体风格偏商务` cannot turn a skill into a design tool.
+- `TAG_VOCAB` gains artifact nouns (`水印/照片/截图/缩略图 → vision`, `字幕/分镜 → video`, `播客/配音/音频 → audio`, `简历/合同/发票 → docx`) and `ALIASES` gains audio/video/data/docs pairs (`render/encode/trim/voiceover/transcribe`, `pivot/funnel/metric/cohort`, `glossary/footnote/citation/toc`).
+- `/function scan` reports classification outcome: `未归类 m/N 个（用 /function assign …）：…` or `全部 N 个条目都归入了能力角色`. An item is never silently dropped — it either has a role or is listed as unassigned.
+- `PROFILE_VERSION` 9 → 10 (vocabulary changed, cached profiles must rebuild).
+- New `tests/scan.test.mjs` (8 cases). Total 216.
+
 ## 2.20.0
 
 - **Cross-language aliases.** `ALIASES` (~55 bidirectional pairs: `watermark ↔ 水印`, `thumbnail ↔ 缩略图`, `scrape ↔ 抓取`, `darkmode ↔ 深色模式`, …). `catalogTexts()` now exposes `scan` (flattened text + the other-language forms) and `wordAudit`, `capabilityScan`, `capabilityCovered` all match against it, so a Chinese request matches an English skill description and vice versa. The table only widens matching: no score, no tags, no extra tokens.

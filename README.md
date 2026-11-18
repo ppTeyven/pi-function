@@ -211,7 +211,6 @@ A workflow is a **process plus an execution bundle**. It binds generic capabilit
 > The table lists capability roles, not package names. Your profile resolves each role to the packages and skills actually installed on your machine; different users can get different bindings while the workflow IDs and semantics stay fixed.
 
 ## Per-user profile
-
 On first load and on every scan, Pi-function reads the installed packages, extensions, tools, commands, and skills, scores them against generic capability roles, and writes:
 
 ```text
@@ -225,7 +224,6 @@ The catalog and workflow bundles are hydrated from this profile at runtime. That
 Manual overrides are stored in `~/.pi/agent/function-menu.json` and survive profile rebuilds.
 
 ### How items are organized
-
 Pi-function deliberately avoids a hard-coded plugin list. Each package/skill is scored against capability roles using several independent signals:
 
 - package or skill name: **5 points**;
@@ -236,6 +234,32 @@ Pi-function deliberately avoids a hard-coded plugin list. Each package/skill is 
 A role must reach a minimum score (default **2**) before it is considered. Role-level `deny` rules then reject known false positives — for example, a search skill must not become a testing tool, and a document-formatting skill must not become a design tool. Strong name matches take precedence over description-based denies. Each item is capped at **3 package roles** or **2 skill roles**, keeping one package from polluting many scenarios. Packages that require an environment variable (such as a cloud browser key) are skipped when the variable is missing; their local skills remain available.
 
 Run `/function profile` to inspect the result. The report shows every role, the matched packages/skills with scores, the unassigned list, and the profile file path. Manual corrections remain available through `/function assign`.
+
+#### Classification uses the same vocabulary as the request side
+
+`/function scan` rebuilds the profile. It used to score descriptions with the raw text only, so a skill that described itself in another language — or only through verbs and adjectives — ended up in the unassigned list even when the capability was obvious.
+
+Both entry points now share one vocabulary:
+
+```js
+const text = expandItemText([name, label, description, tools, commands, skills].join(" "));
+const tagHits = tagRoleHits(text);
+```
+
+- `expandItemText` appends the other-language forms from `ALIASES`, so `Remove watermark from photos` also scores against `水印 / 照片`.
+- `tagRoleHits` counts nouns/verbs/adjectives per role via `TAG_VOCAB` (`润色 / 精简 / 校对 → writing`, `极简 / 干净 → design`, `去重 / 透视 → data`).
+- Evidence is two-tier on purpose: **two or more** distinct words is base evidence and can establish a role; **one** word only boosts ordering, so `整体风格偏商务` cannot make a skill a design tool.
+
+Because the profile is cached, the classifier version is bumped (`PROFILE_VERSION`) whenever the vocabulary changes — otherwise an old profile would keep the old classification forever.
+
+`/function scan` now reports what it did with the catalog:
+
+```
+扫描完成：没有新插件/技能
+未归类 2/29 个（用 /function assign <item> <scenario> 指定）：skill:foo、skill:bar
+```
+
+or `全部 29 个条目都归入了能力角色`. An item is never dropped: it either has a role or appears in the unassigned list (`tests/scan.test.mjs` asserts exactly that).
 
 ## Dynamic needs
 
@@ -497,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 208 cases, repository fixture — runs on any machine
+npm test          # 216 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -516,6 +540,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `deeds.test.mjs` | verbs/adjectives → roles, deed gaps, panel wording | 9 |
 | `complete.test.mjs` | completeness invariant: every token accounted for | 9 |
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
+| `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
