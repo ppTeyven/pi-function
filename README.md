@@ -271,6 +271,44 @@ Then, per gap, assembly asks `本机没有「…」能力，要去找吗？`:
 
 No new network calls: the search goes through a skill that already exists locally.
 
+### Full sweep: check every installed plugin and skill
+
+Automatic selection runs behind a role gate (a request for PPT is not a request for a wiki plugin). A gate that is slightly too tight drops exactly the item you installed for this: `去AI味` matched no scenario, so `humanizer` scored nothing, and `selectByCoverage` with no demands returned an empty list — installed, correct, unused.
+
+So after the role-based selection there is a second pass with no gate at all: `capabilityScan(need)` compares the request against **every** non-infra item's name, description, tags and role labels.
+
+```
+terms  = needTerms(need) + ascii/CJK runs ("AI味")          // "去除 AI 味" == "AI味"
+df     = how many installed items contain the term
+terms  = terms where 1 <= df <= max(2, 15% of items)         // "内容"/"处理" prove nothing
+score  = termScoreDistinct(terms, item)
+```
+
+The rarity filter is what replaces a hand-tuned stopword list: a word every plugin writes (`内容`, `文件`) is dropped by counting, while a word only one plugin writes (`ai味`, `公文`) is strong evidence even at two characters.
+
+Whatever matched but was **not** selected is shown and asked about — never added silently:
+
+```
+**全量核对（所有插件与技能）**
+- 共核对 146 个条目：与需求相关 3 个；已选 0 个，未选 3 个
+- 未选：`skill:humanizer` — 去除文本中的AI写作痕迹…（命中：ai味 / 文字）
+- 装配前会逐个问你：要不要也启用            → 是 / 否（最多 3 个）
+```
+
+Answers of 是 land in `scenario.auditPicks`, `scenario.skillIds` / `scenario.plugins`, and in the system prompt as `全量核对后你确认一并启用的 … 这些是本机已有能力，直接用，不要再问“要不要装”`.
+
+Also fixed on the way: `selectByCoverage` returned **nothing** when the request produced no demands (no scenario, no tags). Candidates had already passed the relevance gate, so dropping them was the silent under-use bug; it now keeps them by score.
+
+### Bare capability words are asked, not guessed
+
+`视频` alone does not say whether you want a video file or a shot list. So `BARE_CAPABILITIES` (`video / audio / ocr`) asks one question when only the bare word appears:
+
+- `做一条视频` → `需求里提到「视频剪辑 / 合成」：要真的做吗？`
+- `剪一条视频，加字幕` → no question (already explicit)
+- **是** and nothing installed → becomes a gap, so find-skill is offered the same way as above.
+
+General rule everywhere in this plugin: a word is either evidenced by the request, or it is a question — never an assumption.
+
 ## What assembly changes
 
 - enables the selected plugin tools;
@@ -362,7 +400,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 144 cases, repository fixture — runs on any machine
+npm test          # 153 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -375,6 +413,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `feedback.test.mjs` | usage feedback: real tool calls, boost caps, stats/reset | 13 |
 | `tags.test.mjs` | capability tags + set-cover selection | 11 |
 | `gaps.test.mjs` | capability gaps, find-skill routing, ask flow | 9 |
+| `audit.test.mjs` | full catalog sweep, bare-word asks, audit picks | 9 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

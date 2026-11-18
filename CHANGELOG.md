@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.15.0
+
+- **Full sweep.** After role-based selection, `capabilityScan(need)` compares the request against every non-infra plugin and skill (name, description, tags, role labels). Whatever matched but was not selected is listed in the proposal and asked about one by one — never added silently, never dropped silently.
+- Rarity filter instead of a stopword list: a term is only evidence when `1 <= df <= max(2, 15% of items)`. This catches `ai味`, `公文`, `爬虫` while ignoring `内容`, `处理`.
+- Term extraction keeps ascii/CJK runs (`AI味`) and comparison is whitespace/punctuation-flat, so `去除 AI 味` matches `去AI味`.
+- **Fixed silent under-use:** `selectByCoverage` returned an empty list when a request produced no demands (no scenario, no tag) — exactly the `去AI味` case, where `humanizer` was installed and correct but never selected. Candidates already passed the relevance gate, so they are now kept by score.
+- `TAG_VOCAB` gains `ai味 / 人味 / 人话 / 去ai / 改写 → writing`; `PROFILE_VERSION` 7 → 8 (profile rebuild).
+- **Bare words are asked.** `BARE_CAPABILITIES` (`video / audio / ocr`) asks `要真的做吗？` when only the bare word appears; `视频剪辑` is explicit and not asked. 是 with nothing installed becomes a gap and goes to find-skill.
+- `comboSkillIds` now always merges `scenario.skillIds`, so items confirmed in the sweep also apply to static scenarios.
+- New `tests/audit.test.mjs` (9 cases). Total 153.
+
 ## 2.14.0
 
 - Capability gaps are now reported, not silently dropped. `NEED_CAPABILITIES` detects deliverables the request names but no installed item can produce (`pdf / slides / docx / xlsx / video / audio / ocr / imagegen`), and `capabilityGaps()` also surfaces contract `required` roles that resolve to no installed member. Direction is respected: a PDF→Markdown converter does not count as being able to generate a PDF.
