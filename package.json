@@ -1,7 +1,7 @@
 {
   "name": "pi-function",
-  "version": "1.6.0",
-  "description": "Pi-function — always-on workflow + task assembler for the Pi coding agent. Bare /function picks a workflow and task; a need is analyzed dynamically across multiple task signals before composing plugins and skills.",
+  "version": "2.0.0",
+  "description": "Pi-function — application-scenario + workflow assembler for the Pi coding agent. Fixed scenario IDs, per-user capability profile, and dynamic free-text composition across installed plugins and skills.",
   "type": "module",
   "license": "MIT",
   "author": "ppTeyven",
@@ -19,6 +19,8 @@
     "pi-extension",
     "ai-agents",
     "scenario",
+    "application-scenarios",
+    "capability-profile",
     "tooling",
     "developer-tools"
   ],

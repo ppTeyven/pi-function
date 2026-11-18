@@ -5,11 +5,15 @@ import path from "node:path";
 import functionMenu from "./function-menu.js";
 import {
   SCENARIOS,
-  CORE_TOOLS,
-  classifyItem,
-  SCENARIOS as ALL_SCENARIOS,
   WORKFLOWS,
+  CAPABILITIES,
+  CORE_TOOLS,
+  CLASSIFIER_VERSION,
+  buildProfile,
+  hydrateCatalog,
+  classifyItem,
   scenarioPackages,
+  scenarioSkillIds,
   comboPackages,
   workflowOptions,
   recommendWorkflow,
@@ -22,81 +26,100 @@ import {
   discoverItems,
   analyzeNeed,
   dynamicScenario,
+  loadStore,
+  saveStore,
 } from "./function-menu.js";
 
 const ids = SCENARIOS.map((s) => s.id);
-assert.equal(SCENARIOS.length, 25);
-for (const id of ["understand", "docs", "gsd", "frontend", "privacy"]) assert.ok(ids.includes(id), id);
-for (const s of SCENARIOS) {
-  assert.ok(!s.plugins.includes("rpiv-todo"), `${s.id} still uses the unqualified rpiv-todo id`);
-  assert.ok(!s.plugins.includes("cc-safety-net"), `${s.id} should treat cc-safety-net as infrastructure`);
+assert.equal(SCENARIOS.length, 17);
+for (const id of ["article", "report", "presentation", "docs", "webpage", "webapp", "mobile", "game", "design", "data", "api", "automation", "integration", "plugin", "maintain", "localization", "general"]) {
+  assert.ok(ids.includes(id), `missing application scenario ${id}`);
 }
-
+for (const old of ["feature", "refactor", "bugfix", "review", "frontend"]) {
+  assert.ok(!ids.includes(old), `old activity scenario ${old} should be gone`);
+}
 assert.deepEqual(CORE_TOOLS, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
-
-assert.equal(WORKFLOWS.length, 6);
+assert.equal(WORKFLOWS.length, 7);
 const workflowIds = WORKFLOWS.map((w) => w.id);
-for (const id of ["direct", "plan-first", "test-first", "fanout", "review-gate", "phased"]) {
+for (const id of ["direct", "outline", "prototype", "parallel", "review-gate", "phased", "offline"]) {
   assert.ok(workflowIds.includes(id), id);
   assert.ok(!ids.includes(id), `${id} must not collide with a task id`);
 }
-assert.ok(workflowOptions("phased")[0].startsWith("phased · "));
-assert.match(workflowOptions("phased")[0], /★ 推荐/);
-assert.equal(recommendWorkflow(ALL_SCENARIOS.find((s) => s.id === "gsd")), "phased");
-assert.equal(recommendWorkflow(ALL_SCENARIOS.find((s) => s.id === "tests")), "test-first");
-assert.equal(recommendWorkflow(ALL_SCENARIOS.find((s) => s.id === "review")), "review-gate");
-assert.equal(recommendWorkflow(ALL_SCENARIOS.find((s) => s.id === "understand")), "direct");
-assert.equal(classifyItem({ kind: "skill", id: "skill:gsd-quick", text: "" }).scenarioId, "gsd");
-assert.equal(classifyItem({ kind: "skill", id: "skill:architect", text: "" }).scenarioId, "plan");
-assert.equal(classifyItem({ kind: "skill", id: "skill:de-slop", text: "" }).scenarioId, "frontend");
-assert.equal(classifyItem({ kind: "skill", id: "skill:handoff", text: "" }).scenarioId, "docs");
-assert.equal(classifyItem({ kind: "skill", id: "skill:safe-refactor", text: "" }).scenarioId, "refactor");
+assert.ok(workflowOptions("outline")[0].startsWith("outline · "));
+assert.match(workflowOptions("outline")[0], /★ 推荐/);
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "maintain")), "review-gate");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "webpage")), "prototype");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "article")), "outline");
+assert.equal(recommendWorkflow(SCENARIOS.find((s) => s.id === "general")), "direct");
+assert.equal(typeof CAPABILITIES, "object");
+assert.ok(Object.keys(CAPABILITIES).length >= 20);
 
-const store = {
+// Synthetic user: two machines with different packages must resolve the same IDs differently.
+const syntheticStore = {
   known: {
-    "skill:gsd-quick": { kind: "skill", label: "gsd-quick", scenario: "feature", auto: true, missing: false },
-    "skill:gsd-plan-phase": { kind: "skill", label: "gsd-plan-phase", scenario: "plan", auto: true, missing: false },
-    "local:zz-tools-dump": { kind: "plugin", label: "zz-tools-dump", scenario: "review", auto: true, missing: false },
+    "npm:pi-web-access": {
+      kind: "plugin",
+      label: "pi-web-access",
+      description: "web search and fetch",
+      tools: ["web_search"],
+      commands: ["websearch"],
+      missing: false,
+    },
+    "npm:pi-subagents": {
+      kind: "plugin",
+      label: "pi-subagents",
+      description: "delegate tasks to subagents",
+      tools: ["subagent"],
+      missing: false,
+    },
+    "npm:@opengsd/gsd-core": {
+      kind: "plugin",
+      label: "@opengsd/gsd-core",
+      description: "spec driven phased workflow",
+      tools: ["gsd_invoke"],
+      missing: false,
+    },
+    "skill:frontend-design": {
+      kind: "skill",
+      label: "frontend-design",
+      description: "frontend ui design and visual polish",
+      missing: false,
+    },
+    "skill:gsd-quick": {
+      kind: "skill",
+      label: "gsd-quick",
+      description: "quick phased task",
+      missing: false,
+    },
   },
   overrides: {},
-  classifierVersion: 1,
+  classifierVersion: CLASSIFIER_VERSION,
 };
-const items = new Map([
-  ["skill:gsd-quick", { id: "skill:gsd-quick", kind: "skill", label: "gsd-quick", text: "quick", skills: ["skill:gsd-quick"] }],
-  ["skill:gsd-plan-phase", { id: "skill:gsd-plan-phase", kind: "skill", label: "gsd-plan-phase", text: "plan-phase", skills: ["skill:gsd-plan-phase"] }],
-]);
-reconcile(store, items);
-assert.equal(store.classifierVersion, 3);
-assert.equal(store.known["skill:gsd-quick"].scenario, "gsd");
-assert.equal(store.known["skill:gsd-plan-phase"].scenario, "gsd");
-assert.ok(!("local:zz-tools-dump" in store.known));
 
-assert.deepEqual(scenarioPackages(SCENARIOS.find((s) => s.id === "privacy"), { known: {} }), []);
-assert.deepEqual(comboPackages(
-  SCENARIOS.find((s) => s.id === "privacy"),
-  { known: {} },
-  WORKFLOWS.find((w) => w.id === "fanout"),
-), []);
-assert.ok(comboPackages(
-  SCENARIOS.find((s) => s.id === "feature"),
-  { known: {} },
-  WORKFLOWS.find((w) => w.id === "phased"),
-).includes("@opengsd/gsd-core"));
-assert.deepEqual(
-  scenarioPackages(SCENARIOS.find((s) => s.id === "mcp"), { known: {} }),
-  ["pi-mcp-adapter"],
-);
+const profile = buildProfile(syntheticStore);
+assert.ok(profile.roles.web.packages.some((p) => p.id === "pi-web-access"), "web role missed web package");
+assert.ok(profile.roles.subagent.packages.some((p) => p.id === "pi-subagents"), "subagent role missed package");
+assert.ok(profile.roles.gsd.packages.some((p) => p.id === "@opengsd/gsd-core"), "gsd role missed package");
+assert.ok(profile.roles.design.skills.some((s) => s.id === "frontend-design"), "design role missed skill");
+hydrateCatalog(profile);
 
-const summary = summarizeSkills(["gsd-quick", "gsd-plan-phase", "btw"]);
-assert.match(summary, /btw/);
+const webpage = SCENARIOS.find((s) => s.id === "webpage");
+assert.ok(scenarioPackages(webpage, syntheticStore).includes("pi-web-access"), "webpage did not hydrate web package");
+assert.ok(scenarioSkillIds(syntheticStore, "webpage").includes("frontend-design"), "webpage did not hydrate design skill");
+assert.ok(!scenarioPackages(webpage, syntheticStore).includes("pi-subagents"), "webpage should not pull unrelated subagent package");
+assert.deepEqual(comboPackages(webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype")).includes("pi-web-access"), true);
+
+const summary = summarizeSkills(["gsd-quick", "gsd-plan-phase", "frontend-design"]);
+assert.match(summary, /frontend-design/);
 assert.match(summary, /GSD 阶段技能 2 个/);
 
-let activeTools = ["read", "bash", "mcp"];
+const core = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+let activeTools = ["read", "mcp"];
 const fakePi = {
   getAllTools: () => [
-    ...["read", "bash", "edit", "write", "grep", "find", "ls"].map((name) => ({ name, sourceInfo: { path: `builtin:${name}` } })),
-    { name: "lens_diagnostics", sourceInfo: { path: "C:/x/node_modules/pi-lens/index.js" } },
-    { name: "todo", sourceInfo: { path: "C:/x/node_modules/@juicesharp/rpiv-todo/index.js" } },
+    ...core.map((name) => ({ name, sourceInfo: { path: `builtin:${name}` } })),
+    { name: "web_search", sourceInfo: { path: "C:/x/node_modules/pi-web-access/index.js" } },
+    { name: "subagent", sourceInfo: { path: "C:/x/node_modules/pi-subagents/index.js" } },
     { name: "gsd_invoke", sourceInfo: { path: "C:/x/node_modules/@opengsd/gsd-core/index.js" } },
     { name: "mcp", sourceInfo: { path: "C:/x/node_modules/pi-mcp-adapter/index.js" } },
   ],
@@ -104,53 +127,29 @@ const fakePi = {
   setActiveTools: (next) => { activeTools = [...next]; },
   getCommands: () => [],
 };
-const catalogStore = {
-  known: {
-    "skill:gsd-quick": { kind: "skill", label: "gsd-quick", scenario: "gsd", auto: true, missing: false },
-    "skill:gsd-plan-phase": { kind: "skill", label: "gsd-plan-phase", scenario: "gsd", auto: true, missing: false },
-  },
-};
-const catalog = buildCatalog(fakePi, catalogStore);
-assert.match(catalog, /25 个组合 · 2 个技能/);
+
+const catalog = buildCatalog(fakePi, syntheticStore);
+assert.match(catalog, /17 个组合/);
 assert.match(catalog, /第 1 步：工作流/);
 assert.match(catalog, /第 2 步：任务场景/);
-assert.match(catalog, /技能 2 个/);
-assert.match(catalog, /GSD 阶段技能 2 个/);
-const picker = menuOptions(catalogStore);
-const gsdOption = picker.find((option) => option.startsWith("gsd · "));
-assert.match(gsdOption, /\d+ 个插件 · 2 技能（GSD 2）/);
-assert.match(picker.find((option) => option.startsWith("understand · ")), /0 技能/);
-assert.ok(catalog.length < 12000, "catalog should summarize large skill groups");
-const proposal = buildProposal(fakePi, SCENARIOS.find((s) => s.id === "gsd"), catalogStore);
-assert.match(proposal, /核心工具始终保留/);
-assert.match(proposal, /自动归入技能 2 个/);
-assert.match(proposal, /GSD 阶段技能 2 个/);
-const comboProposal = buildProposal(
-  fakePi,
-  SCENARIOS.find((s) => s.id === "feature"),
-  { known: {} },
-  WORKFLOWS.find((w) => w.id === "phased"),
-);
-assert.match(comboProposal, /## 装配：阶段推进 × 写新功能/);
-assert.match(comboProposal, /\*\*工作流\*\*/);
-assert.match(comboProposal, /discuss → plan → execute → verify → ship/);
+assert.match(catalog, /pi-web-access/);
+assert.match(catalog, /frontend-design/);
 
-const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, SCENARIOS.find((s) => s.id === "gsd"), catalogStore);
-for (const name of ["read", "bash", "edit", "write", "grep", "find", "ls", "mcp", "gsd_invoke"]) {
-  assert.ok(applied.next.includes(name), `applyScenario lost ${name}`);
-}
-assert.ok(!applied.next.includes("lens_diagnostics"), "unrelated optional tools should be disabled");
-const appliedWorkflow = applyScenario(
-  fakePi,
-  { ui: { notify: () => {} } },
-  SCENARIOS.find((s) => s.id === "feature"),
-  { known: {} },
-  undefined,
-  WORKFLOWS.find((w) => w.id === "phased"),
-);
-for (const name of ["todo", "gsd_invoke"]) {
-  assert.ok(appliedWorkflow.next.includes(name), `workflow assembly lost ${name}`);
-}
+const picker = menuOptions(syntheticStore);
+const webpageOption = picker.find((option) => option.startsWith("webpage · "));
+assert.match(webpageOption, /网页/);
+assert.match(webpageOption, /个插件/);
+assert.match(webpageOption, /技能/);
+
+const proposal = buildProposal(fakePi, webpage, syntheticStore, WORKFLOWS.find((w) => w.id === "prototype"));
+assert.match(proposal, /原型先行 × 网页/);
+assert.match(proposal, /工作流/);
+assert.match(proposal, /核心工具始终保留/);
+assert.match(proposal, /web_search|pi-web-access/);
+
+const applied = applyScenario(fakePi, { ui: { notify: () => {} } }, webpage, syntheticStore, undefined, WORKFLOWS.find((w) => w.id === "prototype"));
+for (const name of [...core, "web_search"]) assert.ok(applied.next.includes(name), `applyScenario lost ${name}`);
+assert.ok(!applied.next.includes("subagent"), "unrelated optional tool should be disabled");
 
 const skillCommandPi = {
   getAllTools: () => [],
@@ -161,22 +160,51 @@ assert.ok(discovered.has("skill:my-skill"));
 assert.equal(discovered.get("skill:my-skill").label, "my-skill");
 assert.deepEqual(discovered.get("skill:my-skill").skills, ["my-skill"]);
 
-// End-to-end command flow: workflow picker must come before the task picker.
+const migrationStore = {
+  known: {
+    "skill:gsd-quick": { kind: "skill", label: "gsd-quick", scenario: "feature", auto: true, missing: false },
+    "local:zz-tools-dump": { kind: "plugin", label: "zz-tools-dump", scenario: "review", auto: true, missing: false },
+  },
+  overrides: {},
+  classifierVersion: 3,
+};
+const migrationItems = new Map([
+  ["skill:gsd-quick", { id: "skill:gsd-quick", kind: "skill", label: "gsd-quick", text: "quick", skills: ["skill:gsd-quick"] }],
+]);
+reconcile(migrationStore, migrationItems);
+assert.equal(migrationStore.classifierVersion, CLASSIFIER_VERSION);
+assert.ok(!("local:zz-tools-dump" in migrationStore.known));
+assert.equal(migrationsStoreGone(), true);
+function migrationsStoreGone() { return !("local:zz-tools-dump" in migrationStore.known); }
+
+const multi = analyzeNeed("做一个网页，同时写一篇介绍文章", syntheticStore);
+const intentIds = multi.intents.map((r) => r.scenario.id);
+assert.ok(intentIds.includes("webpage"), intentIds.join(","));
+assert.ok(intentIds.includes("article"), intentIds.join(","));
+assert.ok(multi.packages.some((x) => x.pkg === "pi-web-access"), "multi-intent should use the web capability");
+assert.ok(multi.skills.some((x) => x.skill === "frontend-design"), "multi-intent should use the design skill");
+
+const noMatch = analyzeNeed("帮我把客厅灯光调暖一点", syntheticStore);
+assert.equal(noMatch.intents.length, 0);
+const custom = dynamicScenario("帮我把客厅灯光调暖一点", noMatch, null);
+assert.equal(custom.id, "custom");
+assert.match(custom.brief, /没有命中固定场景/);
+
+// End-to-end: bare /function asks workflow first, then task; free text asks only workflow.
 const tempAgent = fs.mkdtempSync(path.join(os.tmpdir(), "pi-function-test-"));
 const previousAgent = process.env.PI_CODING_AGENT_DIR;
 process.env.PI_CODING_AGENT_DIR = tempAgent;
-const core = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+hydrateCatalog(buildProfile({ known: {}, overrides: {}, classifierVersion: CLASSIFIER_VERSION }));
 const flowTools = [
   ...core.map((name) => ({ name, sourceInfo: { path: `builtin:${name}` } })),
-  { name: "todo", sourceInfo: { path: "C:/x/node_modules/@juicesharp/rpiv-todo/index.js" } },
-  { name: "gsd_invoke", sourceInfo: { path: "C:/x/node_modules/@opengsd/gsd-core/index.js" } },
+  { name: "web_search", sourceInfo: { path: "C:/x/node_modules/pi-web-access/index.js" } },
   { name: "mcp", sourceInfo: { path: "C:/x/node_modules/pi-mcp-adapter/index.js" } },
 ];
 let flowActive = ["read", "mcp"];
 const commands = {};
 const entries = [];
 const prompts = [];
-const selections = ["plan-first", "feature"];
+const selections = ["outline", "webpage"];
 const fakeFlowPi = {
   getAllTools: () => flowTools,
   getActiveTools: () => flowActive,
@@ -203,64 +231,29 @@ const flowCtx = {
   },
 };
 {
-  const result = await commands.function.handler("", flowCtx);
-  void result;
+  await commands.function.handler("", flowCtx);
   assert.match(prompts[0], /工作流/);
   assert.match(prompts[1], /任务/);
-  assert.equal(entries.at(-1).data.workflow, "plan-first");
-  assert.equal(entries.at(-1).data.id, "feature");
-  assert.ok(flowActive.includes("todo"), "workflow + task assembly lost todo");
+  assert.equal(entries.at(-1).data.workflow, "outline");
+  assert.equal(entries.at(-1).data.id, "webpage");
 }
 {
   prompts.length = 0;
-  selections.push("phased");
-  await commands.function.handler('"修 bug"', flowCtx);
+  selections.push("prototype");
+  await commands.function.handler('"做一个网页"', flowCtx);
   assert.match(prompts[0], /工作流/);
-  assert.equal(prompts.length, 1, "free-text need must not open a fixed task picker");
-  assert.equal(entries.at(-1).data.workflow, "phased");
+  assert.equal(prompts.length, 1, "free-text need must not open a task picker");
   assert.equal(entries.at(-1).data.id, "custom");
-  assert.ok(entries.at(-1).data.custom.packages.includes("pi-lens"));
+  assert.equal(entries.at(-1).data.workflow, "prototype");
 }
-
 {
   prompts.length = 0;
   selections.push("direct");
   await commands.function.handler('"帮我把客厅灯光调暖一点"', flowCtx);
   assert.equal(prompts.length, 1);
   assert.equal(entries.at(-1).data.id, "custom");
-  assert.equal(entries.at(-1).data.workflow, "direct");
-}
-
-{
-  prompts.length = 0;
-  selections.push("direct");
-  await commands.function.handler('"scan the repo for bugs"', flowCtx);
-  assert.equal(prompts.length, 1);
-  assert.equal(entries.at(-1).data.id, "custom");
-}
-
-{
-  const multi = analyzeNeed("修 bug，补测试，最后写文档", { known: {} });
-  const intentIds = multi.intents.map((r) => r.scenario.id);
-  assert.ok(intentIds.includes("bugfix"), intentIds.join(","));
-  assert.ok(intentIds.includes("tests"), intentIds.join(","));
-  assert.ok(intentIds.includes("docs"), intentIds.join(","));
-  assert.ok(multi.packages.some((x) => x.pkg === "pi-lens"));
-  const visual = analyzeNeed("把首页做得好看一点并适配手机", { known: {} });
-  assert.ok(visual.intents.some((r) => r.scenario.id === "frontend"));
-  assert.ok(visual.packages.some((x) => x.pkg === "@onkernel/browser-loop"));
-  const none = analyzeNeed("帮我把客厅灯光调暖一点", { known: {} });
-  assert.equal(none.intents.length, 0);
-  const dynamic = dynamicScenario("帮我把客厅灯光调暖一点", none, null);
-  assert.equal(dynamic.id, "custom");
-  assert.match(dynamic.brief, /没有命中固定场景/);
-  const planFirst = WORKFLOWS.find((w) => w.id === "plan-first");
-  const dynProposal = buildProposal(fakeFlowPi, dynamicScenario("修 bug 并补测试，最后写文档", analyzeNeed("修 bug 并补测试，最后写文档", { known: {} }), planFirst), { known: {} }, planFirst);
-  assert.match(dynProposal, /需求分析/);
-  assert.match(dynProposal, /动态任务/);
-  assert.match(dynProposal, /按需技能|没有匹配到额外技能/);
 }
 process.env.PI_CODING_AGENT_DIR = previousAgent;
 fs.rmSync(tempAgent, { recursive: true, force: true });
 
-console.log("ok: 25 scenarios, dynamic needs, workflows, core tools, skill mapping, migration, privacy, catalog summary");
+console.log("ok: 17 application scenarios, 7 workflows, profile capabilities, dynamic needs, core tools, migration");

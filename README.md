@@ -3,8 +3,8 @@
 
   <h1>Pi-function</h1>
 
-  <p><strong>Scenario-based tool assembly for the Pi coding agent.</strong><br>
-  Always on. Shows you the plugins first. Acts only after you approve.</p>
+  <p><strong>Application-scenario + workflow assembly for the Pi coding agent.</strong><br>
+  Fixed scenario IDs. Per-user capability profile. Nothing runs until you approve.</p>
 
   <p>
     <a href="https://github.com/ppTeyven/pi-function/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ppTeyven/pi-function?style=flat-square&color=F1BE58"></a>
@@ -17,23 +17,19 @@
     <a href="#install">Install</a> ·
     <a href="#usage">Usage</a> ·
     <a href="#scenarios">Scenarios</a> ·
-    <a href="#how-assembly-works">How it works</a> ·
-    <a href="#auto-accept">Auto-accept</a> ·
+    <a href="#workflows">Workflows</a> ·
+    <a href="#per-user-profile">Profile</a> ·
     <a href="README.zh-CN.md">中文</a>
   </p>
 </div>
 
 ---
 
-Pi-function turns a pile of installed Pi extensions into **6 execution workflows × 25 task scenarios**. Bare `/function` asks how to work (direct, plan-first, test-first, fan-out, review-gate, or phased), then what to work on. When you pass a need, it skips the fixed task picker and analyzes the need across multiple task signals before composing plugins and skills. Nothing is enabled until you press **yes**.
+Pi-function turns your installed Pi extensions into **application scenarios** — making a webpage, writing an article, building a game, creating a report, and so on. Bare `/function` asks **how** to work (workflow), then **what** to make (scenario). A free-text need skips the task picker and is analyzed across multiple application types.
+
+The scenario and workflow IDs are stable for every user. Which plugins and skills fill those slots is **detected from the current machine** and stored in a per-user profile — the source code does not assume a particular package set.
 
 It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
-
-## Why
-
-Most agent extensions are useful only in the right context. A subagent fan-out helps a refactor and hurts a one-line typo. A plan reviewer is noise when you already know the fix. Enabling everything at once burns context and invites the wrong tool.
-
-Pi-function keeps the catalog, matches your request, and gates the switch on your approval.
 
 ## Install
 
@@ -47,259 +43,129 @@ Local development:
 pi install ./path/to/pi-function
 ```
 
-Or drop `function-menu.js` into `~/.pi/agent/extensions/`. Pi loads it at startup — **there is no enable step**.
+Or drop `function-menu.js` into `~/.pi/agent/extensions/`. Pi loads it at startup.
 
-If you install it while a Pi session is already running, that session will not see it until you run `/reload` or restart. Until then `/function ...` is a normal prompt: Pi sends it to the model, and the model may start working on the need. An extension that is not loaded cannot intercept that.
+If you install it while a session is already running, run `/reload` or restart. Until then `/function ...` is a normal prompt and cannot be intercepted.
 
-Requires Node 20+ and a Pi version that supports extension commands (`pi.registerCommand`), tool control (`pi.setActiveTools`), and skills in `pi.getCommands()`.
+Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiveTools`, and skills in `pi.getCommands()`.
 
 ## Usage
 
 | Command | What happens |
 |---|---|
-| `/function` | Prints the catalog, then asks **workflow first**, **task second**, and assembles the combination after approval |
-| `/function <need>` | Dynamically analyzes the need across multiple task signals, asks for a workflow, composes plugins/skills from capability descriptions, shows the proposal, and assembles after approval; never opens a fixed task picker and never executes the need |
-
-Free-text mode is always dynamic. A task id passed as an argument is treated as a need, not a shortcut; use bare `/function` for the fixed catalog.
-| `/function scan` | Re-scans installed packages, local extensions, and skills |
-| `/function status` | Shows the active workflow × task and enabled plugin tools |
-| `/function assign <name> <scenario-id\|none\|infra>` | Overrides classification for one plugin or skill |
+| `/function` | Prints the catalog, asks for a workflow, then an application scenario, and assembles after approval |
+| `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
+| `/function scan` | Re-scans installed packages, local extensions, and skills, then rebuilds the profile |
+| `/function status` | Shows the active workflow × scenario and enabled plugin tools |
+| `/function assign <name> <scenario-id\|none>` | Manually overrides one profile binding |
 | `/function off` | Restores the tool set from before assembly |
 
-`/pi-function` is an alias for `/function`.
+`/pi-function` is an alias.
 
-Picker rows show both plugin and skill counts, followed by representative skill names; GSD skills are grouped as `GSD N`. The catalog header shows the total skill count, and each scenario lists its own skill count. Example row: `data · 日志 / 性能 / 数据分析 — 2 个插件 · 3 技能（ctx-doctor、ctx-stats、ctx-upgrade）`.
-
-Typical fixed-menu exchange:
+Picker rows show plugin and skill counts. A typical fixed-menu exchange:
 
 ```text
 /function
 
 第 1 步：先选工作流（怎么执行）
-  plan-first · 计划先行 — ★ 推荐 · 2 个插件
-  direct · 直接执行 — 无额外插件
+  outline · 结构先行 — ★ 推荐 · 1 个插件
+  direct · 直接产出 — 无额外插件
   ...
 
-第 2 步：再选任务场景（做什么）
-  refactor · 大重构 / 迁移 — 5 个插件 · 2 技能（...）
+第 2 步：再选应用场景（做什么）
+  webpage · 网页 / 落地页 / 官网 — 2 个插件 · 3 技能（frontend-design、...）
   ...
 
-## 装配：计划先行 × 大重构 / 迁移
-**工作流**：先要方案/步骤，确认后再动手
-- 流程：先只出计划，不写代码...
-**任务**：跨文件重构、换框架、批量机械替换
+## 装配：结构先行 × 网页 / 落地页 / 官网
+**工作流**：先给出结构/目录/页面清单，确认后再产出
+**场景**：官网、落地页、营销页、响应式页面
 
 **将启用的插件与功能**
-- `@quintinshaw/pi-dynamic-workflows` — 动态工作流，fan-out 多代理
-- `@plannotator/pi-extension` — 浏览器里审计划/代码
-- `@juicesharp/rpiv-todo` — task tracking and progress
-- `pi-simplify` — 审查改动并简化
-
-**装配后仍需手动做**
-- /plannotator-plan-mode 审计划
-- /workflows run … 批量执行
-- /simplify 收尾
-
-**装配含义**：启用上述工具、停用其他插件的可选工具、把本场景流程注入系统提示。
-
-[ Yes ]  [ No ]
+- ... — 能力描述、工具、命令、技能
+...
 ```
 
-For a free-text need, step 2 disappears. Pi-function prints the detected task signals and the dynamic composition, for example:
-
-```text
-## 装配：阶段推进 × 动态任务
-**需求**：修 bug，补测试，最后把结论写进文档
-**需求分析**
-- 任务信号：修 bug（命中：bug）
-- 任务信号：补测试（命中：测试）
-- 任务信号：写文档（命中：文档）
-- 置信度：medium（组合仍可确认/取消）
-
-**将启用的插件与功能**
-- `pi-lens` — ...（任务信号：修 bug（bug））
-- `pi-subagents` — ...（工作流）
-
-**按需技能 2 个**
-- `skill:investigate-first` — ...
-```
-
-Only `Yes` calls `setActiveTools`. `No` leaves everything untouched. Assembly never runs the need: after `Yes`, the requirement is placed back in the editor — press Enter to start, or clear it. `/function` also prints the full proposal as a visible message before the confirmation dialog, so the plugin list stays in the transcript.
-
-## Workflows
-
-Choose the execution style first; the task scenario then adds domain plugins and skills. Duplicate packages are merged.
-
-| id | Workflow | Use when | Adds |
-|---|---|---|---|
-| `direct` | Direct | Clear, small task; no extra process | — |
-| `plan-first` | Plan first | You want a plan approved before edits | `@plannotator/pi-extension`, `@juicesharp/rpiv-todo` |
-| `test-first` | Test first | Reproduce with a failing test, then implement | `pi-lens`, `@juicesharp/rpiv-todo` |
-| `fanout` | Subagent fan-out | Independent slices that can run in parallel | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `@juicesharp/rpiv-todo` |
-| `review-gate` | Review gate | Independent review before delivery | `pi-subagents`, `@quintinshaw/pi-dynamic-workflows`, `pi-simplify`, `pi-lens` |
-| `phased` | Phased / GSD | Multi-phase work with spec, plan, and acceptance | `@opengsd/gsd-core`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension` |
-
-The privacy scenario ignores workflow plugins, so choosing `fanout` with `privacy` still keeps the session offline.
+Only **Yes** calls `setActiveTools`. **No** leaves everything untouched. After **Yes**, a free-text requirement is placed back in the editor; press Enter to start it.
 
 ## Scenarios
 
-<details open>
-<summary><strong>理解 · Understand</strong></summary>
+Scenarios are application/output types, not engineering activities.
 
-| id | Scenario | Use when | Plugins |
-|---|---|---|---|
-| `understand` | Codebase walkthrough | Unfamiliar repo, map the structure, find logic, legacy code | `openwiki`, `pi-lens`, `pi-btw`, `pi-memory`, `pi-web-access` |
-| `knowledge` | Knowledge capture | Write findings to long-term memory, maintain a wiki, record decisions | `pi-memory`, `openwiki` |
-| `docs` | Docs / wiki / handoff | READMEs, wiki upkeep, handoff notes | `openwiki`, `pi-memory` |
+| Group | IDs | What you are making |
+|---|---|---|
+| 内容 | `article` | 文章、文案、博客、公众号 |
+| 内容 | `report` | 报告、调研、白皮书、方案 |
+| 内容 | `presentation` | 演示、PPT、路演 |
+| 内容 | `docs` | 文档、教程、知识库、交接 |
+| 产品 | `webpage` | 网页、落地页、官网 |
+| 产品 | `webapp` | Web 应用、管理后台、SaaS |
+| 产品 | `mobile` | App、小程序、移动端 |
+| 产品 | `game` | 游戏、互动体验、小游戏 |
+| 视觉 | `design` | 视觉设计、品牌、UI 稿 |
+| 视觉 | `data` | 数据、图表、分析结果 |
+| 系统 | `api` | API、后端、CLI、SDK |
+| 系统 | `automation` | 自动化、爬虫、定时任务 |
+| 系统 | `integration` | 集成、MCP、外部系统 |
+| 系统 | `plugin` | Pi 插件、扩展、工具 |
+| 维护 | `maintain` | 维护现有项目、修 bug、重构、测试 |
+| 维护 | `localization` | 本地化、翻译、多语言 |
+| 通用 | `general` | 其他任务 |
 
-</details>
+## Workflows
 
-<details>
-<summary><strong>修改 · Modify</strong></summary>
+The workflow is the execution style; the scenario adds domain capabilities. Duplicate packages are merged.
 
-| id | Scenario | Use when | Plugins |
-|---|---|---|---|
-| `small` | Small edit | One-file fix, typo, copy change, add a log line | — |
-| `bugfix` | Bug fix / repro | Stack traces, regressions, unexpected behavior | `context-mode`, `pi-web-access`, `pi-lens` |
-| `feature` | New feature | Add a feature end to end with staged progress | `@juicesharp/rpiv-todo`, `pi-lens` |
-| `gsd` | GSD spec-driven phases | Spec → plan → execute → verify → ship with fresh-context workers | `@opengsd/gsd-core`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension` |
-| `frontend` | Frontend / visual work | Pages, components, styling, responsive behavior, visual acceptance | `@onkernel/browser-loop`, `@getpipher/vision`, `pi-web-access` |
-| `refactor` | Refactor / migration | Cross-file refactors, framework swaps, bulk edits | `@quintinshaw/pi-dynamic-workflows`, `@plannotator/pi-extension`, `@juicesharp/rpiv-todo`, `pi-simplify`, `pi-lens` |
-| `tests` | Tests / flaky | Coverage gaps, unstable tests, parallel shards | `pi-lens`, `pi-subagents`, `context-mode` |
-| `deps` | Dependency upgrades | Upgrade libraries, fix breaking changes, align versions | `pi-web-access`, `pi-lens` |
+| id | Workflow | Use when |
+|---|---|---|
+| `direct` | 直接产出 | Clear, small output; no extra process |
+| `outline` | 结构先行 | Outline/plan first, then produce |
+| `prototype` | 原型先行 | Visual or interactive output; iterate on a prototype |
+| `parallel` | 并行探索 | Independent slices can run at the same time |
+| `review-gate` | 评审守门 | Independent review before delivery |
+| `phased` | 阶段推进 | Multi-stage work with spec, plan, and acceptance |
+| `offline` | 隐私 / 离线 | Nothing leaves the machine; network capabilities are excluded |
 
-</details>
+## Per-user profile
 
-<details>
-<summary><strong>验证 · Verify</strong></summary>
+On first load and on every scan, Pi-function reads the installed packages, extensions, tools, commands, and skills, scores them against generic capability roles, and writes:
 
-| id | Scenario | Use when | Plugins |
-|---|---|---|---|
-| `review` | Code review / PR writeup | Pre-commit self review, respond to review, PR description | `pi-simplify`, `pi-lens`, `pi-subagents`, `@quintinshaw/pi-dynamic-workflows` |
-| `plan` | Plan review | Get a human-approved plan before touching code | `@plannotator/pi-extension`, `@juicesharp/rpiv-todo` |
-| `research` | Research | Read docs, compare options, write a tech brief | `pi-web-access`, `pi-memory`, `openwiki`, `pi-subagents`, `@quintinshaw/pi-dynamic-workflows` |
-| `data` | Logs / perf / data | Big logs, benchmarks, profiling, stats | `context-mode`, `@quintinshaw/pi-dynamic-workflows` |
-| `audit` | Security / dependency audit | Vulnerabilities, licenses, risky calls, dependency risk | `@quintinshaw/pi-dynamic-workflows`, `pi-lens`, `pi-subagents`, `pi-web-access` |
-| `webui` | Browser / UI QA | Click flows, screenshots, end-to-end acceptance | `@onkernel/browser-loop`, `@getpipher/vision`, `@plannotator/pi-extension` |
+```text
+~/.pi/agent/function-menu.profile.json
+```
 
-</details>
+The profile contains role → package/skill bindings, descriptions, and a fingerprint. When a new plugin or skill appears, the fingerprint changes and the profile is rebuilt automatically. The file is per-user and should not be committed.
 
-<details>
-<summary><strong>协作 · Collaborate</strong></summary>
+The catalog is hydrated from this profile at runtime. That is why the same `webpage` or `article` ID can use different tools on different machines without changing the extension source.
 
-| id | Scenario | Use when | Plugins |
-|---|---|---|---|
-| `parallel` | Parallel workstreams / delegation | Independent modules at the same time | `pi-subagents`, `@juicesharp/rpiv-todo`, `@quintinshaw/pi-dynamic-workflows` |
-| `sideask` | Side question | Ask without derailing the main thread | `pi-btw` |
-| `advisor` | Second opinion | Trade-offs, architecture calls, another model's critique | `pi-advisor-flow` |
-| `release` | Release / CI | Pre-merge checks, CI failures, tags, release notes | `pi-simplify`, `@juicesharp/rpiv-todo`, `pi-subagents` |
-| `unattended` | Unattended batch | Run a batch of tasks, long autonomous runs | `@quintinshaw/pi-dynamic-workflows` |
+Manual overrides are stored in `~/.pi/agent/function-menu.json` and survive profile rebuilds.
 
-</details>
+## Dynamic needs
 
-<details>
-<summary><strong>环境 · Environment</strong></summary>
+`/function "做一个产品官网，并写一篇发布文章"` does not choose one scenario. It:
 
-| id | Scenario | Use when | Plugins |
-|---|---|---|---|
-| `privacy` | Privacy / offline / budget | Sensitive repos, no network, tight token budget | — |
-| `mcp` | MCP integrations | Databases, third-party APIs, enterprise systems | `pi-mcp-adapter` |
-| `i18n` | Localization | UI language, copy translation, multi-language | `@juicesharp/rpiv-i18n`, `pi-web-access` |
+1. detects multiple application signals (for example `webpage` + `article`);
+2. collects matching capability roles, packages, and skills from the profile;
+3. asks only for a workflow;
+4. shows the composition and asks for approval.
 
-</details>
+If nothing matches, it still proposes a capability-based combination instead of refusing. The requirement is never sent automatically.
 
-Plugins you have not installed are simply skipped at assembly time. The scenario still works with whatever is present.
+## What assembly changes
 
-## How assembly works
+- enables the selected plugin tools;
+- keeps core tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) available;
+- disables optional tools from other plugins;
+- injects the workflow and scenario process into the system prompt;
+- leaves plugin code loaded; it does not uninstall anything.
 
-- **Ownership by path, not by name.** A tool belongs to a plugin if its `sourceInfo.path` lives under that package's `node_modules` directory. New tools from new releases are picked up without editing Pi-function.
-- **Enable the scenario, disable the noise.** Optional plugin tools that are not part of the chosen scenario are switched off. Core tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are always kept, so search and directory listing never disappear after a switch.
-- **MCP stays available, except in privacy.** `pi-mcp-adapter` is treated as infrastructure and kept by default; the `privacy` scenario explicitly disables it.
-- **A brief goes into the system prompt.** Each scenario injects its workflow rules for the current session (for example: reproduce before fixing; never run parallel editors on the same files).
-- **Nothing is uninstalled.** Pi cannot hot-load or hot-unload extension code. "Assembly" means tool visibility plus prompt guidance; the code itself stays resident. `/function off` restores the previous tool set.
-
-The active workflow × task combination is recorded with `pi.appendEntry` and shown in `/function status`; session restore restores both.
-
-## Auto-accept
-
-Every new plugin and skill is folded into the catalog automatically — no registration. With Pi-function already loaded, no restart is needed while a session is open (installing the extension itself still needs `/reload` or a restart, see above):
-
-1. **At session start**, Pi-function scans `settings.json` packages, the Pi npm tree, local `extensions/`, standalone skills, and skills shipped inside plugins. If skill commands are not registered yet, it also reads `SKILL.md` from agent / project / GSD / package skill roots as a fallback.
-2. **While the session runs**, it watches `settings.json`, `skills/`, `extensions/`, and `node_modules/` with a 1.5 s debounce. A fresh install triggers a rescan and a notification.
-3. **Classification** runs in this order:
-   - a curated map for well-known packages (`KNOWN_SCENARIO`);
-   - strong signal words per scenario (`SCENARIO_HINTS`);
-   - keyword scoring over package names, tool names, commands, and descriptions.
-4. **Anything unmatched** lands in *Unclassified* instead of being forced into a wrong scenario. Assign it once:
+## Development
 
 ```bash
-/function assign @scope/package-name refactor
-/function assign skill:my-skill knowledge
-/function assign leftpad none
+npm test
 ```
 
-Infrastructure packages that should not take part in assembly (context compressors, safety guards, themes, telemetry, this extension itself) are listed under **Resident / not assembled** in the catalog.
-
-Classification is versioned. Upgrading reclassifies auto-assigned entries but preserves manual `/function assign` overrides. GSD's 72 phase skills collapse into the `gsd` scenario and appear as a count instead of flooding the catalog.
-
-Free-text needs are not classified into a single scenario. `analyzeNeed` extracts multiple task signals, scores installed packages and skill descriptions against those terms, and builds a synthetic `custom` scenario. That is why `/function "修 bug，补测试，写文档"` can combine bugfix, tests, and docs packages in one assembly, while an unrecognized need still gets a capability-based composition instead of an error.
-
-## Files
-
-| Path | Purpose |
-|---|---|
-| `function-menu.js` | The whole extension: catalog, matcher, classifier, assembler, watcher |
-| `test.mjs` | Zero-dependency regression tests: workflows, 25 scenarios, core tools, skill mapping, migration, dynamic need analysis, catalog summary |
-| `~/.pi/agent/function-menu.json` | Runtime store: discovered items, assignments, overrides |
-| `assets/banner.svg` | Generated banner (official Pi mark + white pixel wordmark) |
-| `assets/pi-logo.svg` | Official Pi logo, unchanged from [pi.dev/logo-auto.svg](https://pi.dev/logo-auto.svg) |
-| `scripts/render-banner.mjs` | Regenerates the banner: `node scripts/render-banner.mjs` |
-
-Set `PI_CODING_AGENT_DIR` to relocate the agent directory.
-
-## Extending
-
-Add a workflow by appending to `WORKFLOWS`, or a task by appending to `SCENARIOS` in `function-menu.js`:
-
-```js
-{
-  id: "pair",
-  title: "结对执行",
-  when: "边写边让另一个代理复核",
-  keywords: ["结对", "pair"],
-  plugins: ["pi-subagents"],
-  brief: "每完成一个小步就让 reviewer 子代理复核...",
-  manual: [],
-}
-```
-
-Task example:
-
-```js
-{
-  id: "perf",
-  group: "验证",
-  title: "性能优化",
-  when: "慢查询、内存涨、启动时间",
-  keywords: ["性能", "变慢", "profile", "latency"],
-  plugins: ["context-mode", "pi-lens"],
-  brief: "先量再改：用 ctx_execute 跑 benchmark ...",
-  manual: ["/lens-perf 查看诊断"],
-}
-```
-
-Then add its hints to `SCENARIO_HINTS` and, if you want a fixed home for a known package, to `KNOWN_SCENARIO`. No other wiring is required.
-
-## Design notes
-
-- Single file, zero runtime dependencies.
-- No network access, no telemetry, no shell-outs.
-- Classification is deterministic and inspectable in `function-menu.json`.
-- Approval is enforced in the command handler; there is no auto-apply path.
-- Windows, macOS, and Linux paths all go through `node:path`.
+The tests build synthetic capability profiles, verify that stable IDs resolve differently for different package sets, exercise dynamic multi-intent analysis, and cover the two-step command flow.
 
 ## License
 
-MIT © 2026 ppTeyven
-
-The Pi mark is the official logo from [pi.dev](https://pi.dev), used unchanged and unmodified. Pi is a project by Mario Zechner / Earendil Works.
+MIT

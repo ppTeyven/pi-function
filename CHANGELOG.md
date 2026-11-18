@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0
+
+- Scenarios are now **application/output types** instead of engineering activities: `article`, `report`, `presentation`, `docs`, `webpage`, `webapp`, `mobile`, `game`, `design`, `data`, `api`, `automation`, `integration`, `plugin`, `maintain`, `localization`, `general`.
+- Workflows are now output-agnostic: `direct`, `outline`, `prototype`, `parallel`, `review-gate`, `phased`, `offline`.
+- Added per-user capability profiles. On first load and every scan, installed packages, tools, commands, and skills are scored into generic capability roles and hydrated into the fixed scenario/workflow IDs. The profile is stored at `~/.pi/agent/function-menu.profile.json` and rebuilt when its fingerprint changes.
+- Removed hardcoded plugin/skill inventories from the source and README. The same scenario ID resolves to different tools on different machines.
+- `analyzeNeed` now composes from the capability profile, including multi-intent requests such as “做网页并写文章”.
+- `classifyItem`, `isInfraId`, `scenarioPackages`, `scenarioSkillIds`, `buildCatalog`, `buildProposal`, and `auditPackages` are profile-driven; package-specific special cases were removed.
+- Picker/debug output shows hydrated plugin and skill counts; `/function status` reports the active workflow × application scenario.
+- Added tests with synthetic capability profiles, cross-machine ID resolution, dynamic multi-intent analysis, core-tool retention, and the two-step flow.
+
 ## 1.6.0
 
 - `/function "<need>"` no longer force-fits one task scenario. It performs multi-label analysis over all task signals, then composes plugins and skills from capability descriptions, including needs that match no fixed scenario.

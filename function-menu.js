@@ -20,409 +20,253 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const VERSION = "1.6.0";
+const VERSION = "2.0.0";
 const NAME = "Pi-function";
 const STORE_FILE = "function-menu.json";
-const CLASSIFIER_VERSION = 3;
-const ALWAYS_PACKAGES = ["pi-mcp-adapter"];
-// 核心工具永远保留；pi-pretty 的 disableTools 可能把它们从默认激活集里移除
+const CLASSIFIER_VERSION = 4;
+const ALWAYS_PACKAGES = [];
+// 核心工具永远保留；其他工具由用户本机安装的插件/技能自动匹配。
 const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
-// 常驻/默认关闭的基础设施：不参与场景装配，也不进“未分类”
-const INFRA_PACKAGES = [
-  "billion-context", "cc-safety-net", "pi-pretty", "context-mode",
-  "@langchain/langsmith-pi-extension", "@dietrichgebert/ponytail", "glimpseui",
-  "@juicesharp/rpiv-ask-user-question", "function-menu",
-];
 
-// 已知插件的固定归属（优先于关键词打分；新装的未知插件才走自动分类）
-const KNOWN_SCENARIO = {
-  "pi-web-access": "research",
-  "pi-subagents": "parallel",
-  "pi-mcp-adapter": "mcp",
-  "openwiki": "understand",
-  "@onkernel/browser-loop": "webui",
-  "pi-lens": "review",
-  "@juicesharp/rpiv-i18n": "i18n",
-  "@plannotator/pi-extension": "plan",
-  "@juicesharp/rpiv-todo": "feature",
-  "pi-simplify": "review",
-  "pi-memory": "knowledge",
-  "@opengsd/gsd-core": "gsd",
-  "pi-advisor-flow": "advisor",
-  "@quintinshaw/pi-dynamic-workflows": "parallel",
-  "@getpipher/vision": "webui",
-  "pi-btw": "sideask",
-  "context-mode": "infra",
-  "pi-mcp": "mcp",
+// 抽象能力。profile 只认这些角色，不认某个用户的插件名。
+const CAPABILITIES = {
+  "code-intel": { label: "代码理解 / 静态检查", package: /lens|symbol|lsp|ast|code.?intel|navigat/i, tool: /symbol|diagnostic|module_report|project_report|ast_grep|read_symbol|lsp/i, skill: /lens|symbol|ast-grep|lsp|codebase|architect|refactor/i, terms: /代码|符号|类型|静态检查|codebase|symbol|lsp/i },
+  "repo-wiki": { label: "仓库 Wiki / 代码地图", package: /wiki/i, tool: /wiki/i, skill: /wiki/i, terms: /wiki|仓库地图|codebase map/i },
+  memory: { label: "长期记忆 / 草稿", package: /memory|memo/i, tool: /memory_|scratchpad/i, skill: /memory|handoff|knowledge/i, terms: /记忆|沉淀|长期|备忘/i },
+  "side-chat": { label: "旁路问答", package: /btw|side.?chat/i, command: /btw|side/i, skill: /btw|side/i, terms: /旁问|side question|不打断/i },
+  web: { label: "联网搜索 / 抓取", package: /web|search|fetch|crawl|http/i, tool: /web_|search|fetch/i, skill: /research|web|search/i, terms: /搜索|联网|网页|资料/i, network: true },
+  subagent: { label: "子代理 / 独立复核", package: /subagent|agent/i, tool: /subagent|contact_supervisor|bg_wait/i, skill: /subagent|council/i, terms: /子代理|subagent|独立复核/i },
+  orchestration: { label: "多代理编排", package: /workflow|orchestrat|dynamic/i, tool: /workflow/i, skill: /workflow|parallel|fanout/i, terms: /编排|workflow|并行/i },
+  task: { label: "任务清单 / 进度", package: /todo|task/i, tool: /^todo$|todos/i, skill: /todo|task/i, terms: /清单|任务|进度|todo/i },
+  "plan-review": { label: "计划 / 方案审阅", package: /plannotator|plan|approval/i, tool: /plannotator|plan/i, skill: /plan|spec|architect/i, terms: /计划|方案|审阅|批准/i },
+  context: { label: "大输出 / 上下文管理", package: /context/i, tool: /ctx_|context/i, skill: /context|ctx/i, terms: /上下文|大输出|日志/i, infra: true },
+  browser: { label: "浏览器 / 页面操作", package: /browser|kernel|playwright|computer/i, tool: /browser|computer|playwright/i, skill: /browser|playwright|e2e/i, terms: /浏览器|截图|点击|页面验收/i, network: true },
+  vision: { label: "图片理解", package: /vision|image|multimodal/i, tool: /describe_image|vision/i, skill: /vision|image/i, terms: /图片|视觉|截图|image/i, network: true },
+  simplify: { label: "收尾简化", package: /simplify/i, command: /simplify/i, skill: /simplify/i, terms: /简化|收尾|cleanup/i },
+  advisor: { label: "第二意见", package: /advisor/i, tool: /advisor/i, terms: /顾问|第二意见|选型/i },
+  mcp: { label: "MCP / 外部系统", package: /mcp/i, tool: /^mcp$|mcp_/i, terms: /mcp|外部系统|第三方服务/i },
+  i18n: { label: "本地化 / 多语言", package: /i18n|locale|language/i, command: /languages/i, skill: /i18n|locale|translation/i, terms: /翻译|本地化|多语言|i18n/i },
+  gsd: { label: "规格驱动 / 阶段流程", package: /gsd|spec.?driven/i, tool: /gsd_/i, skill: /^gsd-/i, terms: /gsd|规格|里程碑|阶段/i },
+  safety: { label: "安全 / 危险操作拦截", package: /safety|guard|security/i, tool: /safety/i, terms: /安全|拦截|guard/i, infra: true },
+  pretty: { label: "主题 / 终端美化", package: /pretty|theme/i, tool: /pretty/i, terms: /主题|美化|theme/i, infra: true },
+  ask: { label: "选项澄清", package: /ask.?user|question/i, tool: /ask_user_question/i, terms: /澄清|选项|question/i },
+  design: { label: "视觉 / UI / 品牌", package: /design|frontend|\bui\b|\bcss\b/i, tool: /design|style/i, skill: /design|frontend|\bcss\b|\bui\b|de-slop/i, terms: /设计|视觉|品牌|配色|排版|\bui\b|\bcss\b/i },
+  writing: { label: "写作 / 编辑 / 文案", package: /writing|content|docs/i, command: /write|article/i, skill: /writing|copy|blog|article|editor|handoff|mermaid|docs/i, terms: /写作|文章|文案|编辑|润色/i },
+  slides: { label: "演示 / 幻灯片", package: /slide|deck|presentation|ppt/i, skill: /ppt|slide|deck|presentation/i, terms: /ppt|幻灯片|演示|路演/i },
+  docs: { label: "文档 / 教程 / 知识库", package: /docs|wiki/i, tool: /wiki|docs/i, skill: /docs|documentation|readme|handoff|mermaid|connector/i, terms: /文档|教程|手册|wiki|readme/i },
+  release: { label: "发布 / CI / 版本", package: /release|publish|deploy|\bci\b/i, command: /release|publish/i, skill: /release|publish|commit|branch|\bci\b/i, terms: /发布|上线|版本|\bci\b|部署/i },
+  testing: { label: "测试 / 验证", package: /test|qa/i, tool: /test/i, skill: /test|tdd|qa|prove|coverage/i, terms: /测试|用例|验证|覆盖/i },
+  automation: { label: "自动化 / 爬虫 / 定时", package: /automation|scrape|crawl|schedule|cron/i, tool: /cron|schedule|scrape|crawl/i, skill: /automation|scrape|crawl/i, terms: /自动化|爬虫|定时|批处理/i },
+  data: { label: "数据 / 图表 / 分析", package: /data|analytics|chart|sql|pandas/i, tool: /sql|query|chart|dataset/i, skill: /\bdata\b|analytics|csv|chart|pandas|notebook/i, terms: /数据|图表|统计|csv|sql|分析/i },
+  perf: { label: "性能 / 基准", package: /perf|benchmark|profile/i, tool: /benchmark|profile/i, skill: /perf|benchmark|profile/i, terms: /性能|基准|延迟|profile/i },
 };
 
-// skill 的固定归属（classifyItem 已剥掉 "skill:" 前缀，所以这里写裸名）
-const KNOWN_SKILL_SCENARIO = {
-  "agent-handbook": "review",
-  "agent-workflow": "unattended",
-  "architect": "plan",
-  "browser-use": "webui",
-  "caveman-explore": "understand",
-  "de-slop": "frontend",
-  "find-skills": "knowledge",
-  "frontend-design": "frontend",
-  "handoff": "docs",
-  "improve-codebase-architecture": "understand",
-  "investigate-first": "bugfix",
-  "lean-build": "feature",
-  "prove-it": "tests",
-  "qa": "webui",
-  "safe-refactor": "refactor",
-  "surgical-patch": "bugfix",
-  "verify-and-stop": "review",
-  "branch-name": "release",
-  "caveman-commit": "release",
-  "btw": "sideask",
-  "council-mode": "parallel",
-  "ctx-doctor": "data",
-  "ctx-stats": "data",
-  "ctx-upgrade": "data",
-  "fallow": "review",
-  "fallow-setup": "review",
-  "glimpse": "infra",
-  "mermaid-diagrams": "docs",
-  "ponytail": "feature",
-  "ponytail-audit": "audit",
-  "ponytail-debt": "audit",
-  "ponytail-gain": "data",
-  "ponytail-help": "knowledge",
-  "ponytail-review": "review",
-  "workflow-authoring": "parallel",
-  "workflow-patterns": "parallel",
-  "pi-advisor-flow": "advisor",
-  "pi-lens-ast-grep": "review",
-  "pi-lens-lsp-navigation": "understand",
-  "pi-lens-write-ast-grep-rule": "review",
-  "pi-lens-write-tree-sitter-rule": "review",
-  "pi-subagents": "parallel",
-  "write-connector": "docs",
+// 固定应用场景 -> 固定能力角色。ID 与语义对所有用户一致。
+const SCENARIO_CAPABILITIES = {
+  article: ["writing", "web", "memory"],
+  report: ["web", "writing", "data", "docs", "memory"],
+  presentation: ["slides", "design", "writing", "web"],
+  docs: ["docs", "writing", "repo-wiki", "memory"],
+  webpage: ["web", "design", "browser", "writing"],
+  webapp: ["web", "design", "browser", "code-intel", "task", "plan-review"],
+  mobile: ["design", "browser", "code-intel", "task"],
+  game: ["design", "browser", "code-intel", "testing"],
+  design: ["design", "slides", "browser", "writing"],
+  data: ["data", "context", "web", "docs"],
+  api: ["code-intel", "testing", "docs", "plan-review"],
+  automation: ["automation", "web", "browser", "code-intel"],
+  integration: ["mcp", "web"],
+  plugin: ["code-intel", "testing", "docs", "plan-review", "orchestration"],
+  maintain: ["code-intel", "testing", "simplify", "context", "plan-review"],
+  localization: ["i18n", "writing", "web"],
+  general: ["writing", "web", "docs", "memory", "task"],
 };
 
-// ---------------------------------------------------------------------------
-// 场景目录（可自行增删；新插件会被自动归类到这里）
-// ---------------------------------------------------------------------------
+// 固定工作流 -> 固定能力角色。
+const WORKFLOW_CAPABILITIES = {
+  direct: [],
+  outline: ["writing", "plan-review", "task"],
+  prototype: ["design", "browser", "task"],
+  parallel: ["subagent", "orchestration", "task"],
+  "review-gate": ["subagent", "orchestration", "simplify", "code-intel", "testing"],
+  phased: ["gsd", "task", "plan-review"],
+  offline: [],
+};
+
+// 固定应用场景：先选“做什么”，再选“怎么做”。
 const SCENARIOS = [
   {
-    id: "understand", group: "理解", title: "看懂代码 / 接手仓库",
-    when: "陌生仓库、想弄清结构、找某段逻辑在哪、读遗留代码",
-    keywords: ["看懂", "理解", "接手", "陌生", "架构", "结构", "在哪", "怎么工作", "读代码", "梳理", "考古", "历史", "onboarding", "understand", "walkthrough", "legacy", "explain", "overview"],
-    plugins: ["openwiki", "pi-lens", "pi-btw", "pi-memory", "pi-web-access"],
-    brief: "先建立地图再下钻：用 project_report / symbol_search / module_report 定位符号与模块，用 openwiki 查仓库 wiki，用 grep/find 搜索；只读旁问交给 pi-btw；结论写入 pi-memory。不要一上来就改文件。",
-    manual: ["首次用 openwiki_begin 扫全库（较慢）", "只想问不想改：/btw:ask \"…\""],
+    id: "article", group: "内容", title: "文章 / 文案 / 博客",
+    when: "公众号、博客、产品文案、改写润色、标题与结构",
+    keywords: ["文章", "文案", "博客", "公众号", "写作", "改写", "润色", "标题", "稿件", "copy", "article", "blog", "post", "newsletter"],
+    brief: "先确认读者、发布渠道和语气，再定标题与结构；成稿后做一次事实和措辞校对。",
   },
   {
-    id: "docs", group: "理解", title: "文档 / Wiki / 交接",
-    when: "写 README、架构说明、ADR、mermaid 图，或把任务交接给下一个人",
-    keywords: ["文档", "说明", "readme", "wiki", "handoff", "交接", "注释", "docstring", "changelog", "手册", "mermaid", "adr"],
-    plugins: ["openwiki", "pi-memory"],
-    brief: "先确认读者与用途再写：架构/流程写进 openwiki，长期决策写进 memory；交接用 /skill:handoff 生成自包含文档；图用 mermaid，命令/路径必须来自实际仓库。",
-    manual: ["/skill:handoff 生成交接文档", "/skill:mermaid-diagrams 画流程图", "GSD 用户可加 /skill:gsd-docs-update"],
+    id: "report", group: "内容", title: "报告 / 调研 / 白皮书",
+    when: "调研报告、方案对比、分析总结、带出处的长文",
+    keywords: ["报告", "调研", "白皮书", "分析报告", "方案对比", "研究", "report", "research", "survey", "whitepaper"],
+    brief: "先列问题与来源标准，再收集证据、对比方案；结论必须带出处，区分事实、推断和建议。",
   },
   {
-    id: "small", group: "修改", title: "日常小改 / 改一个函数",
-    when: "单文件小修、typo、改文案、加一行日志",
-    keywords: ["小改", "改一个", "改个", "typo", "文案", "一行", "简单改", "小修", "quick fix", "small change"],
-    plugins: [],
-    brief: "最小改动原则：直接读目标文件并改，不引入额外插件，不跑重构，不生成计划文档。改完只做针对性验证。",
-    manual: [],
+    id: "presentation", group: "内容", title: "演示 / PPT / 路演",
+    when: "幻灯片、课程讲义、路演材料、汇报提纲",
+    keywords: ["ppt", "幻灯片", "演示", "路演", "讲义", "课件", "slide", "deck", "presentation"],
+    brief: "先定受众和一句话结论，再排叙事顺序；每页只表达一个观点，图少而准，最后检查演示节奏。",
   },
   {
-    id: "bugfix", group: "修改", title: "修 bug / 复现报错",
-    when: "有报错栈、线上问题、行为不符预期",
-    keywords: ["bug", "报错", "异常", "崩溃", "复现", "修复", "不工作", "failed", "error", "stack", "traceback", "regression", "线上"],
-    plugins: ["context-mode", "pi-web-access", "pi-lens"],
-    brief: "先复现再改：用 ctx_execute 跑最小复现并过滤日志，用 web_search 查报错原文；用 lens_diagnostics / LSP 定位类型与符号问题；定位到根因后只改必要处，最后跑同一复现验证。",
-    manual: ["大日志交给 ctx_execute，别整段贴进对话", "pi-lens 的 hooks 默认关闭；工具仍可手动调用，/lens-toggle 可开自动检查"],
+    id: "docs", group: "内容", title: "文档 / 教程 / 知识库",
+    when: "README、使用手册、API 文档、教程、团队 wiki",
+    keywords: ["文档", "教程", "手册", "wiki", "readme", "知识库", "指南", "说明", "adr"],
+    brief: "先确认读者要完成什么，再按任务组织内容；示例必须可运行，路径和命令以实际项目为准。",
   },
   {
-    id: "feature", group: "修改", title: "写新功能（完整流程）",
-    when: "从零加一个功能、需要阶段推进和任务跟踪",
-    keywords: ["新功能", "实现", "开发", "加一个功能", "feature", "implement", "从零", "需求", "阶段"],
-    plugins: ["@juicesharp/rpiv-todo", "pi-lens"],
-    brief: "先拆分再实现：用 todo 建任务清单，逐项实现；每完成一项跑测试；用 lens_diagnostics 或 /lens-toggle 检查静态问题。需要完整规格/阶段流程时改用 /function gsd。",
-    manual: ["/todos 查看任务清单", "/lens-toggle 打开自动静态检查"],
+    id: "webpage", group: "产品", title: "网页 / 落地页 / 官网",
+    when: "官网、落地页、个人主页、活动页、静态展示站",
+    keywords: ["网页", "落地页", "官网", "主页", "个人站", "活动页", "landing page", "website", "homepage"],
+    brief: "先定信息层级和视觉方向，再做首屏与响应式；文案、图片、按钮要有明确目的，最后用人眼验收关键尺寸。",
   },
   {
-    id: "gsd", group: "修改", title: "GSD 规格驱动 / 阶段推进",
-    when: "多阶段功能、需要 PRD/计划/验收、上下文容易腐烂的长任务",
-    keywords: ["gsd", "规格", "spec", "prd", "里程碑", "milestone", "路线图", "roadmap", "阶段推进", "需求文档", "验收标准", "上下文腐烂", "context rot"],
-    plugins: ["@opengsd/gsd-core", "@juicesharp/rpiv-todo", "@plannotator/pi-extension"],
-    brief: "按 GSD 五步走：discuss → plan → execute → verify → ship，每阶段用 fresh context，不把旧对话拖进下一阶段；用 /gsd next 或 /gsd progress 推进。Windows 下 gsd_dispatch 不可用，改用 /gsd 命令；计划先给用户确认。",
-    manual: ["/gsd next 进入下一步", "/gsd progress 查看阶段", "/gsd verify-work 做验收", "GSD 的 72 个阶段技能已自动归入本场景"],
+    id: "webapp", group: "产品", title: "Web 应用 / 管理后台",
+    when: "SaaS、后台系统、仪表盘、表单工具、交互式产品",
+    keywords: ["web 应用", "网站", "后台", "管理后台", "系统", "平台", "dashboard", "saas", "工具站", "功能"],
+    brief: "先画清用户流程和数据流，再实现最小闭环；状态、空态、错误态都要设计，最后走一遍真实操作路径。",
   },
   {
-    id: "frontend", group: "修改", title: "前端页面 / 视觉实现",
-    when: "落地页面、改样式、建设计系统、截图对比与视觉验收",
-    keywords: ["前端", "样式", "css", "tailwind", "react", "vue", "svelte", "组件", "视觉", "设计系统", "landing page", "响应式", "动效", "ui 实现", "首页", "界面", "手机", "移动端", "适配", "好看", "美化", "排版", "布局", "色彩", "字体"],
-    plugins: ["@onkernel/browser-loop", "@getpipher/vision", "pi-web-access"],
-    brief: "先定视觉方向与设计系统，再写组件；用 /skill:frontend-design 约束版式与文案，用 /skill:de-slop 去模板味；截图对照必须人眼看关键帧。browser-loop 需先 /browser-tools 选能力并配置 KERNEL_API_KEY；vision 需确认模型真的支持图像。",
-    manual: ["/skill:frontend-design 设计方向", "/skill:de-slop 去 AI 味", "/browser-tools 选浏览器能力", "/vision-use 配置/切换视觉模型"],
+    id: "mobile", group: "产品", title: "App / 小程序 / 移动端",
+    when: "手机 App、小程序、移动端页面、响应式适配",
+    keywords: ["app", "小程序", "移动端", "手机", "ios", "android", "responsive", "适配", "uni-app", "flutter", "react native"],
+    brief: "先按真实设备宽度设计触控与信息密度，再实现导航、列表、表单；重点检查安全区、键盘和小屏溢出。",
   },
   {
-    id: "refactor", group: "修改", title: "大重构 / 迁移",
-    when: "跨文件重构、换框架、批量机械替换",
-    keywords: ["重构", "迁移", "重写", "批量", "替换", "refactor", "migrate", "rewrite", "rename", "升级框架"],
-    plugins: ["@quintinshaw/pi-dynamic-workflows", "@plannotator/pi-extension", "@juicesharp/rpiv-todo", "pi-simplify", "pi-lens"],
-    brief: "先审计划再动手：用 plannotator 出计划并等批准，用 workflow 批量执行，用 todo 跟踪批次；每批改完立刻跑测试；最后 /simplify 收尾。不要用 subagent 并发改同一批文件。",
-    manual: ["/plannotator-plan-mode 审计划", "/workflows run … 批量执行", "/simplify 收尾"],
+    id: "game", group: "产品", title: "游戏 / 互动体验",
+    when: "网页小游戏、互动玩具、可视化体验、游戏原型",
+    keywords: ["游戏", "小游戏", "game", "互动", "玩法", "关卡", "canvas", "unity", "godot", "prototype"],
+    brief: "先定核心循环（操作→反馈→奖励），再做可玩的最小原型；优先手感、帧率和失败重试，最后补音效与打磨。",
   },
   {
-    id: "tests", group: "修改", title: "补测试 / 修 flaky",
-    when: "覆盖不足、测试不稳定、需要并行跑分片",
-    keywords: ["测试", "单测", "用例", "覆盖", "flaky", "test", "pytest", "jest", "vitest", "分片"],
-    plugins: ["pi-lens", "pi-subagents", "context-mode"],
-    brief: "先跑现有测试拿到基线；用 subagent 并行跑不同分片（输出交给 ctx 过滤）；补测试只测行为不测实现；flaky 先隔离再修。",
-    manual: ["/lens-toggle 让失败即时可见"],
+    id: "design", group: "视觉", title: "设计 / 品牌 / 视觉稿",
+    when: "UI 稿、品牌视觉、logo、海报、配色与设计系统",
+    keywords: ["设计", "视觉", "品牌", "logo", "海报", "配色", "字体", "排版", "设计系统", "design", "brand", "mockup"],
+    brief: "先定风格板和三个关键词，再做主视觉与组件规范；检查对比度、层级、间距和不同尺寸下的一致性。",
   },
   {
-    id: "review", group: "验证", title: "代码评审 / 写 PR 描述",
-    when: "提交前自查、回应 review、生成 PR 说明",
-    keywords: ["评审", "review", "pr", "自查", "diff", "代码审查", "描述", "提交前"],
-    plugins: ["pi-lens", "pi-simplify", "pi-subagents", "@quintinshaw/pi-dynamic-workflows"],
-    brief: "先看 diff 统计再逐处审：用 ctx_execute 跑 git diff --stat，只把关键 hunk 放进上下文；用 /simplify、/code-review 或 reviewer 子代理做第二遍；lens_diagnostics 查类型/静态问题；PR 描述写“为什么改 + 怎么验”。",
-    manual: ["/simplify --staged", "/code-review", "/subagents 可叫 reviewer / oracle"],
+    id: "data", group: "视觉", title: "数据 / 图表 / 分析",
+    when: "数据分析、可视化、报表、指标解释、实验对比",
+    keywords: ["数据", "图表", "可视化", "报表", "指标", "统计", "分析", "csv", "excel", "dashboard", "chart"],
+    brief: "先明确问题和口径，再清洗、聚合、可视化；结论要给样本量、时间范围和不确定性，不把相关当因果。",
   },
   {
-    id: "plan", group: "验证", title: "计划评审",
-    when: "动手前要人批准方案、拆阶段",
-    keywords: ["计划", "方案", "评审", "拆解", "plan", "design", "批准", "步骤"],
-    plugins: ["@plannotator/pi-extension", "@juicesharp/rpiv-todo"],
-    brief: "只出计划不写代码：用 plannotator 展示方案等批准，批准后用 todo 拆成可执行项；计划里写清验收标准。",
-    manual: ["/plannotator-plan-mode"],
+    id: "api", group: "系统", title: "API / 后端 / CLI",
+    when: "接口服务、后端逻辑、命令行工具、可复用库",
+    keywords: ["api", "接口", "后端", "服务", "命令行", "cli", "库", "sdk", "server", "endpoint", "rest", "graphql"],
+    brief: "先定输入输出、错误码和边界条件，再实现最小接口；补契约测试和失败路径，最后写清调用示例。",
   },
   {
-    id: "research", group: "验证", title: "查资料 / 写调研",
-    when: "查文档、比对方案、写技术调研",
-    keywords: ["查资料", "调研", "文档", "搜索", "资料", "research", "search", "survey", "对比方案", "官网"],
-    plugins: ["pi-web-access", "pi-memory", "openwiki", "pi-subagents", "@quintinshaw/pi-dynamic-workflows"],
-    brief: "先搜后读再记：web_search 找入口，fetch_content 读原文；独立子问题交给 researcher/evidence-auditor 子代理，或跑 /deep-research 工作流；结论与出处写入 memory。不确定的版本信息必须查官网，不靠记忆。",
-    manual: ["/deep-research 多源调研", "/subagents 叫 researcher 做独立取证"],
-    manual: [],
+    id: "automation", group: "系统", title: "自动化 / 爬虫 / 定时任务",
+    when: "脚本、数据采集、定时任务、重复流程自动化",
+    keywords: ["自动化", "爬虫", "脚本", "定时", "批处理", "采集", "scrape", "crawl", "cron", "schedule", "batch"],
+    brief: "先确认输入源、频率和失败策略，再做幂等的小步骤；记录日志和重试边界，避免无上限地抓取或写入。",
   },
   {
-    id: "webui", group: "协作", title: "浏览器 / UI 验收",
-    when: "页面交互、点击流程、截图对比、端到端验收",
-    keywords: ["浏览器", "页面", "首页", "界面", "手机", "移动端", "适配", "好看", "美化", "截图", "点击", "ui", "前端验收", "browser", "playwright", "dom", "e2e", "登录"],
-    plugins: ["@onkernel/browser-loop", "@getpipher/vision", "@plannotator/pi-extension"],
-    brief: "先选能力再操作：用 /browser-tools 选中需要的 selector，再用 browser_*/computer_* 执行；每步截图确认；视觉模型不可用时用人眼核对关键截图。",
-    manual: ["/browser-tools browser 选能力（需要 KERNEL_API_KEY）", "vision 需要已配置视觉模型"],
+    id: "integration", group: "系统", title: "集成 / MCP / 外部系统",
+    when: "接数据库、第三方 API、企业系统、MCP 服务器",
+    keywords: ["mcp", "集成", "外部系统", "第三方", "数据库", "对接", "webhook", "oauth", "connector", "integration"],
+    brief: "先画清数据流向、权限和失败模式，再做最小连通；密钥不落库，错误可重试，最后做断网和超时测试。",
   },
   {
-    id: "data", group: "验证", title: "日志 / 性能 / 数据分析",
-    when: "大日志、benchmark、性能剖析、数据统计",
-    keywords: ["日志", "性能", "benchmark", "分析", "统计", "profiling", "slow", "内存", "cpu", "latency", "数据", "csv", "脚本", "python", "pandas", "excel"],
-    plugins: ["context-mode", "@quintinshaw/pi-dynamic-workflows"],
-    brief: "数据不进对话：用 ctx_execute 跑脚本/过滤/聚合，只回传结论行；benchmark 用 workflow 并行跑不同参数；对比要给数字和测试条件。",
-    manual: [],
+    id: "plugin", group: "系统", title: "Pi 插件 / 扩展 / 工具",
+    when: "Pi 扩展、自定义工具、技能、命令、钩子",
+    keywords: ["插件", "扩展", "工具", "skill", "hook", "extension", "plugin", "command", "agent", "pi"],
+    brief: "先确认扩展点（工具/命令/技能/钩子）和触发方式，再做最小可加载版本；错误要可诊断，最后在真实会话里验证。",
   },
   {
-    id: "parallel", group: "协作", title: "并行 / 子代理委派",
-    when: "互相独立的模块同时推进，或要把调查/实现/审查分给不同代理",
-    keywords: ["并行", "同时", "多任务", "分开做", "parallel", "subagent", "子代理", "并发", "委派", "delegate", "委员会", "council"],
-    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "@juicesharp/rpiv-todo"],
-    brief: "只并行真正独立的部分：clarify → scout → worker → fresh reviewers，一个子代理一个目录/模块，禁止同时改同一文件；用 todo 记录分支；需要多视角时用 /council，汇总时统一跑测试。",
-    manual: ["/council 多顾问辩论", "/workflows run 批量编排"],
-    manual: [],
+    id: "maintain", group: "维护", title: "现有项目维护 / 修 bug",
+    when: "修 bug、重构、补测试、性能优化、依赖升级、代码评审",
+    keywords: ["bug", "报错", "修复", "重构", "测试", "评审", "性能", "依赖", "升级", "迁移", "维护", "refactor", "fix", "test", "review", "upgrade"],
+    brief: "先复现或建立基线，再做最小改动；每步验证，最后跑回归并说明风险，不顺手扩大范围。",
   },
   {
-    id: "sideask", group: "协作", title: "问一句、不打断主线",
-    when: "顺带问个问题、查个符号、要个只读结论",
-    keywords: ["顺便问", "旁问", "问一下", "不打断", "btw", "顺便", "side question", "插一句"],
-    plugins: ["pi-btw"],
-    brief: "用 /btw:ask 做只读旁问，不要在主线程展开；需要改文件的旁路任务才用 /btw。",
-    manual: ["/btw:ask \"…\""],
+    id: "localization", group: "维护", title: "本地化 / 翻译 / 多语言",
+    when: "界面翻译、文案本地化、多语言资源、术语统一",
+    keywords: ["翻译", "本地化", "多语言", "i18n", "locale", "language", "术语", "translation"],
+    brief: "先定术语表和语气，再按 key 改资源文件；保持占位符和格式不变，最后检查截断、复数与从右到左布局。",
   },
   {
-    id: "advisor", group: "协作", title: "要第二意见",
-    when: "方案取舍、架构决策、需要另一个模型点评",
-    keywords: ["第二意见", "顾问", "取舍", "另一个模型", "advisor", "点评", "second opinion", "选型"],
-    plugins: ["pi-advisor-flow"],
-    brief: "先配模型再问：/advisor-models 选顾问模型，然后 ask_advisor 带上上下文与候选方案；把顾问意见当输入，不盲从。",
-    manual: ["/advisor-models 先配置顾问模型"],
-  },
-  {
-    id: "audit", group: "验证", title: "安全审计 / 依赖检查",
-    when: "查漏洞、许可证、危险调用、依赖风险",
-    keywords: ["安全", "审计", "漏洞", "许可证", "合规", "security", "audit", "cve", "license", "依赖风险"],
-    plugins: ["@quintinshaw/pi-dynamic-workflows", "pi-lens", "pi-subagents", "pi-web-access"],
-    brief: "限定范围再扫：明确目录/依赖清单；用 /codebase-audit 或 workflow 并行检查；evidence-auditor 子代理独立复核；CVE 与许可证必须查官方源；报告写清位置与修复建议。",
-    manual: ["/codebase-audit 指定目录", "cc-safety-net 常驻，审计脚本也受保护"],
-  },
-  {
-    id: "release", group: "协作", title: "发布 / CI 排查",
-    when: "合并前检查、CI 失败、打 tag、写 release notes",
-    keywords: ["发布", "上线", "ci", "流水线", "release", "tag", "合并", "部署", "build 失败"],
-    plugins: ["pi-simplify", "@juicesharp/rpiv-todo", "pi-subagents"],
-    brief: "按清单走：先看 CI 日志定位第一处失败（不是最后一处），修完本地复跑；合并前 /simplify 自查，必要时叫 reviewer 子代理；release notes 按“破坏性变更/新功能/修复”分组。",
-    manual: ["/simplify --staged"],
-  },
-  {
-    id: "knowledge", group: "理解", title: "知识沉淀 / 团队规范",
-    when: "把结论写进长期记忆、维护 wiki、记录决策",
-    keywords: ["记住", "沉淀", "知识", "规范", "决策", "adr", "文档化", "memory", "wiki", "团队"],
-    plugins: ["pi-memory", "openwiki"],
-    brief: "只写会复用的：结论 + 原因 + 适用范围写入 memory；流程/架构写进 wiki；一次性细节留在对话里。",
-    manual: [],
-  },
-  {
-    id: "privacy", group: "环境", title: "隐私 / 离线 / 省钱",
-    when: "敏感仓库、不能外发、token 预算紧",
-    keywords: ["隐私", "离线", "敏感", "保密", "省钱", "省 token", "offline", "privacy", "不能外发", "内网"],
-    noAlways: true,
-    noWorkflow: true,
-    plugins: [],
-    brief: "默认全关：不联网、不上报、不用云浏览器，连 MCP 也停用；只保留本地核心工具与安全网。需要联网时必须先说明并征得同意。",
-    manual: ["确认 langsmith / vision / browser-loop / MCP 均未启用"],
-  },
-  {
-    id: "mcp", group: "环境", title: "MCP / 外部系统集成",
-    when: "接数据库、第三方 API、企业系统",
-    keywords: ["mcp", "集成", "外部系统", "服务器", "server", "数据库连接", "第三方"],
-    plugins: ["pi-mcp-adapter"],
-    brief: "先用 /mcp 看服务器状态，再用 mcp 代理工具；新增服务器改配置后 /mcp 重连；不要同时开第二个 MCP provider。",
-    manual: ["/mcp 查看/重连", "/mcp-auth 授权"],
-  },
-  {
-    id: "i18n", group: "环境", title: "本地化 / 翻译",
-    when: "中文界面、文案翻译、多语言",
-    keywords: ["翻译", "本地化", "中文", "多语言", "i18n", "locale", "language", "界面语言"],
-    plugins: ["@juicesharp/rpiv-i18n", "pi-web-access"],
-    brief: "界面语言用 /languages 切；代码内文案翻译保持 key 不变，只改资源文件；术语先定表再批量替换。",
-    manual: ["/languages 选中文（Windows 不会自动识别）"],
-  },
-  {
-    id: "unattended", group: "协作", title: "无人值守批处理",
-    when: "跑一批任务、长时间自动执行",
-    keywords: ["无人值守", "批量跑", "自动执行", "跑一批", "unattended", "batch", "后台", "长时间"],
-    plugins: ["@quintinshaw/pi-dynamic-workflows"],
-    brief: "先设预算再开跑：明确 token/时间上限与失败策略；用 /workflows run 而不是关键词触发；每步留日志，失败停在可恢复点。",
-    manual: ["/workflows run …", "先确认 defaultTokenBudget 设置"],
-  },
-  {
-    id: "deps", group: "验证", title: "依赖升级",
-    when: "升级库、修 breaking change、对齐版本",
-    keywords: ["依赖", "升级", "版本", "dependency", "upgrade", "breaking", "npm outdated", "lockfile", "打包", "构建"],
-    plugins: ["pi-web-access", "pi-lens"],
-    brief: "先读 changelog 再升：查目标版本 breaking changes，小步升级并每步跑测试；类型错误用 /lens-toggle 打开检查；锁文件冲突按 lockfile 优先。",
-    manual: ["/lens-toggle 看类型错误"],
+    id: "general", group: "通用", title: "其他 / 通用任务",
+    when: "不确定归哪类、跨多个产出、先讨论方案或要第二意见",
+    keywords: ["通用", "其他", "不确定", "随便", "看看", "方案", "计划", "第二意见", "顾问", "怎么", "如何", "建议", "general"],
+    brief: "先澄清目标、交付物和边界，再决定是否需要拆分；不确定时先给一个最小可验证方案，不硬套模板。",
   },
 ];
 
-// ---------------------------------------------------------------------------
-// 工作流目录：先选“怎么执行”，再选“做什么任务”
-// 工作流只负责流程与执行方式；任务场景负责领域插件与技能，两者按并集装配。
-// ---------------------------------------------------------------------------
+// 固定工作流：只描述怎么做，不绑定任何具体插件。
 const WORKFLOWS = [
   {
-    id: "direct", title: "直接执行",
-    when: "需求清楚、范围小、不需要额外流程",
+    id: "direct", title: "直接产出",
+    when: "需求清楚、范围小、可以直接做",
     keywords: ["直接", "快速", "小任务", "direct", "quick"],
-    plugins: [],
-    brief: "直接做最小可验证的改动：先读目标文件，改完立即做针对性验证；不写计划文档，不引入额外流程。",
-    manual: [],
+    brief: "直接做最小可验证的产出：先读目标材料，完成后立即检查；不写额外计划文档。",
   },
   {
-    id: "plan-first", title: "计划先行",
-    when: "先要方案/步骤，确认后再动手",
-    keywords: ["计划", "方案", "先想", "拆解", "plan", "design"],
-    plugins: ["@plannotator/pi-extension", "@juicesharp/rpiv-todo"],
-    brief: "先只出计划，不写代码：写清目标、步骤、验收标准与风险；用 plannotator 让用户审阅，批准后用 todo 拆项执行。",
-    manual: ["/plannotator-plan-mode 审计划", "/todos 查看任务清单"],
+    id: "outline", title: "结构先行",
+    when: "先要提纲、方案、目录或步骤，确认后再展开",
+    keywords: ["提纲", "结构", "方案", "计划", "目录", "outline", "plan"],
+    brief: "先只出结构/方案，不展开全文或代码；写清目标、章节、验收标准与风险，确认后再执行。",
   },
   {
-    id: "test-first", title: "测试先行",
-    when: "行为明确、需要先复现或补失败测试",
-    keywords: ["测试", "tdd", "先写测试", "复现", "test-first"],
-    plugins: ["pi-lens", "@juicesharp/rpiv-todo"],
-    brief: "先复现/写一个会失败的测试，再改实现让测试通过，最后跑同一组测试回归；不要先改实现再补测试。",
-    manual: ["/lens-toggle 让类型/静态错误即时可见"],
+    id: "prototype", title: "原型先行",
+    when: "先做最小样、草稿或可点击原型，再迭代",
+    keywords: ["原型", "草稿", "最小样", "先做一版", "prototype", "draft", "mvp"],
+    brief: "先做能看/能点的最小版本，优先验证方向与手感；确认后补细节，不在第一版追求完整。",
   },
   {
-    id: "fanout", title: "子代理并行",
-    when: "任务能拆成互不冲突的独立分片",
-    keywords: ["并行", "子代理", "fan-out", "拆开", "parallel", "subagent"],
-    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "@juicesharp/rpiv-todo"],
-    brief: "只并行真正独立的部分：先列清单，再按目录/模块分片；一个子代理一个范围，禁止同时改同一文件；最后统一汇总并跑全量测试。",
-    manual: ["/council 多顾问辩论", "/workflows run 批量编排"],
+    id: "parallel", title: "并行探索",
+    when: "可以拆成互不冲突的独立部分，或需要多方案对比",
+    keywords: ["并行", "多方案", "子代理", "拆开", "parallel", "fanout", "variants"],
+    brief: "只并行真正独立的部分：先列清单和边界，一个执行者一个范围；最后统一汇总、去重并验证。",
   },
   {
     id: "review-gate", title: "评审守门",
-    when: "实现后需要独立审查再交付",
-    keywords: ["评审", "review", "审查", "守门", "第二意见", "gate"],
-    plugins: ["pi-subagents", "@quintinshaw/pi-dynamic-workflows", "pi-simplify", "pi-lens"],
-    brief: "实现完成后不直接交付：先跑 diff/静态检查，再让 fresh reviewer 子代理独立审查；按发现修复后重新验证，最后才总结。",
-    manual: ["/simplify --staged", "/code-review"],
+    when: "产出后需要独立审查再交付",
+    keywords: ["评审", "审查", "守门", "第二遍", "review", "gate"],
+    brief: "完成后不直接交付：先自查，再让独立审查者按清单复核；修复发现后重新验证，最后才总结。",
   },
   {
     id: "phased", title: "阶段推进",
-    when: "多阶段、长任务，需要规格/计划/验收分阶段推进",
-    keywords: ["gsd", "阶段", "里程碑", "规格", "phased", "milestone"],
-    plugins: ["@opengsd/gsd-core", "@juicesharp/rpiv-todo", "@plannotator/pi-extension"],
-    brief: "按 GSD 五步走：discuss → plan → execute → verify → ship；每阶段用 fresh context，不把旧对话拖进下一阶段；每阶段结束先确认验收再继续。",
-    manual: ["/gsd next 进入下一步", "/gsd verify-work 做验收", "Windows 下 gsd_dispatch 不可用，改用 /gsd"],
+    when: "多阶段长任务，需要规格、计划、验收分阶段推进",
+    keywords: ["阶段", "里程碑", "规格", "长任务", "phased", "milestone", "spec"],
+    brief: "先规格再计划，再分阶段执行与验收；每阶段结束确认结果再继续，不把旧上下文拖进下一阶段。",
+  },
+  {
+    id: "offline", title: "隐私 / 离线",
+    when: "敏感内容、不能外发、需要最小联网面",
+    keywords: ["隐私", "离线", "敏感", "保密", "内网", "offline", "privacy"],
+    brief: "默认不联网、不使用外部服务；只启用本地核心工具，必须联网时先说明并征得同意。",
   },
 ];
 
-// 自动归类的强信号：包名/工具名/描述里出现这些词就投到对应场景
+// 自动归类信号：只写能力词，不写具体插件名。
 const SCENARIO_HINTS = {
-  understand: ["wiki", "openwiki", "codebase", "explain", "navigate", "symbol", "lsp", "module"],
-  docs: ["documentation", "wiki", "readme", "handoff", "mermaid", "guide", "adr"],
-  bugfix: ["error", "traceback", "debug", "diagnostic", "stack", "regression"],
-  feature: ["todo", "scaffold", "stage", "implement"],
-  gsd: ["gsd", "milestone", "roadmap", "spec", "phase", "acceptance", "context rot"],
-  frontend: ["frontend", "react", "vue", "svelte", "css", "tailwind", "component", "design system", "responsive"],
-  refactor: ["workflow", "plannotator", "refactor", "migrate", "batch", "multi-agent", "simplify"],
-  tests: ["test", "jest", "vitest", "pytest", "flaky", "coverage"],
-  review: ["review", "simplify", "diff", "lint", "reviewer", "oracle"],
-  plan: ["plan", "plannotator", "approve", "design"],
-  research: ["web", "search", "fetch", "http", "scrape", "crawl", "deep-research", "researcher"],
-  webui: ["browser", "playwright", "screenshot", "dom", "computer", "vision", "image"],
-  data: ["benchmark", "profile", "metrics", "execute", "sql", "analytics"],
-  parallel: ["subagent", "parallel", "fan-out", "delegate", "council"],
-  sideask: ["btw", "side", "chat"],
-  advisor: ["advisor", "second opinion", "critique"],
-  audit: ["audit", "security", "cve", "license", "safety", "secret", "evidence"],
-  release: ["release", "ci", "deploy", "build", "tag", "publish", "notify"],
-  knowledge: ["memory", "wiki", "note", "knowledge", "adr"],
-  privacy: ["privacy", "telemetry", "offline", "redact"],
-  mcp: ["mcp", "protocol", "server", "integration", "bridge"],
-  i18n: ["i18n", "locale", "language", "translate", "translation"],
-  unattended: ["workflow", "batch", "background", "autonomous", "long-running"],
-  deps: ["dependency", "upgrade", "version", "lockfile", "outdated"],
+  article: ["writing", "copy", "blog", "article", "文案", "文章"],
+  report: ["research", "report", "survey", "whitepaper", "调研", "报告"],
+  presentation: ["slide", "deck", "presentation", "ppt", "幻灯片"],
+  docs: ["documentation", "docs", "wiki", "readme", "handoff", "mermaid", "文档"],
+  webpage: ["webpage", "landing", "website", "homepage", "网页", "落地页"],
+  webapp: ["webapp", "dashboard", "saas", "admin", "frontend", "web", "应用", "后台"],
+  mobile: ["mobile", "ios", "android", "mini program", "responsive", "移动端", "小程序"],
+  game: ["game", "canvas", "gameplay", "游戏", "玩法", "关卡"],
+  design: ["design", "brand", "visual", "logo", "css", "ui", "设计", "视觉"],
+  data: ["data", "chart", "analytics", "csv", "sql", "数据", "图表"],
+  api: ["api", "backend", "server", "cli", "sdk", "接口", "后端"],
+  automation: ["automation", "scrape", "crawl", "cron", "schedule", "自动化", "爬虫"],
+  integration: ["mcp", "integration", "connector", "oauth", "webhook", "集成"],
+  plugin: ["plugin", "extension", "hook", "skill", "command", "插件", "扩展"],
+  maintain: ["bug", "refactor", "test", "review", "performance", "upgrade", "维护", "重构", "测试"],
+  localization: ["i18n", "locale", "translation", "language", "本地化", "翻译"],
+  general: ["general", "other", "misc", "通用", "其他"],
 };
 
-const PLUGIN_INFO = {
-  "pi-web-access": { what: "联网搜索与抓取", manual: "" },
-  "pi-subagents": { what: "进程内子代理，并行独立任务", manual: "" },
-  "pi-mcp-adapter": { what: "MCP 代理（单工具 + 懒启动）", manual: "" },
-  "pi-btw": { what: "旁路只读问答，不污染主线", manual: "/btw:ask \"…\"" },
-  "pi-memory": { what: "长期记忆 + 草稿 + 检索", manual: "" },
-  openwiki: { what: "仓库 wiki：生成/查询/跨库关联", manual: "" },
-  "pi-lens": { what: "LSP/静态检查/格式化（默认关闭 hooks，工具仍可调用）", manual: "/lens-toggle 临时开" },
-  "cc-safety-net": { what: "危险命令拦截（常驻基础设施，不参与装配）", manual: "" },
-  "@plannotator/pi-extension": { what: "浏览器里审计划/代码", manual: "/plannotator-plan-mode" },
-  "@juicesharp/rpiv-todo": { what: "任务清单与进度跟踪", manual: "/todos" },
-  "@juicesharp/rpiv-i18n": { what: "TUI 界面语言切换", manual: "/languages" },
-  "@juicesharp/rpiv-ask-user-question": { what: "一次问清多个选项", manual: "" },
-  "context-mode": { what: "大输出转指针，省上下文", manual: "" },
-  "pi-simplify": { what: "改动收尾自查（/simplify）", manual: "/simplify" },
-  "@quintinshaw/pi-dynamic-workflows": { what: "多代理编排与批量审计", manual: "/workflows run …" },
-  "@opengsd/gsd-core": { what: "GSD 五步流程 / 72 个阶段技能", manual: "/gsd next；Windows 下 gsd_dispatch 不可用" },
-  "pi-advisor-flow": { what: "顾问模型第二意见", manual: "/advisor-models 先配置" },
-  "@getpipher/vision": { what: "图片描述（需视觉模型）", manual: "无视觉模型时不可用" },
-  "@onkernel/browser-loop": { what: "云浏览器/computer-use", manual: "/browser-tools 选能力" },
-  "pi-pretty": { what: "主题与工具加速（工具覆盖已禁用）", manual: "" },
-  "pi-mcp-extension": { what: "另一套 MCP 客户端（已卸载）", manual: "" },
-};
 
-// ---------------------------------------------------------------------------
-// 基础工具
-// ---------------------------------------------------------------------------
 const norm = (s) => String(s ?? "").toLowerCase().replace(/\\/g, "/");
 const uniq = (arr) => [...new Set(arr)];
 const nowIso = () => new Date().toISOString();
@@ -441,6 +285,149 @@ function agentDir() {
   return process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
 }
 function storePath() { return path.join(agentDir(), STORE_FILE); }
+
+// ---------------------------------------------------------------------------
+// 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
+// ---------------------------------------------------------------------------
+const PROFILE_FILE = "function-menu.profile.json";
+const PROFILE_VERSION = 2;
+let ACTIVE_PROFILE = null;
+
+function profilePath() { return path.join(agentDir(), PROFILE_FILE); }
+
+function hashText(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16);
+}
+
+function profileFingerprint(store) {
+  const parts = Object.entries(store.known || {})
+    .filter(([, m]) => m && !m.missing)
+    .map(([id, m]) => `${id}@${m.version || ""}:${m.description || ""}`)
+    .sort();
+  return hashText(`v${PROFILE_VERSION}|` + parts.join("|"));
+}
+
+function buildProfile(store) {
+  const roles = {};
+  for (const [id, def] of Object.entries(CAPABILITIES)) {
+    roles[id] = { id, label: def.label, network: !!def.network, infra: !!def.infra, packages: [], skills: [] };
+  }
+  const itemInfo = {};
+  const unassigned = [];
+
+  for (const [rawId, meta] of Object.entries(store.known || {})) {
+    if (!meta || meta.missing) continue;
+    const isSkill = rawId.startsWith("skill:");
+    const name = rawId.replace(/^npm:/, "").replace(/^skill:/, "");
+    if (!isSkill && rawId.startsWith("local:")) continue;
+    const isGsdSkill = isSkill && /^gsd-/.test(name);
+    const text = norm([
+      name, meta.label || "", meta.description || "", meta.text || "",
+      ...(meta.tools || []), ...(meta.commands || []), ...(meta.skills || []),
+    ].join(" ")).slice(0, 6000);
+    let matched = false;
+    const matchedRoles = [];
+    for (const [roleId, def] of Object.entries(CAPABILITIES)) {
+      if (isGsdSkill && roleId !== "gsd") continue;
+      let score = 0;
+      const reasons = [];
+      const hit = (re, value, weight, why) => {
+        if (re && value && re.test(norm(value))) { score += weight; reasons.push(why); }
+      };
+      if (isSkill) {
+        hit(def.skill, name, 4, "技能名");
+        hit(def.terms, text, 1, "描述");
+      } else {
+        hit(def.package, name, 4, "包名");
+        for (const tool of meta.tools || []) hit(def.tool, tool, 2, "工具");
+        for (const cmd of meta.commands || []) hit(def.command, cmd, 2, "命令");
+        for (const skill of meta.skills || []) hit(def.skill, skill, 2, "技能");
+        hit(def.terms, text, 1, "描述");
+      }
+      if (score <= 0) continue;
+      matched = true;
+      matchedRoles.push(roleId);
+      const role = roles[roleId];
+      const rec = { id: name, score, reasons: uniq(reasons) };
+      if (isSkill) role.skills.push(rec); else role.packages.push(rec);
+    }
+    if (!matched) unassigned.push(rawId);
+    itemInfo[name] = {
+      id: name,
+      kind: isSkill ? "skill" : "plugin",
+      description: meta.description || "",
+      roles: uniq(matchedRoles),
+      network: Object.values(roles).some((r) => r.network && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
+      infra: Object.values(roles).some((r) => r.infra && (r.packages.some((p) => p.id === name) || r.skills.some((s) => s.id === name))),
+    };
+  }
+
+  for (const role of Object.values(roles)) {
+    role.packages.sort((a, b) => b.score - a.score);
+    role.skills.sort((a, b) => b.score - a.score);
+    role.packages = role.packages.slice(0, 3);
+    role.skills = role.skills.slice(0, 12);
+  }
+  return {
+    version: 1,
+    generatedAt: nowIso(),
+    fingerprint: profileFingerprint(store),
+    roles,
+    itemInfo,
+    unassigned: unassigned.slice(0, 40),
+    counts: {
+      packages: Object.values(roles).reduce((n, r) => n + r.packages.length, 0),
+      skills: Object.values(roles).reduce((n, r) => n + r.skills.length, 0),
+    },
+  };
+}
+
+function hydrateCatalog(profile) {
+  ACTIVE_PROFILE = profile;
+  for (const scenario of SCENARIOS) {
+    const roles = SCENARIO_CAPABILITIES[scenario.id] || [];
+    const pkgs = [];
+    const skills = [];
+    for (const roleId of roles) {
+      const role = profile?.roles?.[roleId];
+      if (!role || role.infra) continue;
+      pkgs.push(...role.packages.slice(0, 2).map((x) => x.id));
+      skills.push(...role.skills.map((x) => x.id));
+    }
+    scenario.plugins = uniq(pkgs);
+    scenario.capabilities = roles;
+    scenario.manual = [];
+    scenario.profileSkills = uniq(skills);
+  }
+  for (const workflow of WORKFLOWS) {
+    const roles = WORKFLOW_CAPABILITIES[workflow.id] || [];
+    const pkgs = [];
+    for (const roleId of roles) {
+      const role = profile?.roles?.[roleId];
+      if (!role || role.infra) continue;
+      pkgs.push(...role.packages.slice(0, 2).map((x) => x.id));
+    }
+    workflow.plugins = uniq(pkgs);
+    workflow.capabilities = roles;
+    workflow.manual = [];
+  }
+}
+
+function ensureProfile(store, force = false) {
+  const fingerprint = profileFingerprint(store);
+  if (!force && ACTIVE_PROFILE && ACTIVE_PROFILE.fingerprint === fingerprint) {
+    hydrateCatalog(ACTIVE_PROFILE);
+    return ACTIVE_PROFILE;
+  }
+  const profile = buildProfile(store);
+  profile.fingerprint = fingerprint;
+  ACTIVE_PROFILE = profile;
+  writeJson(profilePath(), profile);
+  hydrateCatalog(profile);
+  return profile;
+}
 
 function loadStore() {
   const raw = readJson(storePath(), null);
@@ -545,11 +532,11 @@ function analyzeNeed(text, store = { known: {} }) {
   const skills = new Map();
   const privateNeed = /隐私|离线|敏感|保密|内网|不能外发|offline|privacy/.test(norm(raw));
   const useMcp = /\bmcp\b|外部系统|外部服务|外部 api|连接器|接入.*(?:系统|服务)/.test(norm(raw));
-  const networkPkgs = new Set(["pi-web-access", "@onkernel/browser-loop", "@getpipher/vision", "langsmith"]);
   const addPkg = (pkg, score, reason) => {
-    if (!pkg || pkg === "cc-safety-net" || pkg === "pi-pretty") return;
-    if (pkg === "pi-mcp-adapter" && !useMcp) return;
-    if (privateNeed && networkPkgs.has(pkg)) return;
+    const info = ACTIVE_PROFILE?.itemInfo?.[pkg];
+    if (!pkg || info?.infra) return;
+    if (info?.roles?.includes("mcp") && !useMcp) return;
+    if (privateNeed && info?.network) return;
     const rec = packages.get(pkg) || { pkg, score: 0, reasons: [] };
     rec.score += score;
     if (reason) rec.reasons.push(reason);
@@ -576,10 +563,11 @@ function analyzeNeed(text, store = { known: {} }) {
     });
   }
 
-  for (const pkg of listInstalledPackages()) {
-    if (pkg === "pi-mcp-adapter") continue;
-    const info = PLUGIN_INFO[pkg] || {};
-    const hit = termScore(terms, `${pkg} ${info.what || ""}`);
+  for (const [pkg, info] of Object.entries(ACTIVE_PROFILE?.itemInfo || {})) {
+    if (info?.kind !== "plugin") continue;
+    if (info.infra) continue;
+    const roleText = (info.roles || []).map((r) => CAPABILITIES[r]?.label || r).join(" ");
+    const hit = termScore(terms, `${pkg} ${info.description || ""} ${roleText}`);
     if (hit.score >= 1.5) addPkg(pkg, hit.score, `能力描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
   }
 
@@ -591,9 +579,10 @@ function analyzeNeed(text, store = { known: {} }) {
   }
 
   if (!intents.length && !packages.size && !skills.size) {
+    const firstPkg = (role) => ACTIVE_PROFILE?.roles?.[role]?.packages?.[0]?.id;
     const codey = /代码|文件|函数|报错|bug|test|重构|页面|接口|模块|脚本|数据|csv|json|yaml|python|node|npm|构建|编译|部署|命令行|cli|程序|游戏|网站|应用|app|开发|工具|compile|error/.test(norm(raw));
-    if (codey) addPkg("pi-lens", 0.5, "通用代码检查");
-    if (raw.length > 12) addPkg("@juicesharp/rpiv-todo", 0.4, "多步需求跟踪");
+    if (codey && firstPkg("code-intel")) addPkg(firstPkg("code-intel"), 0.5, "通用代码检查");
+    if (raw.length > 12 && firstPkg("task")) addPkg(firstPkg("task"), 0.4, "多步需求跟踪");
   }
 
   const pkgList = [...packages.values()].sort((a, b) => b.score - a.score).slice(0, 8);
@@ -639,16 +628,6 @@ function dynamicScenario(need, analysis, workflow = null) {
 }
 
 function classifyItem(item, scenarios = SCENARIOS) {
-  if (item?.id) {
-    const key = item.id.replace(/^(npm|skill|local):/, "");
-    const known = KNOWN_SCENARIO[key];
-    if (known) return { scenarioId: known, score: 99, reason: "已知插件" };
-  }
-  if (item?.kind === "skill") {
-    const bare = String(item.id || "").replace(/^(npm|skill|local):/, "").replace(/^skill:/, "");
-    const skillScenario = KNOWN_SKILL_SCENARIO[bare] || (/^gsd-/.test(bare) ? "gsd" : null);
-    if (skillScenario) return { scenarioId: skillScenario, score: 99, reason: skillScenario === "gsd" ? "GSD 阶段技能" : "已知技能" };
-  }
   const t = norm(item.text || "");
   if (!t.trim()) return { scenarioId: null, score: 0, reason: "无描述" };
   let best = null;
@@ -662,10 +641,6 @@ function classifyItem(item, scenarios = SCENARIOS) {
     for (const h of SCENARIO_HINTS[s.id] || []) {
       const k = norm(h);
       if (k && t.includes(k)) { score += 2.5; hits.push(h); }
-    }
-    for (const p of s.plugins) {
-      const tail = norm(p.split("/").pop());
-      if (tail && t.includes(tail)) { score += 2; hits.push(tail); }
     }
     if (!best || score > best.score) best = { scenarioId: s.id, score, hits };
   }
@@ -681,8 +656,10 @@ function classifyItem(item, scenarios = SCENARIOS) {
 // 发现已安装的插件与技能
 // ---------------------------------------------------------------------------
 function isInfraId(id) {
-  const base = String(id || "").replace(/^(npm|local|skill):/, "").split("/").pop();
-  return INFRA_PACKAGES.some((p) => p.split("/").pop() === base);
+  const base = String(id || "").replace(/^(npm|local|skill):/, "").replace(/^skill:/, "");
+  const info = ACTIVE_PROFILE?.itemInfo?.[base];
+  if (info) return !!info.infra;
+  return Object.values(ACTIVE_PROFILE?.roles || {}).some((r) => r.infra && (r.packages.some((p) => p.id === base) || r.skills.some((s) => s.id === base)));
 }
 
 function listInstalledPackages() {
@@ -908,9 +885,12 @@ function autoAssigned(store, scenarioId) {
 }
 
 function scenarioSkillIds(store, scenarioId) {
-  return autoAssignedIds(store, scenarioId)
-    .filter((id) => id.startsWith("skill:"))
-    .map((id) => id.slice(6));
+  const roles = SCENARIO_CAPABILITIES[scenarioId] || [];
+  const fromProfile = roles.flatMap((role) => (ACTIVE_PROFILE?.roles?.[role]?.skills || []).map((x) => x.id));
+  const manual = Object.entries(store.overrides || {})
+    .filter(([id, sid]) => id.startsWith("skill:") && sid === scenarioId)
+    .map(([id]) => id.slice(6));
+  return uniq([...fromProfile, ...manual]);
 }
 
 function skillMenuInfo(skills) {
@@ -927,8 +907,10 @@ function skillMenuInfo(skills) {
 // 装配
 // ---------------------------------------------------------------------------
 function scenarioPackages(scenario, store) {
-  const always = scenario.noAlways ? [] : ALWAYS_PACKAGES;
-  return uniq([...always, ...scenario.plugins, ...autoAssigned(store, scenario.id)]);
+  const manual = Object.entries(store.overrides || {})
+    .filter(([id, sid]) => id.startsWith("npm:") && sid === scenario.id)
+    .map(([id]) => id.slice(4));
+  return uniq([...(scenario.plugins || []), ...manual]);
 }
 
 function comboPackages(scenario, store, workflow = null) {
@@ -940,11 +922,9 @@ function comboPackages(scenario, store, workflow = null) {
 
 function recommendWorkflow(scenario) {
   if (!scenario) return "direct";
-  if (scenario.id === "gsd") return "phased";
-  if (scenario.id === "tests") return "test-first";
-  if (scenario.id === "parallel") return "fanout";
-  if (scenario.id === "review" || scenario.id === "audit") return "review-gate";
-  if (["feature", "refactor", "frontend", "deps"].includes(scenario.id)) return "plan-first";
+  if (scenario.id === "maintain") return "review-gate";
+  if (["webpage", "game", "design", "mobile"].includes(scenario.id)) return "prototype";
+  if (["webapp", "api", "plugin", "article", "report", "presentation", "docs", "automation", "integration", "localization"].includes(scenario.id)) return "outline";
   return "direct";
 }
 
@@ -956,7 +936,7 @@ function workflowOptions(recommendedId = null) {
       ]
     : WORKFLOWS;
   return ordered.map((w) => {
-    const count = (w.plugins || []).filter((p) => p !== "pi-mcp-adapter").length;
+    const count = (w.plugins || []).length;
     const pluginBit = count ? `${count} 个插件` : "无额外插件";
     const mark = w.id === recommendedId ? "★ 推荐 · " : "";
     return `${w.id} · ${w.title} — ${mark}${pluginBit}`;
@@ -994,16 +974,15 @@ function summarizeSkills(skills, max = 8) {
 }
 
 function describePlugin(pi, pkg, manual = "") {
-  const info = PLUGIN_INFO[pkg] || {};
+  const info = ACTIVE_PROFILE?.itemInfo?.[pkg] || {};
   const tools = pi.getAllTools().filter((t) => matchesPkg(t.sourceInfo, pkg)).map((t) => t.name);
   const cmds = commandsForPkg(pi, pkg).map((c) => "/" + c.name);
   const skills = pi.getCommands().filter((c) => c.source === "skill" && matchesPkg(c.sourceInfo, pkg)).map((c) => c.name);
-  const bits = [info.what || "插件"];
+  const bits = [info.description || "插件"];
   if (tools.length) bits.push("工具 " + tools.join(", "));
   if (cmds.length) bits.push("命令 " + cmds.slice(0, 6).join(", "));
   if (skills.length) bits.push("技能 " + summarizeSkills(skills));
-  if (pkg === "pi-memory") bits.push("semantic/deep 检索需 qmd；缺少时用 keyword");
-  if (manual || info.manual) bits.push("手动 " + (manual || info.manual));
+  if (manual) bits.push("手动 " + manual);
   return bits.join(" · ");
 }
 
@@ -1032,16 +1011,12 @@ function buildProposal(pi, scenario, store, workflow = null) {
   lines.push("");
   lines.push("**将启用的插件与功能**");
   const pkgs = comboPackages(scenario, store, workflow);
-  const extra = pkgs.filter((p) => p !== "pi-mcp-adapter");
-  if (!extra.length && !pkgs.includes("pi-mcp-adapter")) lines.push("- 不启用额外插件（只保留核心工具）");
-  for (const pkg of extra) {
+  if (!pkgs.length) lines.push("- 不启用额外插件（只保留核心工具）");
+  for (const pkg of pkgs) {
     const fromWorkflow = workflow?.plugins?.includes(pkg) && !scenario.plugins.includes(pkg);
     const reason = scenario.dynamic ? scenario.analysis?.packages?.find((x) => x.pkg === pkg)?.reasons?.[0] : "";
     lines.push(`- \`${pkg}\`${fromWorkflow ? "（工作流）" : ""} — ${describePlugin(pi, pkg)}${reason ? `（${reason}）` : ""}`);
   }
-  if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（按需求启用）");
-  const auto = autoAssigned(store, scenario.id).filter((p) => !comboPackages(scenario, store, workflow).includes(p));
-  if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
   const skills = scenario.dynamic ? (scenario.skillIds || []) : scenarioSkillIds(store, scenario.id);
   if (scenario.dynamic) {
     if (skills.length) {
@@ -1073,11 +1048,8 @@ function auditPackages(pi, scenario, store, workflow = null) {
   const all = pi.getAllTools();
   const active = new Set(pi.getActiveTools());
   const cmds = pi.getCommands();
-  const vision = readJson(path.join(agentDir(), "vision.json"), {});
-  const lens = readJson(path.join(os.homedir(), ".pi-lens", "config.json"), {});
-  const advisor = readJson(path.join(agentDir(), "advisor.json"), {});
   const rows = [];
-  for (const pkg of comboPackages(scenario, store, workflow).filter((p) => p !== "pi-mcp-adapter")) {
+  for (const pkg of comboPackages(scenario, store, workflow)) {
     const tools = all.filter((t) => matchesPkg(t.sourceInfo, pkg)).map((t) => t.name);
     const skillN = cmds.filter((c) => c.source === "skill" && matchesPkg(c.sourceInfo, pkg)).length;
     const cmdN = cmds.filter((c) => c.source === "extension" && matchesPkg(c.sourceInfo, pkg)).length;
@@ -1091,35 +1063,6 @@ function auditPackages(pi, scenario, store, workflow = null) {
       detail = "工具已注册但已停用：" + tools.slice(0, 6).join(", ");
     }
 
-    if (pkg === "@onkernel/browser-loop" && !tools.length) {
-      state = "inactive";
-      detail = "命令已注册但还没选浏览器能力；先 /browser-tools 并配置 KERNEL_API_KEY";
-    }
-    if (pkg === "pi-lens" && lens?.lens?.enabled === false) {
-      if (state === "ok") state = "warn";
-      detail += "；全局 hooks 已关闭，工具仍可手动调用，/lens-toggle 可开自动检查";
-    }
-    if (pkg === "@getpipher/vision") {
-      const configured = vision?.enabled !== false && vision?.provider && vision?.model;
-      if (!configured) {
-        state = "inactive";
-        detail = "未配置视觉模型；先 /vision-use 选择支持图像的模型";
-      } else {
-        if (state === "ok") state = "warn";
-        detail += `；配置为 ${vision.provider}/${vision.model}，需确认该模型真的支持图像`;
-      }
-    }
-    if (pkg === "@opengsd/gsd-core") {
-      if (state === "ok") state = "warn";
-      detail += "；Windows 下 gsd_dispatch 不可用，改用 /gsd 命令";
-    }
-    if (pkg === "pi-advisor-flow" && !(advisor.advisorProvider && advisor.advisorModel) && !advisor.advisorRef) {
-      if (state === "ok") state = "warn";
-      detail += "；未配置顾问模型，先 /advisor-models";
-    }
-    if (pkg === "pi-memory") {
-      detail += "；semantic/deep 检索需要 qmd，缺少时 keyword 仍可用";
-    }
 
     rows.push({ pkg, state, detail });
   }
@@ -1156,7 +1099,7 @@ function buildCatalog(pi, store) {
   lines.push("");
   lines.push("## 第 1 步：工作流（怎么执行）");
   for (const w of WORKFLOWS) {
-    const count = (w.plugins || []).filter((p) => p !== "pi-mcp-adapter").length;
+    const count = (w.plugins || []).length;
     lines.push(`- **${w.id}** · ${w.title} — ${w.when}${count ? `（${count} 个插件）` : ""}`);
   }
   lines.push("");
@@ -1168,24 +1111,15 @@ function buildCatalog(pi, store) {
     for (const s of SCENARIOS.filter((x) => x.group === g)) {
       lines.push(`**${s.id}** · ${s.title}`);
       lines.push(`- 何时用：${s.when}`);
-      const pkgs = s.plugins;
-      const extra = pkgs.filter((p) => p !== "pi-mcp-adapter");
-      if (extra.length) {
-        for (const pkg of extra) lines.push(`- \`${pkg}\` — ${describePlugin(pi, pkg)}`);
-      } else if (!pkgs.includes("pi-mcp-adapter")) {
+      const pkgs = s.plugins || [];
+      if (pkgs.length) {
+        for (const pkg of pkgs) lines.push(`- \`${pkg}\` — ${describePlugin(pi, pkg)}`);
+      } else {
         lines.push("- 不需要额外插件");
       }
-      if (pkgs.includes("pi-mcp-adapter")) lines.push("- `pi-mcp-adapter` — MCP 代理（常驻）");
-      const auto = autoAssignedIds(store, s.id).filter((id) => id.startsWith("npm:") && !s.plugins.includes(id.slice(4))).map((id) => id.slice(4));
-      if (auto.length) lines.push(`- 自动归入：${summarizeNames(auto)}`);
       const skills = scenarioSkillIds(store, s.id);
       if (skills.length) lines.push(`- 技能 ${skills.length} 个：${summarizeSkills(skills)}（随会话自动加载）`);
     }
-  }
-  const infra = Object.entries(store.known).filter(([, m]) => m.scenario === "infra" && !m.missing).map(([id]) => id.replace(/^(npm|local|skill):/, ""));
-  if (infra.length) {
-    lines.push("");
-    lines.push(`### 常驻（不参与装配）：${infra.join("、")}`);
   }
   const unclassified = Object.entries(store.known).filter(([, m]) => !m.scenario && !m.missing);
   if (unclassified.length) {
@@ -1200,7 +1134,7 @@ function buildCatalog(pi, store) {
 
 export function menuOptions(store, scenarios = SCENARIOS) {
   return scenarios.map((s) => {
-    const count = scenarioPackages(s, store).filter((p) => p !== "pi-mcp-adapter").length;
+    const count = scenarioPackages(s, store).length;
     const skills = scenarioSkillIds(store, s.id);
     const pluginBit = count ? `${count} 个插件` : "无需插件";
     return `${s.id} · ${s.title} — ${pluginBit} · ${skillMenuInfo(skills)}`;
@@ -1212,6 +1146,7 @@ export function menuOptions(store, scenarios = SCENARIOS) {
 // ---------------------------------------------------------------------------
 export default function functionMenu(pi) {
   let store = loadStore();
+  ensureProfile(store);
   let activeScenario = null;
   let activeWorkflow = null;
   let baseline = [];
@@ -1230,6 +1165,7 @@ export default function functionMenu(pi) {
     const items = discoverItems(pi);
     const added = reconcile(store, items);
     saveStore(store);
+    ensureProfile(store, true);
     if (added.length && notify) {
       const summary = added.slice(0, 6).map((a) => `${a.label}→${a.scenario || "未分类"}`).join("；");
       notify(`function: 新发现 ${added.length} 个插件/技能，已归类：${summary}${added.length > 6 ? " …" : ""}`, "info");
@@ -1314,7 +1250,7 @@ export default function functionMenu(pi) {
 
   const confirmScenario = async (ctx, scenario, reason, workflow) => {
     announceProposal(scenario, reason, workflow);
-    const pkgs = comboPackages(scenario, store, workflow).filter((p) => p !== "pi-mcp-adapter");
+    const pkgs = comboPackages(scenario, store, workflow);
     const list = pkgs.length ? pkgs.join("、") : "无额外插件";
     const title = workflow ? `${workflow.title} × ${scenario.title}` : scenario.title;
     return ctx.ui.confirm(
@@ -1612,4 +1548,4 @@ export default function functionMenu(pi) {
 }
 
 // 供测试使用
-export { SCENARIOS, WORKFLOWS, PLUGIN_INFO, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { SCENARIOS, WORKFLOWS, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
