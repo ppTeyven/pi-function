@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1854" height="520" viewBox="0 0 1854 520" role="img" aria-label="Pi-function">
   <title>Pi-function</title>
+  <style>
+    /* 入场：从下往上逐列浮现；被剥离时这些属性等于没有，字仍然完整可见 */
+    @keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+    @keyframes breathe { 0%, 100% { opacity: .35 } 50% { opacity: 1 } }
+    .px { animation: rise .42s cubic-bezier(.22,.61,.36,1) both }
+    .dot { animation: breathe 3.2s ease-in-out infinite }
+    @media (prefers-reduced-motion: reduce) {
+      .px, .dot { animation: none }
+    }
+  </style>
   <rect width="1854" height="520" rx="36" fill="#0B0E14"/>
   <rect x="1" y="1" width="1852" height="518" rx="35" fill="none" stroke="#1E2634" stroke-width="2"/>
 
@@ -11,75 +21,74 @@
     <path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/>
   </g>
 
-  <!-- function: pixel wordmark, white -->
+  <!-- function: 5x7 pixel wordmark; every letter-to-letter gap is 2 cells (52px) -->
   <g fill="#FFFFFF" shape-rendering="crispEdges">
-    <rect x="588" y="169" width="52" height="26"/>
-    <rect x="562" y="195" width="26" height="26"/>
-    <rect x="536" y="221" width="104" height="26"/>
-    <rect x="562" y="247" width="26" height="26"/>
-    <rect x="562" y="273" width="26" height="26"/>
-    <rect x="562" y="299" width="26" height="26"/>
-    <rect x="562" y="325" width="26" height="26"/>
-    <rect x="692" y="221" width="26" height="26"/>
-    <rect x="796" y="221" width="26" height="26"/>
-    <rect x="692" y="247" width="26" height="26"/>
-    <rect x="796" y="247" width="26" height="26"/>
-    <rect x="692" y="273" width="26" height="26"/>
-    <rect x="796" y="273" width="26" height="26"/>
-    <rect x="692" y="299" width="26" height="26"/>
-    <rect x="770" y="299" width="52" height="26"/>
-    <rect x="718" y="325" width="52" height="26"/>
-    <rect x="796" y="325" width="26" height="26"/>
-    <rect x="848" y="221" width="104" height="26"/>
-    <rect x="848" y="247" width="26" height="26"/>
-    <rect x="952" y="247" width="26" height="26"/>
-    <rect x="848" y="273" width="26" height="26"/>
-    <rect x="952" y="273" width="26" height="26"/>
-    <rect x="848" y="299" width="26" height="26"/>
-    <rect x="952" y="299" width="26" height="26"/>
-    <rect x="848" y="325" width="26" height="26"/>
-    <rect x="952" y="325" width="26" height="26"/>
-    <rect x="1030" y="221" width="104" height="26"/>
-    <rect x="1004" y="247" width="26" height="26"/>
-    <rect x="1004" y="273" width="26" height="26"/>
-    <rect x="1004" y="299" width="26" height="26"/>
-    <rect x="1030" y="325" width="104" height="26"/>
-    <rect x="1186" y="169" width="26" height="26"/>
-    <rect x="1186" y="195" width="26" height="26"/>
-    <rect x="1160" y="221" width="104" height="26"/>
-    <rect x="1186" y="247" width="26" height="26"/>
-    <rect x="1186" y="273" width="26" height="26"/>
-    <rect x="1186" y="299" width="26" height="26"/>
-    <rect x="1212" y="325" width="52" height="26"/>
-    <rect x="1342" y="169" width="26" height="26"/>
-    <rect x="1316" y="221" width="52" height="26"/>
-    <rect x="1342" y="247" width="26" height="26"/>
-    <rect x="1342" y="273" width="26" height="26"/>
-    <rect x="1342" y="299" width="26" height="26"/>
-    <rect x="1316" y="325" width="78" height="26"/>
-    <rect x="1498" y="221" width="78" height="26"/>
-    <rect x="1472" y="247" width="26" height="26"/>
-    <rect x="1576" y="247" width="26" height="26"/>
-    <rect x="1472" y="273" width="26" height="26"/>
-    <rect x="1576" y="273" width="26" height="26"/>
-    <rect x="1472" y="299" width="26" height="26"/>
-    <rect x="1576" y="299" width="26" height="26"/>
-    <rect x="1498" y="325" width="78" height="26"/>
-    <rect x="1628" y="221" width="104" height="26"/>
-    <rect x="1628" y="247" width="26" height="26"/>
-    <rect x="1732" y="247" width="26" height="26"/>
-    <rect x="1628" y="273" width="26" height="26"/>
-    <rect x="1732" y="273" width="26" height="26"/>
-    <rect x="1628" y="299" width="26" height="26"/>
-    <rect x="1732" y="299" width="26" height="26"/>
-    <rect x="1628" y="325" width="26" height="26"/>
-    <rect x="1732" y="325" width="26" height="26"/>
+    <rect x="588" y="169" width="52" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="588" y="195" width="26" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="536" y="221" width="104" height="26" data-letter="0" class="px" style="animation-delay:0ms"/>
+    <rect x="588" y="247" width="26" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="588" y="273" width="26" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="588" y="299" width="26" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="588" y="325" width="26" height="26" data-letter="0" class="px" style="animation-delay:90ms"/>
+    <rect x="692" y="221" width="26" height="26" data-letter="1" class="px" style="animation-delay:282ms"/>
+    <rect x="796" y="221" width="26" height="26" data-letter="1" class="px" style="animation-delay:462ms"/>
+    <rect x="692" y="247" width="26" height="26" data-letter="1" class="px" style="animation-delay:282ms"/>
+    <rect x="796" y="247" width="26" height="26" data-letter="1" class="px" style="animation-delay:462ms"/>
+    <rect x="692" y="273" width="26" height="26" data-letter="1" class="px" style="animation-delay:282ms"/>
+    <rect x="796" y="273" width="26" height="26" data-letter="1" class="px" style="animation-delay:462ms"/>
+    <rect x="692" y="299" width="26" height="26" data-letter="1" class="px" style="animation-delay:282ms"/>
+    <rect x="796" y="299" width="26" height="26" data-letter="1" class="px" style="animation-delay:462ms"/>
+    <rect x="718" y="325" width="78" height="26" data-letter="1" class="px" style="animation-delay:327ms"/>
+    <rect x="874" y="221" width="104" height="26" data-letter="2" class="px" style="animation-delay:609ms"/>
+    <rect x="874" y="247" width="26" height="26" data-letter="2" class="px" style="animation-delay:609ms"/>
+    <rect x="978" y="247" width="26" height="26" data-letter="2" class="px" style="animation-delay:789ms"/>
+    <rect x="874" y="273" width="26" height="26" data-letter="2" class="px" style="animation-delay:609ms"/>
+    <rect x="978" y="273" width="26" height="26" data-letter="2" class="px" style="animation-delay:789ms"/>
+    <rect x="874" y="299" width="26" height="26" data-letter="2" class="px" style="animation-delay:609ms"/>
+    <rect x="978" y="299" width="26" height="26" data-letter="2" class="px" style="animation-delay:789ms"/>
+    <rect x="874" y="325" width="26" height="26" data-letter="2" class="px" style="animation-delay:609ms"/>
+    <rect x="978" y="325" width="26" height="26" data-letter="2" class="px" style="animation-delay:789ms"/>
+    <rect x="1082" y="221" width="78" height="26" data-letter="3" class="px" style="animation-delay:981ms"/>
+    <rect x="1056" y="247" width="26" height="26" data-letter="3" class="px" style="animation-delay:936ms"/>
+    <rect x="1056" y="273" width="26" height="26" data-letter="3" class="px" style="animation-delay:936ms"/>
+    <rect x="1056" y="299" width="26" height="26" data-letter="3" class="px" style="animation-delay:936ms"/>
+    <rect x="1082" y="325" width="78" height="26" data-letter="3" class="px" style="animation-delay:981ms"/>
+    <rect x="1264" y="169" width="26" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1264" y="195" width="26" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1212" y="221" width="104" height="26" data-letter="4" class="px" style="animation-delay:1218ms"/>
+    <rect x="1264" y="247" width="26" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1264" y="273" width="26" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1264" y="299" width="26" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1264" y="325" width="52" height="26" data-letter="4" class="px" style="animation-delay:1308ms"/>
+    <rect x="1368" y="169" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1368" y="221" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1368" y="247" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1368" y="273" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1368" y="299" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1368" y="325" width="26" height="26" data-letter="5" class="px" style="animation-delay:1500ms"/>
+    <rect x="1472" y="221" width="78" height="26" data-letter="6" class="px" style="animation-delay:1692ms"/>
+    <rect x="1446" y="247" width="26" height="26" data-letter="6" class="px" style="animation-delay:1647ms"/>
+    <rect x="1550" y="247" width="26" height="26" data-letter="6" class="px" style="animation-delay:1827ms"/>
+    <rect x="1446" y="273" width="26" height="26" data-letter="6" class="px" style="animation-delay:1647ms"/>
+    <rect x="1550" y="273" width="26" height="26" data-letter="6" class="px" style="animation-delay:1827ms"/>
+    <rect x="1446" y="299" width="26" height="26" data-letter="6" class="px" style="animation-delay:1647ms"/>
+    <rect x="1550" y="299" width="26" height="26" data-letter="6" class="px" style="animation-delay:1827ms"/>
+    <rect x="1472" y="325" width="78" height="26" data-letter="6" class="px" style="animation-delay:1692ms"/>
+    <rect x="1628" y="221" width="104" height="26" data-letter="7" class="px" style="animation-delay:1974ms"/>
+    <rect x="1628" y="247" width="26" height="26" data-letter="7" class="px" style="animation-delay:1974ms"/>
+    <rect x="1732" y="247" width="26" height="26" data-letter="7" class="px" style="animation-delay:2154ms"/>
+    <rect x="1628" y="273" width="26" height="26" data-letter="7" class="px" style="animation-delay:1974ms"/>
+    <rect x="1732" y="273" width="26" height="26" data-letter="7" class="px" style="animation-delay:2154ms"/>
+    <rect x="1628" y="299" width="26" height="26" data-letter="7" class="px" style="animation-delay:1974ms"/>
+    <rect x="1732" y="299" width="26" height="26" data-letter="7" class="px" style="animation-delay:2154ms"/>
+    <rect x="1628" y="325" width="26" height="26" data-letter="7" class="px" style="animation-delay:1974ms"/>
+    <rect x="1732" y="325" width="26" height="26" data-letter="7" class="px" style="animation-delay:2154ms"/>
   </g>
 
   <!-- three pixels from the Pi palette -->
   <g shape-rendering="crispEdges">
-    <rect x="1704" y="474" width="16" height="16" fill="#F09082"/>
-    <rect x="1728" y="474" width="16" height="16" fill="#4D9ABF"/>
-    <rect x="1752" y="474" width="16" height="16" fill="#F1BE58"/>
+    <rect x="1704" y="474" width="16" height="16" fill="#F09082" class="dot" style="animation-delay:0ms"/>
+    <rect x="1728" y="474" width="16" height="16" fill="#4D9ABF" class="dot" style="animation-delay:260ms"/>
+    <rect x="1752" y="474" width="16" height="16" fill="#F1BE58" class="dot" style="animation-delay:520ms"/>
   </g>
 </svg>

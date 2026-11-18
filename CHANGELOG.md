@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.22.1
+
+- Banner wordmark: letters are now laid out **by ink edge** instead of a fixed 6-cell advance, so all seven letter gaps are exactly 52px (2 cells). `function` used to read as `f  u  n c t  i o  n` because `f`/`t`/`i` sit off-centre in their cell.
+- The banner is animated (pixels rise column by column, the three palette dots breathe) using CSS **inside** the SVG, written so that stripping `<style>` — which GitHub's README sanitiser does — leaves the full, correctly spaced wordmark. `npm run render:banner -- --static` renders the still version.
+- `render-banner.mjs --preview` prints an ASCII proof of the spacing; `tests/banner.test.mjs` (5 cases) asserts equal gaps, no overlap, additive animation and untouched canvas/Pi mark.
+- Total 235.
+
 ## 2.22.0
 
 - **Removed the argument-completion feature.** `/function` no longer implements `getArgumentCompletions`, the `menu` pseudo-subcommand is gone, and the `/fn` alias is gone. Rationale: the web UI caches the candidate table per command name and does not refresh it on `/reload`, so any published list can go stale and steal Enter; publishing nothing makes the whole class of bug impossible. `/function` + Enter opens the subcommand menu, `/function <sub>` still works.

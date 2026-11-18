@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 232 cases, repository fixture — runs on any machine
+npm test          # 235 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -542,6 +542,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
 | `completions.test.mjs` | `/function` publishes no argument candidates (by design) | 4 |
+| `banner.test.mjs` | banner spacing is uniform and the animation degrades safely | 5 |
 | `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
