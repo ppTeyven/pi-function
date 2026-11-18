@@ -541,7 +541,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `complete.test.mjs` | completeness invariant: every token accounted for | 9 |
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
-| `completions.test.mjs` | `/function` argument completion, version marker, `/fn` shortcut | 6 |
+| `completions.test.mjs` | `/function` publishes no argument candidates (by design) | 4 |
 | `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 

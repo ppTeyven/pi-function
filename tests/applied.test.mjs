@@ -89,7 +89,7 @@ test("A9 中英别名双向生效（水印 ↔ watermark）", () => {
   }
 });
 
-test("A10 scan 归类与 /function 补全都已生效（英文描述归角色、menu 排第一、/fn 无补全）", () => {
+test("A10 scan 归类与命令面已生效（英文描述归角色、无参数候选、无 /fn）", () => {
   const prof = m.buildProfile(store);
   const fake = {
     ...prof,
@@ -109,7 +109,6 @@ test("A10 scan 归类与 /function 补全都已生效（英文描述归角色、
     getAllTools: () => [], getActiveTools: () => [], setActiveTools() {},
     getCommands: () => [], getAllSkills: () => [],
   });
-  assert.equal(reg.function.getArgumentCompletions(""), null, "裸 /function 不该弹候选");
-  assert.deepEqual(reg.function.getArgumentCompletions("s").map((i) => i.value), ["scan", "status", "stats"]);
-  assert.equal(reg.fn.getArgumentCompletions, undefined);
+  assert.equal(reg.function.getArgumentCompletions, undefined, "/function 不再发布参数候选");
+  assert.equal(reg.fn, undefined, "没有 /fn 别名");
 });

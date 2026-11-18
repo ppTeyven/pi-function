@@ -685,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.21.6";
+const EXT_VERSION = "2.22.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2635,35 +2635,10 @@ export default function functionMenu(pi) {
   };
 
   const functionCommand = {
-    description: "Pi-function：/function 用工作流 × 场景菜单；/function workflow 只选工作流；/function profile 查看能力画像；带需求文本时动态分析并组合插件/技能",
-    getArgumentCompletions: (prefix) => {
-      const desc = {
-        assemble: "场景装配 — 工作流 × 应用场景",
-        workflow: "仅选工作流 — 不绑定场景",
-        profile: "查看能力画像",
-        scan: "重新扫描插件/技能",
-        status: "查看当前装配",
-        off: "还原工具集",
-        assign: "手动归类插件/技能",
-      };
-      const p = String(prefix || "").trim();
-      // 裸 /function 不弹候选：回车直接进「工作流 × 场景」菜单。
-      // （前端会把这张表缓存一次且 /reload 不刷新，弹出来反而抢走回车；见 CHANGELOG 2.21.6）
-      if (!p) return null;
-      // 有前缀时才给候选，menu 保留作兼容写法。
-      const items = [
-        { value: "menu", label: "直接使用", description: "＝不填参数：工作流 × 场景菜单" },
-        ...["assemble", ...FUNCTION_SUBCOMMANDS.map((s) => s.id)]
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .map((v) => ({ value: v, label: v, description: desc[v] || "" })),
-      ].filter((i) => i.value.startsWith(p));
-      return items.length ? items : null;
-    },
+    description: "Pi-function：/function 打开子功能菜单（装配 / 工作流 / 画像 / 扫描 / 状态 / 统计 / 还原 / 归类）；带需求文本时动态分析并组合插件与技能",
     handler: async (rawArgs, ctx) => {
       captureBaseline();
-      let args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
-      // menu = 补全第一项“直接使用”，与不填参数等价
-      if (args === "menu") args = "";
+      const args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
 
       if (!args) {
         scan(false);
@@ -2953,12 +2928,6 @@ export default function functionMenu(pi) {
 
   pi.registerCommand("function", functionCommand);
   pi.registerCommand("pi-function", functionCommand);
-  // 快捷键 /fn：不注册参数补全，所以输入 /fn 直接回车就进菜单，
-  // 不会被“补全面板第一行是 assemble”抢走回车键。
-  pi.registerCommand("fn", {
-    description: "同 /function：直接用（工作流 × 场景菜单），不带参数补全",
-    handler: functionCommand.handler,
-  });
 
   // -------------------------------------------------------------------------
   // 模型侧入口：只读的场景建议 + 插件可用性诊断

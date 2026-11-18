@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.22.0
+
+- **Removed the argument-completion feature.** `/function` no longer implements `getArgumentCompletions`, the `menu` pseudo-subcommand is gone, and the `/fn` alias is gone. Rationale: the web UI caches the candidate table per command name and does not refresh it on `/reload`, so any published list can go stale and steal Enter; publishing nothing makes the whole class of bug impossible. `/function` + Enter opens the subcommand menu, `/function <sub>` still works.
+- Tests: `completions.test.mjs` now guards the *absence* of the feature (plus: no `/fn`, empty args open the menu).
+- Total 232.
+
 ## 2.21.6
 
 - Bare `/function` no longer offers completions (`getArgumentCompletions("")` → `null`), so **Enter runs the workflow × scenario menu**. The web UI caches that candidate table once per command name and does not refresh it on `/reload`, so any list we publish can go stale and steal the Enter key; publishing nothing makes that impossible. Prefixes (`/function s`) still list subcommands, and `menu` remains accepted.
