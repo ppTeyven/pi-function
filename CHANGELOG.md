@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.23.0
+
+- **The README banner now actually animates on GitHub.** GitHub's sanitiser strips `<style>`, so the CSS animation in `banner.svg` only ever ran in a browser or editor — on the README the wordmark appeared static. The banner is now a GIF (`assets/banner.gif`, 927×260, 85 frames, ~290 KB) and the SVG stays as the crisp static/edit-time version.
+- New `scripts/banner-geometry.mjs` holds the single source of truth (glyphs, `inkBox`, `layout()`, palette, `TIMING`); both renderers import it, and `banner.test.mjs` B8 fails if the two drift apart.
+- New `scripts/render-banner-gif.mjs`: zero dependencies. It rasterises the same rectangles and writes GIF89a by hand (LZW, NETSCAPE loop, palette entries pre-mixed with the background so the fade needs no dithering), 2×2 box filter down to 927×260. Entrance is 25 fps across the full canvas; the breathing hold ships only a 34×10 patch per frame, which is what keeps the file small.
+- `node scripts/render-banner-gif.mjs --png` dumps the first and settled frames for eyeballing. Both scripts are wired as `npm run render:banner` / `render:banner:gif`.
+- `tests/banner.test.mjs` +3: GIF is real GIF89a with a loop extension and ≥40 frames, size stays under 1.5 MB, and geometry matches the SVG rect-for-rect.
+- Total 238.
+
 ## 2.22.1
 
 - Banner wordmark: letters are now laid out **by ink edge** instead of a fixed 6-cell advance, so all seven letter gaps are exactly 52px (2 cells). `function` used to read as `f  u  n c t  i o  n` because `f`/`t`/`i` sit off-centre in their cell.

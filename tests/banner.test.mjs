@@ -70,3 +70,71 @@ test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {
   assert.match(SVG, /#F1BE58/);
   assert.match(SVG, /translate\(96,80\) scale\(0\.45\)/);
 });
+
+// ---- GIF：GitHub 会剥掉 SVG 的 <style>，所以动图得是一张真 GIF ----
+const GIF = fs.readFileSync(new URL("../assets/banner.gif", import.meta.url));
+
+function gifInfo(buf) {
+  const w = buf.readUInt16LE(6);
+  const h = buf.readUInt16LE(8);
+  let i = 13 + 256 * 3; // 逻辑屏幕描述符 + 全局色表
+  const frames = [];
+  while (i < buf.length) {
+    if (buf[i] === 0x21) {
+      const label = buf[i + 1];
+      i += 2;
+      let delay = null;
+      if (label === 0xf9) {
+        delay = buf.readUInt16LE(i + 2);
+        i += buf[i] + 1;
+      }
+      while (buf[i] !== 0) i += buf[i] + 1;
+      i++;
+      if (delay !== null) frames.push({ kind: "gce", delay });
+    } else if (buf[i] === 0x2c) {
+      const fw = buf.readUInt16LE(i + 5);
+      const fh = buf.readUInt16LE(i + 7);
+      i += 10;
+      i++; // 最小码长
+      while (buf[i] !== 0) i += buf[i] + 1;
+      i++;
+      const last = frames.filter((f) => f.kind === "gce").pop();
+      last.fw = fw;
+      last.fh = fh;
+    } else break;
+  }
+  return { w, h, frames: frames.filter((f) => f.kind === "gce") };
+}
+
+test("B6 动图是真的 GIF89a：无限循环、帧数够、宽高比与 SVG 一致", () => {
+  assert.equal(GIF.subarray(0, 6).toString("ascii"), "GIF89a");
+  assert.ok(GIF.includes(Buffer.from("NETSCAPE2.0")), "缺循环扩展，只播一遍就停");
+  const { w, h, frames } = gifInfo(GIF);
+  assert.equal(GIF[GIF.length - 1], 0x3b, "缺 trailer");
+  assert.ok(w <= 1200, `宽 ${w}px 太大，GitHub 会二次缩放`);
+  assert.ok(Math.abs(w / h - 1854 / 520) < 0.01, `宽高比 ${w}x${h} 与 SVG 不一致`);
+  assert.ok(frames.length >= 40, `帧太少（${frames.length}），看起来不会动`);
+  assert.ok(frames.every((f) => f.delay >= 2 && f.delay <= 200), "帧延时异常");
+  assert.ok(frames.some((f) => f.fw === w && f.fh === h), "没有整帧");
+  assert.ok(
+    frames.filter((f) => f.fw < w).length >= 10,
+    "呼吸阶段应该只有小块局部帧，否则文件会很大",
+  );
+});
+
+test("B7 体积在 GitHub 能接受的范围内（< 1.5MB）", () => {
+  assert.ok(GIF.length > 40 * 1024, `文件只有 ${GIF.length} 字节，可能没画上东西`);
+  assert.ok(GIF.length < 1.5 * 1024 * 1024, `文件 ${GIF.length} 字节，太大了`);
+});
+
+test("B8 GIF 与 SVG 是同一套排版（共享 banner-geometry）", async () => {
+  const geometry = await import("../scripts/banner-geometry.mjs");
+  const { letters, gaps } = geometry.layout();
+  const fromSvg = new Set(wordRects.map((r) => `${r.x},${r.y},${r.w},${r.h}`));
+  const fromGeom = new Set(letters.flatMap((l) => l.runs.map((r) => `${r.x},${r.y},${r.w},${r.h}`)));
+  assert.deepEqual([...fromGeom].sort(), [...fromSvg].sort(), "几何与 SVG 不一致，改一处会漏另一处");
+  assert.equal(new Set(gaps).size, 1, `几何里的间隙不一致：${gaps.join(",")}`);
+  assert.equal(gaps[0], 52, "间隙应与 SVG 里的一模一样");
+  assert.equal(geometry.WIDTH, 1854);
+  assert.equal(geometry.HEIGHT, 520);
+});

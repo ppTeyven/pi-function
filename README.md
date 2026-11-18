@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.svg" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 
@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 235 cases, repository fixture — runs on any machine
+npm test          # 238 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -542,11 +542,21 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `coverage.test.mjs` | bilingual aliases, scan text, pending words reach the prompt | 8 |
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
 | `completions.test.mjs` | `/function` publishes no argument candidates (by design) | 4 |
-| `banner.test.mjs` | banner spacing is uniform and the animation degrades safely | 5 |
+| `banner.test.mjs` | banner spacing is uniform, the SVG degrades safely, the GIF is a real looping animation | 8 |
 | `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
+
+The README banner is generated, not hand-edited:
+
+```bash
+npm run render:banner                 # assets/banner.svg (static fallback for editors)
+npm run render:banner -- --static     # no <style> — what GitHub's sanitiser leaves
+node scripts/render-banner-gif.mjs    # assets/banner.gif (README uses this one)
+```
+
+GitHub strips `<style>` from SVGs, so the CSS animation in `banner.svg` only runs in a browser or editor. The GIF carries its own timing, so the README animation actually plays; both are drawn from `scripts/banner-geometry.mjs`, and `banner.test.mjs` B8 fails if the two ever drift apart. The GIF renderer has no dependencies — it rasterises the same rectangles and writes GIF89a by hand (LZW + NETSCAPE loop), 927×260, ~290 KB.
 
 Tests read `tests/fixtures/store.json` by default so results do not depend on what you have installed; set `PI_FUNCTION_REAL_STORE=1` to audit your own environment instead.
 
