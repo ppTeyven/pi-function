@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.28.0
+
+- **Every `/function` call rescans the catalog first** — not just `scan`/`assemble`. Newly installed plugins and skills are discovered, classified and made available for *this* assembly instead of waiting for a `/reload` or a manual `/function scan`. The scan runs once at the top of the handler, so all sub-functions inherit it.
+- **New abilities inside an already-installed plugin count too.** `reconcile()` now compares each known item's skills/tools with the live discovery and reports the difference (union-merge, so an incomplete enumeration never deletes anything). A package that ships a new skill after an update is surfaced just like a brand-new install.
+- **The check is reported, and only when it finds something:** `function: 新发现 N 个插件/技能，已归类：…；M 个已装条目新增能力：…；都已进入本次可选项`. Silent when nothing changed.
+- **Fixed: the no-argument menu threw `Assignment to constant variable`** when you picked a subcommand — `const args` was reassigned in the menu branch. Now `let args`.
+- `tests/refresh.test.mjs` covers discovery of a new skill, new skills/tools on known items, the scan-on-`status` guarantee, and the menu dispatch regression. Total 248.
+
 ## 2.27.0
 
 - **An assembly now survives `/reload`.** `applyScenario()` writes `store.active = { id, workflow, at, tools, custom }` to disk, so the record is not tied to process memory. `restoreScenario()` falls back to it whenever the session branch has no `function-scenario` entry — the branch is empty after a reload that did not replay entries, which is exactly when the old code gave up.

@@ -685,7 +685,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.27.0";
+const EXT_VERSION = "2.28.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -1425,6 +1425,20 @@ function reconcile(store, items) {
       meta.missing = false;
       if (item.label && (!meta.label || String(meta.label).startsWith("skill:"))) meta.label = item.label;
       if (item.description && !meta.description) meta.description = item.description;
+      // 同一个插件新装/新增了技能或工具，也算“新能力”。取并集：枚举不全时不会误删。
+      const freshSkills = (item.skills || []).filter((s) => !(meta.skills || []).includes(s));
+      const freshTools = (item.tools || []).filter((s) => !(meta.tools || []).includes(s));
+      if (freshSkills.length || freshTools.length) {
+        meta.skills = uniq([...(meta.skills || []), ...(item.skills || [])]);
+        meta.tools = uniq([...(meta.tools || []), ...(item.tools || [])]);
+        changed.push({
+          id,
+          label: meta.label || id,
+          scenario: meta.scenario || null,
+          reason: [freshSkills.length ? `新增技能：${freshSkills.join("/")}` : "", freshTools.length ? `新增工具：${freshTools.join("/")}` : ""].filter(Boolean).join("；"),
+        });
+      }
+      if (item.version && item.version !== meta.version) meta.version = item.version;
       continue;
     }
     const c = classifyItem(item);
@@ -1445,7 +1459,7 @@ function reconcile(store, items) {
   // 不在扫描时把条目标成 missing：一次不完整的枚举（非交互/测试环境）会把整个目录
   // 误判成“已卸载”。可用性由 auditPackages 在装配时实时判断，不靠这张持久表。
   if (changed.length) store.lastReclassified = changed.slice(0, 50);
-  return added;
+  return Object.assign(added, { changed });
 }
 function autoAssignedIds(store, scenarioId) {
   const out = [];
@@ -2413,11 +2427,20 @@ export default function functionMenu(pi) {
       return [];
     }
     const added = reconcile(store, items);
+    const changed = added.changed || [];
     saveStore(store);
     ensureProfile(store, true);
-    if (added.length && notify) {
-      const summary = added.slice(0, 6).map((a) => `${a.label}→${a.scenario || "未分类"}`).join("；");
-      notify(`function: 新发现 ${added.length} 个插件/技能，已归类：${summary}${added.length > 6 ? " …" : ""}`, "info");
+    if ((added.length || changed.length) && notify) {
+      const parts = [];
+      if (added.length) {
+        const summary = added.slice(0, 6).map((a) => `${a.label}→${a.scenario || "未分类"}`).join("；");
+        parts.push(`新发现 ${added.length} 个插件/技能，已归类：${summary}${added.length > 6 ? " …" : ""}`);
+      }
+      if (changed.length) {
+        const summary = changed.slice(0, 4).map((c) => `${c.label}（${c.reason}）`).join("；");
+        parts.push(`${changed.length} 个已装条目新增能力：${summary}${changed.length > 4 ? " …" : ""}`);
+      }
+      notify(`function: ${parts.join("；")}；都已进入本次可选项`, "info");
     }
     return added;
   };
@@ -2652,10 +2675,12 @@ export default function functionMenu(pi) {
     description: "Pi-function：/function 打开子功能菜单（装配 / 工作流 / 画像 / 扫描 / 状态 / 统计 / 还原 / 归类）；带需求文本时动态分析并组合插件与技能",
     handler: async (rawArgs, ctx) => {
       captureBaseline();
-      const args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
+      let args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
+      // 每次调用（含所有子功能）都重扫一遍目录：新装的插件/技能要能立刻进入候选，
+      // 而不是等下次 /reload。扫描结果会通知，没新东西就不出声。
+      const addedNow = scan(ctx?.hasUI ? (msg, lvl) => ctx.ui.notify(msg, lvl) : false);
 
       if (!args) {
-        scan(false);
         if (!requireUI(ctx)) return;
         const picked = await pickSubcommand(ctx);
         if (!picked) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
@@ -2681,14 +2706,12 @@ export default function functionMenu(pi) {
       }
 
       if (args === "assemble") {
-        scan(false);
         if (!requireUI(ctx)) return;
         await runAssemble(ctx);
         return;
       }
 
       if (args === "workflow") {
-        scan(false);
         if (!requireUI(ctx)) return;
         const workflows = await pickManyFrom(ctx, "选工作流（可多选）", orderWorkflows(), (w) => `${w.id} · ${w.title}`, 3);
         if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
@@ -2703,19 +2726,25 @@ export default function functionMenu(pi) {
       }
 
       if (args === "scan") {
-        const added = scan(false);
+        const added = addedNow;
+        const changedNow = addedNow.changed || [];
         const profile = ensureProfile(store);
         const unassigned = profile?.unassigned || [];
         const total = Object.keys(profile?.itemInfo || {}).length;
-        const head = added.length ? `扫描完成：新增 ${added.length} 个，已自动归类` : "扫描完成：没有新插件/技能";
+        const head = added.length || changedNow.length
+          ? `扫描完成：新增 ${added.length} 个，另有 ${changedNow.length} 个条目新增能力，已自动归类`
+          : "扫描完成：没有新插件/技能";
         const tail = unassigned.length
           ? `\n未归类 ${unassigned.length}/${total} 个（用 /function assign <item> <scenario> 指定）：${unassigned.slice(0, 5).join("、")}${unassigned.length > 5 ? " …" : ""}`
           : `\n全部 ${total} 个条目都归入了能力角色`;
         ctx.ui.notify(head + tail, unassigned.length ? "warning" : "info");
-        if (added.length) {
+        if (added.length || changedNow.length) {
           pi.sendMessage({
             customType: "function-scan",
-            content: added.map((a) => `- ${a.label} → ${a.scenario || "未分类"}（${a.reason}）`).join("\n"),
+            content: [
+              ...added.map((a) => `- ${a.label} → ${a.scenario || "未分类"}（${a.reason}）`),
+              ...changedNow.map((c) => `- ${c.label} → ${c.scenario || "未分类"}（${c.reason}）`),
+            ].join("\n"),
             display: true,
           });
         }
@@ -2836,7 +2865,6 @@ export default function functionMenu(pi) {
           return;
         }
         if (!requireUI(ctx)) return;
-        scan(false);
         const workflows = comboIds.map((id) => workflowById(id)).filter(Boolean);
         const scenarios = comboIds.filter((id) => !workflowById(id)).map((id) => SCENARIOS.find((s) => s.id === id)).filter(Boolean);
         const workflow = comboWorkflows(workflows) || (scenarios.length ? workflowById(recommendWorkflow(scenarios[0])) : null);
@@ -2852,7 +2880,6 @@ export default function functionMenu(pi) {
         return;
       }
 
-      scan(false);
       const analysis = analyzeNeed(args, store);
       const recommended = recommendWorkflow(analysis.intents[0]?.scenario);
 
