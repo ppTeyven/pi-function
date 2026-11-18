@@ -170,6 +170,10 @@ const STYLE_ROLES = {
   正式: "docx", 口语: "writing", 幽默: "writing", 克制: "writing", 专业: "writing", 自然: "writing",
 };
 
+// 单字也要认：“画一张图”“剪个视频”“译成英文”里的单字就是动作。
+// 不并进 TAG_VOCAB：单字做子串匹配会把「动画/规划/漫画」全拓进来。
+const SINGLE_DEEDS = { 画: "design", 剪: "video", 译: "i18n", 唱: "audio" };
+
 const TAG_VOCAB = {
   表格: "data", 数据: "data", 图表: "data", 透视: "data", csv: "data", sql: "data", 统计: "data",
   幻灯片: "slides", ppt: "slides", 演示: "slides", 路演: "slides", 讲义: "slides",
@@ -1723,15 +1727,28 @@ function wordTokens(need) {
 }
 
 /**
- * 逐词核对：需求拆出的每个词都去所有条目里找一遍，结果分三类：
- * - matched：有少数条目写到了它（当作证据，附最强条目）
- * - generic：大半条目都写到（知道但不当作证据）
- * - unmatched：全库没有任何条目提到（最需要确认的：用户可能真要做）
+ * 逐词核对：需求拆出的每个词都必须有归属，不允许“没归类就不存在”。
+ * 桶：matched（少数条目写过）、generic（大多数条目都写）、unmatched（全库没提）、
+ *      filler（虚词/量词）、single（单字）、deeds（动作/风格词典命中）。
+ * 不变式：accounted === total。
  */
 function wordAudit(need, items = catalogTexts()) {
   const tokens = wordTokens(need);
   const limit = Math.max(2, Math.round(items.length * 0.15));
-  const rows = tokens.map((term) => {
+  const matched = new Map();
+  const generic = new Set();
+  const unmatched = new Set();
+  const filler = new Set();
+  const single = new Set();
+  const deeds = deedWords(need);
+  const deedTerms = new Set(deeds.map((d) => d.term));
+  const add = (set, term) => { if (!set.has(term)) set.add(term); };
+  const byToken = new Map(); // 每个 token 的最终归属；accounted === total 靠它保证
+  for (const term of tokens) {
+    const trimmed = term.replace(WORD_TRIM_HEAD, "").replace(WORD_TRIM_TAIL, "");
+    // 动作/风格词由词典扫描负责，不重复归类
+    if (deedTerms.has(term) || (trimmed && deedTerms.has(trimmed))) { byToken.set(term, "deed"); continue; }
+    if (AUDIT_STOP.has(term) || NEED_STOP.has(term)) { add(filler, term); byToken.set(term, "filler"); continue; }
     let df = 0;
     let best = null;
     for (const it of items) {
@@ -1739,22 +1756,41 @@ function wordAudit(need, items = catalogTexts()) {
       df += 1;
       if (it.id < (best?.id || "\uffff")) best = { id: it.id, kind: it.kind };
     }
-    return { term, df, best };
-  });
-  const matched = rows
-    .filter((x) => x.df > 0 && x.df <= limit && x.term.length >= 2 && !GENERIC_TERMS.has(x.term))
-    .filter((x) => !rows.some((y) => y.term !== x.term && y.term.includes(x.term) && y.term.length > x.term.length))
-    .sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term))
-    .map((x) => ({ term: x.term, item: x.best.id, kind: x.best.kind, score: Number((1 + x.term.length / 10).toFixed(2)) }));
-  const generic = rows.filter((x) => x.df > limit).map((x) => x.term);
-  const unmatched = uniq(rows
-    .filter((x) => x.df === 0)
-    .map((x) => x.term.replace(WORD_TRIM_HEAD, "").replace(WORD_TRIM_TAIL, ""))
-    .filter((t) => t.length >= 2 && !AUDIT_STOP.has(t) && !NEED_STOP.has(t) && !GENERIC_TERMS.has(t)))
-    .filter((t) => !tokens.some((o) => o !== t && o.includes(t) && rows.find((r) => r.term === o)?.df > 0))
-    .sort((a, b) => b.length - a.length || a.localeCompare(b))
-    .slice(0, 6);
-  return { total: tokens.length, matched, generic: generic.slice(0, 8), unmatched, deeds: deedWords(need) };
+    if (df > limit || GENERIC_TERMS.has(term)) { add(generic, term); byToken.set(term, "generic"); continue; }
+    if (df > 0) {
+      // 单字即便被写过也不当证据，但要记下来（不许静默消失）
+      if (/^[\u4e00-\u9fff]$/.test(term)) { add(single, term); byToken.set(term, "single"); continue; }
+      matched.set(term, { term, item: best.id, kind: best.kind, score: Number((1 + term.length / 10).toFixed(2)) });
+      byToken.set(term, "matched");
+      continue;
+    }
+    if (/^[\u4e00-\u9fff]$/.test(term)) { add(single, term); byToken.set(term, "single"); continue; }
+    const key = trimmed;
+    if (key.length >= 2 && !AUDIT_STOP.has(key) && !NEED_STOP.has(key) && !GENERIC_TERMS.has(key)) {
+      add(unmatched, key);
+      byToken.set(term, "unmatched");
+    } else {
+      add(filler, term);
+      byToken.set(term, "filler");
+    }
+  }
+  const sortedUnmatched = [...unmatched].sort((a, b) => b.length - a.length || a.localeCompare(b));
+  const matchedList = [...matched.values()].sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term));
+  const counts = { matched: 0, generic: 0, unmatched: 0, filler: 0, single: 0, deed: 0 };
+  for (const bucket of byToken.values()) counts[bucket] += 1;
+  const accounted = byToken.size;
+  return {
+    total: tokens.length,
+    accounted,
+    counts,
+    matched: matchedList,
+    generic: [...generic].slice(0, 8),
+    unmatched: sortedUnmatched,
+    filler: [...filler].slice(0, 8),
+    single: [...single].slice(0, 8),
+    deeds,
+    pending: Math.max(0, sortedUnmatched.length - 2),
+  };
 }
 
 function roleCovered(role) {
@@ -1771,6 +1807,7 @@ function deedWords(need) {
   const sources = [
     ...Object.entries(ACTION_ROLES).map(([term, role]) => ({ term, role, kind: "action" })),
     ...Object.entries(STYLE_ROLES).map(([term, role]) => ({ term, role, kind: "style" })),
+    ...Object.entries(SINGLE_DEEDS).map(([term, role]) => ({ term, role, kind: "action" })),
   ];
   for (const d of sources) {
     if (seen.has(d.term) || !t.includes(flatText(d.term))) continue;
@@ -2036,10 +2073,14 @@ function buildProposal(pi, scenario, store, workflow = null) {
   if (scenario.dynamic && scenario.analysis?.audit?.words) {
     const w = scenario.analysis.audit.words;
     lines.push("**逐词核对（每个词都查过）**");
-    lines.push(`- 拆出 ${w.total} 个词：有对应条目 ${w.matched.length} 个、通用词 ${w.generic.length} 个、本机没提到 ${w.unmatched.length} 个`);
+    const c = w.counts || {};
+    lines.push(`- 拆出 ${w.total} 个词，全部有归属：命中 ${c.matched ?? w.matched.length} 个、通用 ${c.generic ?? w.generic.length} 个、本机没提到 ${c.unmatched ?? w.unmatched.length} 个、虚词 ${c.filler ?? w.filler?.length ?? 0} 个、单字 ${c.single ?? w.single?.length ?? 0} 个、动作/风格 ${c.deed ?? 0} 个`);
     for (const m of w.matched.slice(0, 8)) lines.push(`- 「${m.term}」→ \`${m.kind === "skill" ? "skill:" : ""}${m.item}\``);
     if (w.deeds?.length) lines.push(`- 动作/风格：${w.deeds.map((d) => `${d.term}→${CAPABILITIES[d.role]?.label || d.role}${d.covered ? "（已覆盖）" : "（本机没有）"}`).join("、")}`);
-    if (w.unmatched.length) lines.push(`- 本机没提到：${w.unmatched.map((t) => `「${t}」`).join("、")}（装配前会问你要不要去找）`);
+    if (w.unmatched.length) {
+      lines.push(`- 本机没提到：${w.unmatched.map((t) => `「${t}」`).join("、")}（装配前会问你要不要去找）`);
+      if (w.pending > 0) lines.push(`- 另有 ${w.pending} 个没提到的词本轮不问，但已记录在核对结果里`);
+    }
     lines.push("");
   }
   const gaps = capabilityGaps(scenario, store, workflow);

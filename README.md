@@ -335,6 +335,29 @@ wordTokens("帮我把这份报告加上水印并转成二维码")
 
 `「水印」要当成需求吗？` → 是 turns it into a gap (`source: "word"`) and goes through the same find-skill path; 否 drops it for this turn. Function words are filtered by `AUDIT_STOP` plus prefix/suffix trimming (`把/并/转成/的/了`), so the questions stay about nouns you actually named.
 
+#### Nothing is dropped silently (the completeness invariant)
+
+An earlier version of this file could lose words three ways: single characters were excluded from matching *and* from questions, `generic` words were recorded only as "seen" and never used, and the unmatched list was truncated to six before being asked about. "Every word matters" is not something you can claim by inspection — it needs an invariant.
+
+`wordAudit` now writes every token into a per-token ledger and derives the buckets from it:
+
+```js
+byToken.set(term, "matched" | "generic" | "unmatched" | "filler" | "single" | "deed")
+accounted = byToken.size        // === total, always
+counts    = tally by bucket     // sum(counts) === total, always
+```
+
+| bucket | what it means | asked? |
+|---|---|---|
+| `matched` | 1…15% of items mention it, with the strongest one | — (evidence) |
+| `generic` | >15% mention it → cannot locate an item | no, but recorded |
+| `unmatched` | no item mentions it | top 2; the rest stay in `pending` |
+| `filler` | 虚词/量词 after prefix/suffix trimming | no, recorded |
+| `single` | single CJK characters (never used as evidence) | no, recorded |
+| `deed` | verb/adjective lexicon hit (incl. single-char `画/剪/译` via `SINGLE_DEEDS`) | via `source: "deed"` gaps |
+
+The invariant is tested, not documented: `tests/complete.test.mjs` asserts `accounted === total` and `sum(counts) === total` over a corpus that includes numbers, English, full-width punctuation and empty input. Lose a word and the suite goes red.
+
 #### Verbs and adjectives count too
 
 Nouns are the obvious half. `润色` and `极简` name a capability just as much as `海报` does, and they were being lost two ways: `GENERIC_TERMS` dropped every verb that appears in many descriptions (`生成`, `优化`), and the segmenter has no reason to treat a verb as important.
@@ -450,7 +473,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 191 cases, repository fixture — runs on any machine
+npm test          # 200 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -467,6 +490,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `two-problems.test.mjs` | regression for the two reported issues: installed-but-unused, bare words guessed | 20 |
 | `words.test.mjs` | word segmentation, per-word buckets, unmatched-word asks | 9 |
 | `deeds.test.mjs` | verbs/adjectives → roles, deed gaps, panel wording | 9 |
+| `complete.test.mjs` | completeness invariant: every token accounted for | 9 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

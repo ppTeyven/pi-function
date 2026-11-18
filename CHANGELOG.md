@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.19.0
+
+- **Completeness invariant.** `wordAudit` now keeps a per-token ledger (`byToken`) and derives its buckets from it, so `accounted === total` and `sum(counts) === total` hold for any input. Previously three things could vanish: single characters (excluded from both matching and questions), `generic` words (recorded as "seen" only) and unmatched words past the top 5.
+- Buckets are now explicit: `matched / generic / unmatched / filler / single / deed`, each with a count; `pending` reports how many unmatched words were not asked this turn but are still recorded.
+- `filler` words are recorded instead of dropped. Trimming to an empty string (`我把`) now lands in `filler` rather than falling back to the raw token and polluting `unmatched`.
+- Single-character actions: `SINGLE_DEEDS = { 画: design, 剪: video, 译: i18n, 唱: audio }`, matched by the lexicon scan only — deliberately **not** merged into `TAG_VOCAB`, where a one-character substring would pull in `动画 / 规划 / 漫画`.
+- Proposal wording: `拆出 N 个词，全部有归属：命中 a / 通用 b / 没提到 c / 虚词 d / 单字 e / 动作风格 f`, plus `另有 k 个没提到的词本轮不问，但已记录在核对结果里`.
+- New `tests/complete.test.mjs` (9 cases) asserts the invariant over numbers, English, full-width punctuation and empty input. Total 200.
+
 ## 2.18.0
 
 - **Verbs and adjectives are requirements too.** `ACTION_ROLES` (润色/精简/校对/摘要/翻译/抓取/调度/备份/部署/去重/合并/可视化/剪辑/转码/渲染/重构/调试/审查/审计/监控…) and `STYLE_ROLES` (极简/简洁/干净/高级/精致/优雅/可爱/复古/科技感/商务/小清新/扁平/拟物/正式/口语/幽默/克制/专业) are matched against the **raw request text**, without segmentation, so they cannot be filtered out by `GENERIC_TERMS` or mangled by the word splitter.
