@@ -684,6 +684,8 @@ function storePath() {
 // ---------------------------------------------------------------------------
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
+// 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
+const EXT_VERSION = "2.21.3";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2773,6 +2775,7 @@ export default function functionMenu(pi) {
             : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}${activeScenario.dynamic ? "（动态）" : ""}`
           : "未装配";
         lines.push(`当前组合：${label}`);
+        lines.push(`扩展版本：v${EXT_VERSION}`);
         if (activeScenario?.dynamic) {
           lines.push(`需求：${activeScenario.when}`);
           lines.push(`动态插件：${activeScenario.plugins.length ? activeScenario.plugins.join(", ") : "（无）"}`);
@@ -3120,4 +3123,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { EXT_VERSION, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.21.3
+
+- `/function status` now prints `扩展版本：vX.Y.Z`, and `EXT_VERSION` is exported. When a reload seems not to apply, this answers "which build is actually running?" in one command; a test keeps it equal to `package.json`.
+- Total 221.
+
 ## 2.21.2
 
 - `/function` argument completion: the first row is now `menu` ("直接使用 /function" = 工作流 × 场景菜单), so Tab/Enter lands on the menu instead of `assemble`. The literal empty-value row didn't survive the web UI's list rendering (the provider returns it, the renderer drops it), so an explicit subcommand is used instead.

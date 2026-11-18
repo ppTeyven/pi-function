@@ -63,3 +63,9 @@ test("K4 menu 参数等同于不填参数（走子命令菜单，不当成需求
   await state.run("帮我做个海报", ctx);
   assert.ok(state.messages.length > 0, "普通文本应该照旧走动态分析");
 });
+
+test("K5 扩展版本号与 package.json 一致（用来确认 /reload 加载的是哪一版）", async () => {
+  const fs = await import("node:fs");
+  const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(m.EXT_VERSION, pkg.version);
+});
