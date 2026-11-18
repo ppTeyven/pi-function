@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.13.0
+
+- Multi-select is now a single step: both pickers print the full option list and ask once for numbers (`1,3`) or ids (`debug,process`). The old "add another?" confirmation loop is gone.
+- Cap stays at 3 picks; extra tokens are ignored.
+- Menu picks no longer open a second dialog per item, so the flow is: sub-function → workflow(s) → scenario(s) → confirm.
+- Tests updated to drive `ctx.ui.input`; legacy `test.mjs` flow migrated too. Total 135.
+
 ## 2.12.0
 
 - Stage B: capability tags. `TAG_VOCAB` maps Chinese capability words (表格/图表/公文/爬虫/海报/翻译/…) to capability roles; every profile item now exposes `tags` (name + description + tools + commands + non-infra roles). `PROFILE_VERSION` bumped to 7 so profiles rebuild.

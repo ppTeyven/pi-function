@@ -49,13 +49,14 @@ function makeHarness() {
     getAllSkills: () => [],
   };
   m.default(pi);
-  const ctx = (selects = [], confirms = []) => ({
+  // 菜单多选走 ctx.ui.input（一次输入编号，逗号分隔），不再逐个追问
+  const ctx = (selects = [], confirms = [], inputs = []) => ({
     hasUI: true,
     ui: {
       notify: (text) => state.notices.push(String(text)),
       select: async () => selects.shift() ?? null,
       confirm: async () => confirms.shift() ?? false,
-      input: async () => null,
+      input: async () => inputs.shift() ?? null,
       setEditorText: () => {},
     },
   });
@@ -75,20 +76,20 @@ test("L5 组合装配：会话记录 id 为 combo，workflow 正确", async () =
 test("L5 装配真的改写工具集：保留核心、启用相关、停用无关", async () => {
   const { state, ctx } = makeHarness();
   // 用 direct 工作流隔离变量：它不额外带能力，剩下的工具集合完全由场景决定
-  const selects = ["direct · 直接产出"];
-  const confirms = [false, true]; // 不再叠加工作流 → 确认装配
-  await state.run("plugin", ctx(selects, confirms));
+  // 直接输入 id 比输入编号稳（推荐项会改变编号顺序）；confirms=[true] → 确认装配
+  await state.run("plugin", ctx([], [true], ["direct"]));
   assert.ok(state.active.includes("read"), "核心工具必须保留");
   assert.ok(state.active.includes("lens_diagnostics"), "plugin 场景应启用 pi-lens 工具");
   assert.ok(!state.active.includes("todo"), "不相关插件工具应被停用");
   assert.ok(state.setCalls > 0, "应调用 setActiveTools");
 });
 
-test("L5 workflow 多选：只选工作流时记录 workflow 含 +", async () => {
+test("L5 workflow 多选：一次输入两个编号，记录 workflow 含 +", async () => {
   const { state, ctx } = makeHarness();
-  const selects = ["debug · 排查修复", "review-gate · 评审 / 迭代守门"];
-  const confirms = [true, false];
-  await state.run("workflow", ctx(selects, confirms));
+  const workflows = m.WORKFLOWS;
+  const a = workflows.findIndex((w) => w.id === "debug") + 1;
+  const b = workflows.findIndex((w) => w.id === "review-gate") + 1;
+  await state.run("workflow", ctx([], [], [`${a},${b}`]));
   const entry = state.entries.at(-1);
   assert.ok(entry?.d.workflow?.includes("+"), `workflow 未合并：${entry?.d.workflow}`);
 });

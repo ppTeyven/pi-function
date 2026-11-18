@@ -346,7 +346,8 @@ let flowActive = ["read", "mcp"];
 const commands = {};
 const entries = [];
 const prompts = [];
-const selections = ["assemble", "outline", "webpage"];
+const selections = ["assemble"];
+const inputs = [];
 const fakeFlowPi = {
   getAllTools: () => flowTools,
   getActiveTools: () => flowActive,
@@ -367,44 +368,42 @@ const flowCtx = {
       const prefix = selections.shift();
       return options.find((option) => option.startsWith(prefix));
     },
-    // 多选循环会问“要再叠加一个吗”，测试里默认拒绝，只确认最终的装配
-    confirm: async (title, detail) => !String(detail || "").includes("叠加"),
+    // 一次多选：编号列表由 input 一次给出；confirm 只用于确认装配
+    input: async () => inputs.shift() ?? null,
+    confirm: async () => true,
     notify: () => {},
     setEditorText: () => {},
   },
 };
 {
+  prompts.length = 0;
+  inputs.push("outline", "webpage"); // 第 1 步工作流、第 2 步场景，各一次输入
   await commands.function.handler("", flowCtx);
   assert.match(prompts[0], /子功能/);
-  assert.match(prompts[1], /工作流/);
-  assert.match(prompts[2], /任务/);
   assert.equal(entries.at(-1).data.workflow, "outline");
   assert.equal(entries.at(-1).data.id, "webpage");
 }
 {
   prompts.length = 0;
-  selections.push("review-gate");
+  inputs.push("review-gate");
   await commands.function.handler("workflow", flowCtx);
-  assert.equal(prompts.length, 1, "workflow mode must not open a task picker");
-  assert.match(prompts[0], /工作流/);
-  assert.doesNotMatch(prompts[0], /任务/);
+  assert.equal(prompts.length, 0, "workflow mode must not open a task picker");
   assert.equal(entries.at(-1).data.id, "workflow");
   assert.equal(entries.at(-1).data.workflow, "review-gate");
 }
 {
   prompts.length = 0;
-  selections.push("outline");
+  inputs.push("outline");
   await commands.function.handler('"做一个网页"', flowCtx);
-  assert.match(prompts[0], /工作流/);
-  assert.equal(prompts.length, 1, "free-text need must not open a task picker");
+  assert.equal(prompts.length, 0, "free-text need must not open a select picker");
   assert.equal(entries.at(-1).data.id, "custom");
   assert.equal(entries.at(-1).data.workflow, "outline");
 }
 {
   prompts.length = 0;
-  selections.push("direct");
+  inputs.push("direct");
   await commands.function.handler('"帮我把客厅灯光调暖一点"', flowCtx);
-  assert.equal(prompts.length, 1);
+  assert.equal(prompts.length, 0);
   assert.equal(entries.at(-1).data.id, "custom");
 }
 process.env.PI_CODING_AGENT_DIR = previousAgent;

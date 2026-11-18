@@ -1915,44 +1915,45 @@ export default function functionMenu(pi) {
     });
   };
 
-  // 多选：一次一个地选，选完问要不要继续叠加；上限 3，避免把整个工具集再拉回来。
-  const pickMany = async (ctx, pickOne, limit = 3) => {
+  // 多选：一次列全部选项，用户一次输入编号（逗号分隔），不再逐个追问"要不要再叠加"。
+  const pickManyFrom = async (ctx, title, items, format, limit = 3) => {
+    if (!items.length) return [];
+    const lines = items.map((item, i) => `${i + 1}. ${format(item)}`);
+    pi.sendMessage({
+      customType: "function-picker",
+      content: (() => {
+        const NL = String.fromCharCode(10);
+        return `**${title}**（可多选，最多 ${limit} 个）${NL}${lines.join(NL)}${NL}${NL}输入编号，逗号分隔（如 1,3）；也可以直接输 id。直接回车取消。`;
+      })(),
+      display: true,
+    });
+    const raw = await ctx.ui.input(title, "例如 1,3");
+    if (!raw) return [];
+    const tokens = String(raw).split(/[,，、+\s]+/).filter(Boolean);
     const picked = [];
-    for (let i = 0; i < limit; i += 1) {
-      const one = await pickOne();
-      if (!one) break;
-      picked.push(one);
+    for (const token of tokens) {
+      const num = Number(token);
+      const item = Number.isInteger(num) && num >= 1 && num <= items.length
+        ? items[num - 1]
+        : items.find((it) => it.id === token);
+      if (item && !picked.includes(item)) picked.push(item);
       if (picked.length >= limit) break;
-      const more = await ctx.ui.confirm(
-        `已选 ${picked.length} 个：${picked.map((x) => x.title || x.scenario?.title || x.id).join(" + ")}`,
-        "要再叠加一个吗？叠加会同时启用两边的能力（上限 3）。",
-      );
-      if (!more) break;
     }
     return picked;
   };
 
-  const pickWorkflow = async (ctx, recommendedId = null) => {
-    const sel = await ctx.ui.select("第 1 步：先选工作流（怎么执行）", workflowOptions(recommendedId));
-    if (!sel) return null;
-    const id = sel.split(" · ")[0];
-    return workflowById(id);
+  const orderWorkflows = (recommendedId = null) => {
+    const recommended = recommendedId ? workflowById(recommendedId) : null;
+    return recommended ? [recommended, ...WORKFLOWS.filter((w) => w.id !== recommended.id)] : WORKFLOWS;
   };
 
-  const pickTask = async (ctx, ranked = []) => {
-    const ordered = ranked.length
-      ? [
-          ...ranked.map((r) => r.scenario),
-          ...SCENARIOS.filter((s) => !ranked.some((r) => r.scenario.id === s.id)),
-        ]
-      : SCENARIOS;
-    const sel = await ctx.ui.select("第 2 步：再选任务场景（做什么）", menuOptions(store, ordered));
-    if (!sel) return null;
-    const id = sel.split(" · ")[0];
-    const pick = SCENARIOS.find((s) => s.id === id) || null;
-    if (!pick) return null;
-    const hit = ranked.find((r) => r.scenario.id === pick.id);
-    return { scenario: pick, reason: hit ? hit.hits.slice(0, 5).join(" / ") || pick.id : "手动选择" };
+  const orderScenarios = (ranked = []) => (ranked.length
+    ? [...ranked.map((r) => r.scenario), ...SCENARIOS.filter((s) => !ranked.some((r) => r.scenario.id === s.id))]
+    : SCENARIOS);
+
+  const formatScenario = (scenario, ranked = []) => {
+    const hit = ranked.find((r) => r.scenario.id === scenario.id);
+    return `${scenario.id} · ${scenario.title}${hit ? `  ← 命中 ${hit.hits.slice(0, 2).join("/") || hit.scenario.id}` : ""}`;
   };
 
 
@@ -1973,14 +1974,14 @@ export default function functionMenu(pi) {
   };
 
   const runAssemble = async (ctx) => {
-    pi.sendMessage({ customType: "function-catalog", content: buildCatalog(pi, store), display: true });
-    const workflows = await pickMany(ctx, () => pickWorkflow(ctx));
+    const workflows = await pickManyFrom(ctx, "第 1 步：选工作流（怎么执行）", orderWorkflows(), (w) => `${w.id} · ${w.title}
+   ${w.picker || w.when}`);
     if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
     const workflow = comboWorkflows(workflows);
-    const tasks = await pickMany(ctx, () => pickTask(ctx));
-    if (!tasks.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
-    const scenario = comboScenarios(tasks.map((t) => t.scenario));
-    const reason = tasks.map((t) => t.reason).join("；") || "菜单选择";
+    const scenarios = await pickManyFrom(ctx, "第 2 步：选任务场景（做什么）", orderScenarios(), (s) => formatScenario(s));
+    if (!scenarios.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+    const scenario = comboScenarios(scenarios);
+    const reason = "菜单多选";
     const ok = await confirmScenario(ctx, scenario, reason, workflow);
     if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
     const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
@@ -2067,7 +2068,7 @@ export default function functionMenu(pi) {
       if (args === "workflow") {
         scan(false);
         if (!requireUI(ctx)) return;
-        const workflows = await pickMany(ctx, () => pickWorkflow(ctx));
+        const workflows = await pickManyFrom(ctx, "选工作流（可多选）", orderWorkflows(), (w) => `${w.id} · ${w.title}`, 3);
         if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
         const workflow = comboWorkflows(workflows);
         const scenario = workflowOnlyScenario(workflow);
@@ -2227,7 +2228,7 @@ export default function functionMenu(pi) {
         return;
       }
 
-      const workflows = await pickMany(ctx, () => pickWorkflow(ctx, recommended));
+      const workflows = await pickManyFrom(ctx, "选工作流（可多选，推荐的在第 1 个）", orderWorkflows(recommended), (w) => `${w.id} · ${w.title}${w.id === recommended ? "  ← 推荐" : ""}`);
       if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
       const workflow = comboWorkflows(workflows);
       const scenario = dynamicScenario(args, analysis, workflow);

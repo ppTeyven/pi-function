@@ -226,13 +226,13 @@ function makeHarness() {
     getCommands: () => [], getAllSkills: () => [],
   };
   m.default(pi);
-  const ctx = (selects = [], confirms = []) => ({
+  const ctx = (selects = [], confirms = [], inputs = []) => ({
     hasUI: true,
     ui: {
       notify: (t) => state.notices.push(String(t)),
       select: async () => selects.shift() ?? null,
       confirm: async () => confirms.shift() ?? false,
-      input: async () => null,
+      input: async () => inputs.shift() ?? null,
       setEditorText: () => {},
     },
   });
@@ -257,14 +257,15 @@ test("L5 场景法 · 主流程 + 取消：组合装配 / 取消不落盘", asyn
   assert.match(state.entries[0].d.id, /debug\+process/);
 });
 
-test("L5 场景法 · 菜单多选上限 3，超出不再追问", async () => {
+test("L5 场景法 · 菜单一次多选：超上限只取前 3 个", async () => {
   const { state, ctx } = makeHarness();
-  const selects = ["debug · 排查修复", "review-gate · 评审 / 迭代守门", "parallel · 并行探索", "process · 流程"];
-  const confirms = [true, true, true, true, false];
-  await state.run("assemble", ctx(selects, confirms));
+  // 第 1 步输入 4 个工作流编号（上限 3），第 2 步输入 1 个场景编号
+  await state.run("assemble", ctx([], [true], ["1,2,3,4", "1"]));
   const picked = state.notices.find((n) => n.includes("已装配"));
   assert.ok(picked, "应完成装配");
-  assert.ok(!/parallel.*\+.*process/.test(picked), "不得叠加第 4 个");
+  const entry = state.entries.at(-1);
+  const ids = String(entry?.d?.workflow || "").split("+").filter(Boolean);
+  assert.equal(ids.length, 3, `应只保留 3 个工作流，实际 ${ids.join("+")}`);
 });
 
 // ---------------------------------------------------------------- G8 性能
