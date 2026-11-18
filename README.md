@@ -266,10 +266,58 @@ This plugin never hardcodes plugin or skill names. It classifies whatever is ins
 - **What is *not* guaranteed**: keyword tables are tuned for Chinese office/dev tasks; a non-Chinese or very domain-specific workflow may need scenario keyword edits. Capability patterns target common naming; a plugin named nothing like its function needs `assign`.
 - **No network calls, no writes outside the agent dir**: store and profile live in `~/.pi/agent/` (overridable with `PI_FUNCTION_STORE` / `PI_FUNCTION_PROFILE`, and `PI_CODING_AGENT_DIR` for the root).
 
+## Customizing for your domain
+
+Everything the assembler knows is data at the top of `function-menu.js` — no rebuild, no reinstall, just edit and `/reload`:
+
+1. **Add or retarget a scenario** (`SCENARIOS`). `keywords` are what users type; `when`/`brief` are what the model reads.
+
+```js
+{
+  id: "bioinfo", group: "专业", title: "生信分析 / 测序流程",
+  when: "测序数据质控、比对、差异表达与结果图",
+  keywords: ["测序", "生信", "fastq", "比对", "差异表达", "bioinformatics"],
+  brief: "先确认物种与参考基因组，再定质控阈值；结果要能追溯到命令与版本。",
+},
+```
+
+2. **Say what must be present** (`SCENARIO_CONTRACTS`). `required` is a hard gate — missing it prints 漏用 instead of silently assembling; `forbidden` keeps known noise out.
+
+```js
+bioinfo: { required: ["bio-data", "code-intel"], optional: ["data", "docs"], forbidden: ["slides"] },
+```
+
+3. **Define a capability role** (`CAPABILITIES`) so your plugins/skills land somewhere. Patterns are tested against name, tool names, commands and description.
+
+```js
+"bio-data": { label: "生信 / 组学数据", package: /bio|genom|bwa|samtools/i, skill: /bio|genom|fastq/i, terms: /测序|生信|基因组|差异表达/i },
+```
+
+4. **Bind roles to the scenario** (`SCENARIO_CAPABILITIES`) and, if it has a fixed run order, add a workflow (`WORKFLOWS` + `WORKFLOW_CAPABILITIES` + `WORKFLOW_SKILL_PATTERNS`).
+
+Check your work:
+
+```bash
+npm test                                  # fixtures stay green
+/function profile                          # which items landed in which role
+/function "<your need>"                    # see the proposal, incl. coverage gaps
+/function assign skill:your-skill bioinfo  # correct a misclassification; it also boosts future picks
+```
+
+## Learning from your own usage (stage D)
+
+Every assembly records which items it put in (`usage` in `function-menu.json`), and `/function assign` records manual corrections (`manualAdds`). Both add a bounded bonus when scoring the same scenario again:
+
+```
+bonus = min(1.2, 0.25 × ln(1 + times_assembled) + 0.8 if manually assigned)
+```
+
+The cap is deliberately below a name match (5 points), so feedback nudges ordering and never overrides evidence. Inspect or clear it with `/function stats` / `/function stats reset`. Nothing leaves your machine; the counters live in the same local store.
+
 ## Development
 
 ```bash
-npm test          # 111 cases, repository fixture — runs on any machine
+npm test          # 121 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -279,6 +327,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `contracts.test.mjs` | unit / config integrity | 29 |
 | `allocation.test.mjs` | contracts, golden needs, invariants, persistence | 44 |
 | `journeys.test.mjs` | real user requests (PPT deck, big project, vague one-liner…) | 29 |
+| `feedback.test.mjs` | usage feedback: boost caps, manual overrides, stats/reset | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.

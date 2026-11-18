@@ -698,6 +698,9 @@ function loadStore() {
     updatedAt: raw.updatedAt || nowIso(),
     known: raw.known && typeof raw.known === "object" ? raw.known : {},
     overrides: raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {},
+    // 使用反馈（阶段 D）：装配计数与手动归类计数
+    usage: raw.usage && typeof raw.usage === "object" ? raw.usage : {},
+    manualAdds: raw.manualAdds && typeof raw.manualAdds === "object" ? raw.manualAdds : {},
     isNew: false,
   };
 }
@@ -829,6 +832,7 @@ function analyzeNeed(text, store = { known: {} }) {
     ? intents.filter((r, i) => i === 0 || r.score >= topIntent.score * 0.8)
     : [];
   const wantedRoles = new Set(roleIntents.flatMap((r) => SCENARIO_CAPABILITIES[r.scenario.id] || []));
+  const topScenario = intents[0]?.scenario; // 使用反馈加分与覆盖兜底都按首要场景算
   const inWantedRole = (info) => {
     if (!wantedRoles.size) return true;
     // 没归类（roles 为空）或根本不在画像里的条目不受角色闸门限制，
@@ -864,7 +868,7 @@ function analyzeNeed(text, store = { known: {} }) {
       const info = ACTIVE_PROFILE?.itemInfo?.[pkg];
       const own = termScoreDistinct(terms, `${pkg} ${info?.description || ""}`);
       if (!strong && own.score === 0) continue;
-      addPkg(pkg, r.score + 1 + own.score, `任务信号：${r.scenario.title}（${signal}）`);
+      addPkg(pkg, r.score + 1 + own.score + usageBoost(store, r.scenario.id, pkg), `任务信号：${r.scenario.title}（${signal}）`);
     }
     const curated = scenarioSkillIds(store, r.scenario.id).slice(0, DYNAMIC_LIMITS.perIntentSkills);
     curated.forEach((skill, idx) => {
@@ -875,7 +879,7 @@ function analyzeNeed(text, store = { known: {} }) {
       const reason = hit.score > 0
         ? `任务信号：${r.scenario.title}（${hit.hits.slice(0, 3).join(" / ")}）`
         : `任务候选：${r.scenario.title} 的首选技能`;
-      addSkill(skill, hit.score > 0 ? r.score + hit.score : r.score * 0.5, reason);
+      addSkill(skill, (hit.score > 0 ? r.score + hit.score : r.score * 0.5) + usageBoost(store, r.scenario.id, skill), reason);
     });
   }
 
@@ -885,7 +889,7 @@ function analyzeNeed(text, store = { known: {} }) {
     if (!inWantedRole(info)) continue;
     const roleText = (info.roles || []).map((r) => CAPABILITIES[r]?.label || r).join(" ");
     const hit = termScoreDistinct(terms, `${pkg} ${info.description || ""} ${roleText}`);
-    if (hit.score >= 1.5) addPkg(pkg, hit.score, `能力描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
+    if (hit.score >= 1.5) addPkg(pkg, hit.score + usageBoost(store, topScenario?.id, pkg), `能力描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
   }
 
   for (const [id, meta] of Object.entries(store.known || {})) {
@@ -895,12 +899,11 @@ function analyzeNeed(text, store = { known: {} }) {
     const hit = termScoreDistinct(terms, `${skill} ${meta.description || ""}`);
     // 未归类条目没有角色背书，命中门槛提高一档，否则任何描述都能蹭进来
     const bar = (ACTIVE_PROFILE?.itemInfo?.[skill]?.roles || []).length ? 1.5 : 2.4;
-    if (hit.score >= bar) addSkill(skill, hit.score, `技能描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
+    if (hit.score >= bar) addSkill(skill, hit.score + usageBoost(store, topScenario?.id, skill), `技能描述命中：${hit.hits.slice(0, 3).join(" / ")}`);
   }
 
   // 覆盖兜底：首要场景的必需能力，即使描述没命中也要补一个成员进来。
   // 不补的话，漏用会恰好发生在最该覆盖的那个场景上（例：报告场景缺写作技能）。
-  const topScenario = intents[0]?.scenario;
   if (topScenario) {
     for (const role of contractFor(topScenario).required) {
       const members = [
@@ -1265,6 +1268,28 @@ function comboSkillIds(scenario, store, workflow = null) {
   return uniq([...base, ...(workflow.skills || [])]);
 }
 
+// 使用反馈（阶段 D）：只记录"这次装配把谁放进去了"和"用户手动把谁归到哪个场景"，
+// 用它给同一场景下的条目加一点分。上限 1.2，永远压不过关键词命中（5 分）。
+const USAGE_BOOST_CAP = 1.2;
+function usageBoost(store, scenarioId, id) {
+  if (!scenarioId) return 0;
+  const key = String(id).replace(/^npm:/, "");
+  const used = store?.usage?.[scenarioId]?.[key] || 0;
+  const manual = store?.manualAdds?.[scenarioId]?.[key] || 0;
+  return Math.min(USAGE_BOOST_CAP, 0.25 * Math.log1p(used) + (manual ? 0.8 : 0));
+}
+
+function recordUsage(store, scenario, workflow = null) {
+  if (!store || !scenario) return;
+  const sid = scenario.comboIds?.length ? scenario.comboIds.join("+") : scenario.id;
+  store.usage = store.usage || {};
+  const bucket = store.usage[sid] = store.usage[sid] || {};
+  for (const raw of [...comboPackages(scenario, store, workflow), ...comboSkillIds(scenario, store, workflow)]) {
+    const key = String(raw).replace(/^npm:/, "");
+    bucket[key] = (bucket[key] || 0) + 1;
+  }
+}
+
 // 多选：场景/工作流可以用 + 组合（/function debug+process）。合并时只做并集与去重，不重新打分。
 function comboScenarios(scenarios) {
   const list = scenarios.filter(Boolean);
@@ -1620,6 +1645,8 @@ function applyScenario(pi, ctx, scenario, store, baseline, workflow = null) {
       "warning",
     );
   }
+  recordUsage(store, scenario, workflow);
+  saveStore(store);
   const coverage = auditCoverage(scenario, store, workflow);
   if (coverage.missing.length) {
     ctx?.ui?.notify?.("漏用检查：\n" + coverage.missing.map((m) => `- ${m.detail}`).join("\n"), "warning");
@@ -1883,6 +1910,7 @@ export default function functionMenu(pi) {
     { id: "profile", label: "能力画像 — 查看插件/技能的自动归类" },
     { id: "scan", label: "重新扫描 — 重建能力画像" },
     { id: "status", label: "当前装配 — 查看已启用的组合" },
+    { id: "stats", label: "分配统计 — 查看使用反馈与加分" },
     { id: "off", label: "还原工具集 — 恢复默认工具" },
     { id: "assign", label: "手动归类 — 指定插件/技能的归属" },
   ];
@@ -1981,6 +2009,33 @@ export default function functionMenu(pi) {
         return;
       }
 
+      if (args.startsWith("stats")) {
+        const reset = /reset|clear/i.test(args);
+        if (reset) {
+          store.usage = {};
+          store.manualAdds = {};
+          saveStore(store);
+          ctx.ui.notify("已清空使用统计", "info");
+          return;
+        }
+        const lines = ["## 分配统计（阶段 D 使用反馈）"];
+        const usage = Object.entries(store.usage || {});
+        if (!usage.length) {
+          lines.push("- 还没有记录：每次 /function 装配会累积一次");
+        } else {
+          for (const [sid, bucket] of usage.slice(0, 8)) {
+            const items = Object.entries(bucket).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k}×${v}`);
+            lines.push(`- ${sid}: ${items.join("、")}`);
+          }
+        }
+        const manual = Object.entries(store.manualAdds || {}).flatMap(([sid, bucket]) => Object.entries(bucket).map(([k, v]) => `${k}→${sid}×${v}`));
+        lines.push(manual.length ? `手动指定：${manual.slice(0, 8).join("、")}` : "手动指定：无");
+        lines.push("加分规则：0.25×log(1+装配次数) + 0.8（手动指定），上限 1.2");
+        pi.sendMessage({ customType: "function-stats", content: lines.join(String.fromCharCode(10)), display: true });
+        ctx.ui.notify(`统计已输出（${usage.length} 个场景有记录）`, "info");
+        return;
+      }
+
       if (args === "status") {
         const lines = [];
         const label = activeScenario
@@ -2035,6 +2090,12 @@ export default function functionMenu(pi) {
           firstSeen: store.known[id]?.firstSeen || nowIso(),
           missing: false,
         };
+        if (scenarioId !== "none" && scenarioId !== "infra") {
+          store.manualAdds = store.manualAdds || {};
+          const bucket = store.manualAdds[scenarioId] = store.manualAdds[scenarioId] || {};
+          const key = name.replace(/^npm:/, "");
+          bucket[key] = (bucket[key] || 0) + 1;
+        }
         saveStore(store);
         ctx.ui.notify(`已把 ${name} 指定到 ${scenarioId}`, "info");
         return;
@@ -2280,4 +2341,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { usageBoost, recordUsage, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

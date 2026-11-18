@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.10.0
+
+- Stage D usage feedback: every assembly records which packages/skills it enabled (`usage`), and `/function assign` records manual corrections (`manualAdds`). Both add a bounded bonus when scoring the same scenario again — `min(1.2, 0.25·ln(1+n) + 0.8 if assigned)`, deliberately below a name match (5 points).
+- `/function stats` shows per-scenario assembly counts and manual assignments; `/function stats reset` clears them. Nothing leaves the machine.
+- `loadStore` now persists `usage` / `manualAdds`, so feedback survives restarts.
+- README: "Customizing for your domain" (scenario → contract → capability role → workflow, with verification steps) and the stage D bonus formula.
+- Tests: +10 feedback cases (boost monotonicity/cap, per-scenario isolation, recordUsage, legacy store compatibility, stats/reset). Total 121.
+
 ## 2.9.0
 
 - Scenario capability contracts: every scenario now declares `required / optional / forbidden`, and `auditCoverage()` reports `not-installed` vs `not-selected` gaps instead of silently under-allocating.
