@@ -57,7 +57,7 @@ test("W8 analyzeNeed 会带上逐词核对结果，面板也列出来", () => {
   assert.ok(a.audit.words.total > 0, "没有逐词结果");
   assert.ok(a.audit.words.unmatched.includes("水印"));
   const text = m.buildProposal({ getAllTools: () => [], getCommands: () => [] }, m.dynamicScenario(need, a, null), store, null);
-  assert.match(text, /逐词核对（每个词都查过）/);
+  assert.match(text, /逐词核对（每个词都有归属）/);
   assert.match(text, /本机没提到：.*「水印」/);
 });
 

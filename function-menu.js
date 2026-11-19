@@ -707,7 +707,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.31.0";
+const EXT_VERSION = "2.32.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -1920,9 +1920,43 @@ function wordAudit(need, items = catalogTexts()) {
       byToken.set(term, "filler");
     }
   }
+  // 组合看，不逐词拆：连续的几个词如果整串在目录里出现过，就当成一个意思。
+  // 否则「重新安排组合」会被拆成「安排」「组合」两个孤字去追问用户——那不是需求分析。
+  const order = [...byToken.keys()];
+  const scanTexts = items.map((it) => it.scan || it.text);
+  const phrases = [];
+  for (let i = 0; i < order.length; i++) {
+    for (let n = Math.min(4, order.length - i); n >= 2; n--) {
+      const win = order.slice(i, i + n);
+      if (!win.every((t) => byToken.get(t) === "unmatched" || byToken.get(t) === "single" || byToken.get(t) === "generic")) continue;
+      const phrase = flatText(win.join(""));
+      if (phrase.length < 3) continue;
+      const idx = scanTexts.findIndex((t) => t.includes(phrase));
+      if (idx < 0) continue;
+      for (const t of win) byToken.set(t, "compound");
+      phrases.push({ phrase, item: items[idx].id, kind: items[idx].kind, size: n });
+      unmatched.delete(phrase);
+      for (const t of win) {
+        const k = t.replace(WORD_TRIM_HEAD, "").replace(WORD_TRIM_TAIL, "");
+        if (k) unmatched.delete(k);
+      }
+      i += n - 1;
+      break;
+    }
+  }
+  // 剩下的连续未匹配词也按短语成组：问一次「这一串是什么」，而不是每个字问一遍。
+  const runs = [];
+  let run = [];
+  for (const t of order) {
+    if (byToken.get(t) === "unmatched") run.push(t);
+    else if (run.length) { runs.push(run); run = []; }
+  }
+  if (run.length) runs.push(run);
+  const unmatchedPhrases = runs.map((r) => flatText(r.join(""))).filter((x) => x.length >= 2);
+
   const sortedUnmatched = [...unmatched].sort((a, b) => b.length - a.length || a.localeCompare(b));
   const matchedList = [...matched.values()].sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term));
-  const counts = { matched: 0, generic: 0, unmatched: 0, filler: 0, single: 0, deed: 0 };
+  const counts = { matched: 0, generic: 0, unmatched: 0, filler: 0, single: 0, deed: 0, compound: 0 };
   for (const bucket of byToken.values()) counts[bucket] += 1;
   const accounted = byToken.size;
   return {
@@ -1930,8 +1964,10 @@ function wordAudit(need, items = catalogTexts()) {
     accounted,
     counts,
     matched: matchedList,
+    phrases,
     generic: [...generic].slice(0, 8),
     unmatched: sortedUnmatched,
+    unmatchedPhrases,
     filler: [...filler].slice(0, 8),
     single: [...single].slice(0, 8),
     deeds,
@@ -1976,18 +2012,29 @@ function deedGaps(need) {
 }
 
 // 全库都没提到的词：当作可能的交付物问用户，而不是自己判断“它不重要”。
-function unknownWordAsks(words, max = 2) {  return (words?.unmatched || []).slice(0, max).map((term) => ({
-    id: `word:${term}`,
-    label: term,
-    question: `本机所有插件/技能都没提到「${term}」，这是你要产出的东西吗？`,
+function unknownWordAsks(words, max = 2) {
+  // 先按“连续的几个词”问：需求是一句话，不是一个词表。
+  // 只有拿不到任何短语时才退回单字，且每个词最多问一次。
+  const unmatched = words?.unmatched || [];
+  const runs = (words?.unmatchedPhrases || []).filter((p) => p.length >= 2 && unmatched.some((t) => p.includes(t) || t.includes(p)));
+  const list = runs.length
+    ? runs.map((p) => ({ id: `phrase:${p}`, label: p }))
+    : unmatched.map((term) => ({ id: `word:${term}`, label: term }));
+  return list.slice(0, max).map((x) => ({
+    ...x,
+    question: `本机所有插件/技能都没提到「${x.label}」，这整件事是你要做的吗？`,
   }));
 }
 
 function wordGapsFromAnswers(words, yesIds = []) {
   const yes = new Set(yesIds);
-  return (words?.unmatched || [])
+  const phraseGaps = (words?.unmatchedPhrases || [])
+    .filter((p) => yes.has(`phrase:${p}`))
+    .map((p) => ({ id: `phrase:${p}`, label: p, hint: "本机所有插件/技能都没提到", source: "word" }));
+  const wordGaps = (words?.unmatched || [])
     .filter((term) => yes.has(`word:${term}`))
     .map((term) => ({ id: `word:${term}`, label: term, hint: "本机所有插件/技能都没提到", source: "word" }));
+  return [...phraseGaps, ...wordGaps];
 }
 
 function capabilityScan(need, opts = {}) {
@@ -2218,13 +2265,19 @@ function buildProposal(pi, scenario, store, workflow = null) {
   }
   if (scenario.dynamic && scenario.analysis?.audit?.words) {
     const w = scenario.analysis.audit.words;
-    lines.push("**逐词核对（每个词都查过）**");
+    if (w.phrases?.length) {
+      lines.push("**组合理解（相邻的词连起来看，不拆开）**");
+      lines.push(`- ${w.phrases.slice(0, 4).map((x) => `「${x.phrase}」→ \`${x.kind === "skill" ? "skill:" : ""}${x.item}\``).join("、")}`);
+      lines.push("");
+    }
+    lines.push("**逐词核对（每个词都有归属）**");
     const c = w.counts || {};
-    lines.push(`- 拆出 ${w.total} 个词，全部有归属：命中 ${c.matched ?? w.matched.length} 个、通用 ${c.generic ?? w.generic.length} 个、本机没提到 ${c.unmatched ?? w.unmatched.length} 个、虚词 ${c.filler ?? w.filler?.length ?? 0} 个、单字 ${c.single ?? w.single?.length ?? 0} 个、动作/风格 ${c.deed ?? 0} 个`);
+    const leftovers = (w.unmatchedPhrases?.length ? w.unmatchedPhrases : w.unmatched) || [];
+    lines.push(`- 拆出 ${w.total} 个词，全部有归属：命中 ${c.matched ?? w.matched.length} 个、组合 ${c.compound ?? 0} 个、通用 ${c.generic ?? w.generic.length} 个、本机没提到 ${c.unmatched ?? w.unmatched.length} 个、虚词 ${c.filler ?? w.filler?.length ?? 0} 个、单字 ${c.single ?? w.single?.length ?? 0} 个、动作/风格 ${c.deed ?? 0} 个`);
     for (const m of w.matched.slice(0, 8)) lines.push(`- 「${m.term}」→ \`${m.kind === "skill" ? "skill:" : ""}${m.item}\``);
     if (w.deeds?.length) lines.push(`- 动作/风格：${w.deeds.map((d) => `${d.term}→${CAPABILITIES[d.role]?.label || d.role}${d.covered ? "（已覆盖）" : "（本机没有）"}`).join("、")}`);
-    if (w.unmatched.length) {
-      lines.push(`- 本机没提到：${w.unmatched.map((t) => `「${t}」`).join("、")}（装配前会问你要不要去找）`);
+    if (leftovers.length) {
+      lines.push(`- 本机没提到：${leftovers.map((t) => `「${t}」`).join("、")}（按短语问一次，不逐字追问）`);
       if (w.pending > 0) lines.push(`- 另有 ${w.pending} 个没提到的词本轮不问，但已记录在核对结果里`);
     }
     lines.push("");
@@ -2615,7 +2668,7 @@ export default function functionMenu(pi) {
     const asks = [...bare, ...wordAsks];
     const yesIds = [];
     for (const ask of asks) {
-      const isWord = ask.id.startsWith("word:");
+      const isWord = ask.id.startsWith("word:") || ask.id.startsWith("phrase:");
       const yes = await ctx.ui.confirm(
         isWord ? `「${ask.label}」要当成需求吗？` : `需求里提到「${ask.label}」：要真的做吗？`,
         `${ask.question}\n\n是：当作需求（本机没能力就去找）\n否：不算需求，按现有能力做`,
@@ -2624,7 +2677,7 @@ export default function functionMenu(pi) {
     }
     return [
       ...bareGapsFromAnswers(needText, already, yesIds.filter((id) => !id.startsWith("word:"))),
-      ...wordGapsFromAnswers(wa, yesIds.filter((id) => id.startsWith("word:"))),
+      ...wordGapsFromAnswers(wa, yesIds.filter((id) => id.startsWith("word:") || id.startsWith("phrase:"))),
     ];
   };
 
@@ -3159,12 +3212,14 @@ export default function functionMenu(pi) {
     const words = activeScenario.analysis?.audit?.words;
     const wordBlock = (() => {
       if (!words) return "";
-      const lines = ["### 逐词核对（需求里每个词都查过）"];
+      const lines = ["### 需求理解（先组合，再看每个词）"];
+      if (words.phrases?.length) lines.push(`组合理解：${words.phrases.slice(0, 4).map((x) => `${x.phrase}→${x.item}`).join("、")}`);
       if (words.matched?.length) lines.push(`对得上：${words.matched.slice(0, 8).map((m) => `${m.term}→${m.item}`).join("、")}`);
       if (words.deeds?.length) lines.push(`动作/风格：${words.deeds.map((d) => `${d.term}→${CAPABILITIES[d.role]?.label || d.role}${d.covered ? "" : "（本机没有）"}`).join("、")}`);
-      if (words.unmatched?.length) {
-        lines.push(`本机没提到：${words.unmatched.join("、")}${words.pending ? `（另有 ${words.pending} 个已记录、本次未逐条问）` : ""}`);
-        lines.push("这些词如果确实要做，先向用户确认或找能力，不要默默忽略。");
+      const left = (words.unmatchedPhrases?.length ? words.unmatchedPhrases : words.unmatched) || [];
+      if (left.length) {
+        lines.push(`本机没提到：${left.join("、")}${words.pending ? `（另有 ${words.pending} 个已记录、本次未逐条问）` : ""}`);
+        lines.push("这些按整串理解；如果确实要做，先向用户确认或找能力，不要默默忽略。");
       }
       return lines.length > 1 ? lines.join("\n") : "";
     })();

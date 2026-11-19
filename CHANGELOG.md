@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.32.0
+
+- **Needs are read as phrases, not as a word list.** `wordAudit()` now runs a 4→2-token window pass over consecutive tokens whose individual buckets are `unmatched`/`single`/`generic`; if the joined string (`flatText(win.join(""))`) appears in the catalog, the whole window is marked `compound` and recorded as `{ phrase, item, kind, size }`. "重新安排组合" is one intent pointing at one item, instead of three orphan words. The completeness invariant still holds (`accounted === total`, new `counts.compound`).
+- **Asks are per-phrase.** `unknownWordAsks()` prefers `unmatchedPhrases` (contiguous unmatched runs, `id: phrase:<p>`, "这整件事是你要做的吗？") and only falls back to `word:<term>` when no phrase can be formed; `wordGapsFromAnswers()` accepts both, so a "yes" turns into one capability gap instead of N.
+- Panel gains **组合理解（相邻的词连起来看，不拆开）** and the audit section is retitled 逐词核对（每个词都有归属）; the injected prompt now starts with 需求理解（先组合，再看每个词）.
+- `tests/phrase.test.mjs` G1–G5 (compound rescue on generic words, invariant, one ask per phrase, phrase gap, fallback). Total 262.
+
 ## 2.31.0
 
 - **The number→id mapping now lives inside the input dialog.** pi-web draws extension requests as a floating card whose position the extension cannot control, so on a 9-row workflow list it covered the last two rows. The placeholder now carries the whole legend (`1=direct 2=outline … 9=offline`), which means the covered rows are still readable where you type.

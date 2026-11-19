@@ -62,7 +62,7 @@ test("A7 逐词核对完整性 + 面板段都在", () => {
   assert.equal(a.audit.words.accounted, a.audit.words.total, "有词没归属");
   assert.ok(a.audit.words.unmatched.includes("水印"));
   const text = m.buildProposal({ getAllTools: () => [], getCommands: () => [] }, m.dynamicScenario(need, a, null), store, null);
-  assert.match(text, /逐词核对（每个词都查过）/);
+  assert.match(text, /逐词核对（每个词都有归属）/);
   assert.match(text, /全部有归属/);
 });
 
