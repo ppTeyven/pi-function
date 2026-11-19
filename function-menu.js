@@ -188,6 +188,10 @@ const ACTION_ROLES = {
   目录: "docs", 索引: "docs", 术语: "docs", 脚注: "docs", 参考文献: "docs", 附录: "docs", 一致性: "docs",
   // 自动化
   轮询: "automation", 重试: "automation", 回滚: "automation", 灰度: "automation",
+  // 元动作：整理/盘点自己手里的能力，也是正经的活，不是"没提到的字"
+  安排: "process", 梳理: "process", 盘点: "process", 归类: "process", 重组: "process",
+  整理: "process", 统筹: "process", 规划: "process", 整合: "process", 清点: "process",
+  编排: "process", 协调: "process", 搭配: "process", 组合: "process",
 };
 
 const STYLE_ROLES = {
@@ -673,7 +677,7 @@ const SCENARIO_HINTS = {
   integration: ["mcp", "integration", "connector", "oauth", "webhook", "集成"],
   chatbot: ["chatbot", "assistant", "rag", "客服", "聊天机器人", "问答"],
   plugin: ["plugin", "extension", "hook", "skill", "command", "插件", "扩展"],
-  process: ["workflow", "sop", "process", "requirement", "spec", "流程", "工作流", "需求", "标准化", "分配"],
+  process: ["workflow", "sop", "process", "requirement", "spec", "流程", "工作流", "需求", "标准化", "分配", "重新安排", "重新识别", "盘点"],
   maintain: ["bug", "refactor", "test", "review", "performance", "upgrade", "维护", "重构", "测试"],
   localization: ["i18n", "locale", "translation", "language", "本地化", "翻译"],
   general: ["general", "other", "misc", "通用", "其他"],
@@ -707,7 +711,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.32.0";
+const EXT_VERSION = "2.33.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;

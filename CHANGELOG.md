@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.33.0
+
+- **Meta verbs are actions, not missing words.** 安排 / 梳理 / 盘点 / 归类 / 重组 / 整理 / 统筹 / 规划 / 整合 / 清点 / 编排 / 协调 / 搭配 / 组合 now live in `ACTION_ROLES` with role `process`. "重新识别插件和工具重新安排组合" used to end with a per-word question ("本机所有插件/技能都没提到「安排」…"); now it is three covered actions (安排/识别/组合) and nothing is asked.
+- `SCENARIO_HINTS.process` gains 重新安排 / 重新识别 / 盘点, so re-arranging your own tool set also scores as a process task.
+- `tests/phrase.test.mjs` G1/G3 now use genuinely unknown words (上门/取件) — the old fixtures used 安排/组合, which are actions since this release — plus G6: meta verbs never produce an unknown-word ask. Total 263.
+
 ## 2.32.0
 
 - **Needs are read as phrases, not as a word list.** `wordAudit()` now runs a 4→2-token window pass over consecutive tokens whose individual buckets are `unmatched`/`single`/`generic`; if the joined string (`flatText(win.join(""))`) appears in the catalog, the whole window is marked `compound` and recorded as `{ phrase, item, kind, size }`. "重新安排组合" is one intent pointing at one item, instead of three orphan words. The completeness invariant still holds (`accounted === total`, new `counts.compound`).

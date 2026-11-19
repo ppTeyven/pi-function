@@ -11,16 +11,16 @@ const auditWith = (need, texts) => m.wordAudit(need, texts.map((t, i) => item(`s
 test("G1 整串出现在目录里时按组合理解，不再拆成孤字", () => {
   // 单词各自到处都是（通用词），只有整串才指向唯一一个条目——这正是要组合看的情形。
   const texts = [
-    ...Array.from({ length: 10 }, (_, i) => `安排日程 ${i}`),
-    ...Array.from({ length: 10 }, (_, i) => `内容组合 ${i}`),
-    "重新安排组合 成新的搭配",
+    ...Array.from({ length: 10 }, (_, i) => `上门服务 ${i}`),
+    ...Array.from({ length: 10 }, (_, i) => `取件流程 ${i}`),
+    "上门取件 预约上门取件",
   ];
-  const w = auditWith("重新安排组合", texts);
+  const w = auditWith("上门取件", texts);
   assert.ok((w.counts.compound || 0) >= 2, `compound=${w.counts.compound}`);
-  assert.ok(!w.unmatched.includes("安排"), `安排 仍被当成孤立缺口：${w.unmatched.join(",")}`);
-  assert.ok(!w.unmatched.includes("组合"), `组合 仍被当成孤立缺口：${w.unmatched.join(",")}`);
+  assert.ok(!w.unmatched.includes("上门"), `上门 仍被当成孤立缺口：${w.unmatched.join(",")}`);
+  assert.ok(!w.unmatched.includes("取件"), `取件 仍被当成孤立缺口：${w.unmatched.join(",")}`);
   assert.ok(w.phrases.length >= 1, "没有记录组合命中");
-  assert.ok(w.phrases[0].phrase.includes("安排"), `组合短语不对：${w.phrases[0].phrase}`);
+  assert.ok(w.phrases[0].phrase.includes("上门"), `组合短语不对：${w.phrases[0].phrase}`);
 });
 
 test("G2 加入组合桶后仍满足完整性不变式", () => {
@@ -30,7 +30,7 @@ test("G2 加入组合桶后仍满足完整性不变式", () => {
 });
 
 test("G3 提问按短语问一次，而不是每个字问一遍", () => {
-  const w = auditWith("重新安排组合", ["完全无关的描述"]);
+  const w = auditWith("上门取件", ["完全无关的描述"]);
   assert.ok(w.unmatchedPhrases.length >= 1, "没有归组短语");
   const asks = m.unknownWordAsks(w, 3);
   assert.equal(asks.length, 1, `问了 ${asks.length} 个问题：${asks.map((a) => a.label).join(",")}`);
@@ -50,4 +50,12 @@ test("G5 没有短语可归组时才退回单词，且不重复", () => {
   const asks = m.unknownWordAsks({ unmatched: ["水印", "二维码"], unmatchedPhrases: [] }, 2);
   assert.deepEqual(asks.map((a) => a.id), ["word:水印", "word:二维码"]);
   assert.equal(new Set(asks.map((a) => a.label)).size, asks.length);
+});
+
+test("G6 元动作（安排/盘点/梳理）是动作不是未知词，不再逐字追问", () => {
+  const w = m.wordAudit("重新识别插件和工具重新安排组合");
+  assert.deepEqual(m.unknownWordAsks(w, 3), [], "元动作又被当成没提到的字");
+  const deeds = m.deedWords("重新识别插件和工具重新安排组合").map((d) => d.term);
+  assert.ok(deeds.includes("安排"), `安排 没进动作词：${deeds.join(",")}`);
+  assert.ok(deeds.includes("组合"), `组合 没进动作词：${deeds.join(",")}`);
 });
