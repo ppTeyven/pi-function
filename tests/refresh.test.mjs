@@ -125,3 +125,23 @@ test("R6 启动时就把旧场景 id 迁掉", async () => {
   const valid = new Set(m.SCENARIOS.map((s) => s.id));
   assert.ok(sc === null || sc === "infra" || valid.has(sc), `启动后仍是废弃场景：${sc}`);
 });
+
+test("R7 输入弹窗的占位符里有完整编号映射（弹窗挡住列表也能选）", async () => {
+  const pi = fakePi();
+  m.default(pi);
+  let seen = null;
+  const ctx = {
+    hasUI: true,
+    ui: {
+      notify: () => {},
+      input: async (title, placeholder) => { seen = { title, placeholder }; return ""; },
+      select: async () => null,
+    },
+    sessionManager: { getBranch: () => [] },
+  };
+  await pi.state.commands.function.handler("workflow", ctx);
+  assert.ok(seen, "没有弹出输入框");
+  assert.match(seen.placeholder, /1=direct/, `占位符缺少映射：${seen.placeholder}`);
+  assert.match(seen.placeholder, /9=offline/, `占位符没覆盖最后一项：${seen.placeholder}`);
+  assert.ok(seen.title.length <= 20, `弹窗标题过长会加高浮层：${seen.title}`);
+});

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.31.0
+
+- **The number→id mapping now lives inside the input dialog.** pi-web draws extension requests as a floating card whose position the extension cannot control, so on a 9-row workflow list it covered the last two rows. The placeholder now carries the whole legend (`1=direct 2=outline … 9=offline`), which means the covered rows are still readable where you type.
+- Titles shortened (`选工作流`, not `选工作流（可多选，推荐的在第 1 个）`) — the message already appends `（可多选，最多 N 个）`, and a long title wraps the card taller, eating more of the list.
+- R7 asserts the placeholder contains both the first and the last id and that the dialog title stays short. Total 257.
+
 ## 2.30.0
 
 - **The scan also runs at startup, and it speaks.** `session_start` now calls `scan()` with the UI notifier instead of `scan(false)`: new plugins/skills, entries migrated off dead scenario ids, and packages that gained abilities are all reported on boot, before the first `/function`.

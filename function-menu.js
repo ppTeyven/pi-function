@@ -707,7 +707,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.30.0";
+const EXT_VERSION = "2.31.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2540,7 +2540,12 @@ export default function functionMenu(pi) {
       })(),
       display: true,
     });
-    const raw = await ctx.ui.input(title, "例如 1,3");
+    // 弹窗会盖住上方的列表（pi-web 是浮层，位置不由扩展控制），所以把编号→id 的
+    // 对照直接放进输入框占位符里：被挡住也能在弹窗内看到完整映射。
+    const hint = items
+      .map((item, i) => `${i + 1}=${String(item.id || "").slice(0, 18)}`)
+      .join(" ");
+    const raw = await ctx.ui.input(title, hint.length <= 220 ? hint : hint.slice(0, 217) + "…");
     if (!raw) return [];
     const tokens = String(raw).split(/[,，、+\s]+/).filter(Boolean);
     const picked = [];
@@ -2745,7 +2750,7 @@ export default function functionMenu(pi) {
 
       if (args === "workflow") {
         if (!requireUI(ctx)) return;
-        const workflows = await pickManyFrom(ctx, "选工作流（可多选）", orderWorkflows(), (w) => `${w.id} · ${w.title}`, 3);
+        const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(), (w) => `${w.id} · ${w.title}`, 3);
         if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
         const workflow = comboWorkflows(workflows);
         const scenario = workflowOnlyScenario(workflow);
@@ -2927,7 +2932,7 @@ export default function functionMenu(pi) {
         return;
       }
 
-      const workflows = await pickManyFrom(ctx, "选工作流（可多选，推荐的在第 1 个）", orderWorkflows(recommended), (w) => `${w.id} · ${w.title}${w.id === recommended ? "  ← 推荐" : ""}`);
+      const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(recommended), (w) => `${w.id} · ${w.title}${w.id === recommended ? "  ← 推荐" : ""}`);
       if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
       const workflow = comboWorkflows(workflows);
       const scenario = dynamicScenario(args, analysis, workflow);

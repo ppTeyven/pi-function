@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.gif?v=2.30.0" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif?v=2.31.0" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 
@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 256 cases, repository fixture — runs on any machine
+npm test          # 257 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -546,7 +546,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 | `persist.test.mjs` | assembly survives `/reload`: `store.active` write/read/restore/clear | 4 |
-| `refresh.test.mjs` | startup + every call rescans the catalog; new plugins/skills become candidates | 6 |
+| `refresh.test.mjs` | startup + every call rescans the catalog; new plugins/skills become candidates | 7 |
 | `migration.test.mjs` | dead scenario ids are migrated to current ones, overrides untouched | 6 |
 
 Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
