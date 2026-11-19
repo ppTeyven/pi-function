@@ -112,3 +112,12 @@ test("A10 scan 归类与命令面已生效（英文描述归角色、无参数�
   assert.equal(reg.function.getArgumentCompletions, undefined, "/function 不再发布参数候选");
   assert.equal(reg.fn, undefined, "没有 /fn 别名");
 });
+
+test("A11 每个选项都带「何时用它」", () => {
+  assert.ok(m.SUBCOMMANDS.every((s) => s.when), "有子功能没写 when");
+  assert.ok(m.SCENARIOS.every((s) => s.when), "有场景没写 when");
+  assert.ok(m.WORKFLOWS.every((w) => w.picker || w.when), "有工作流没写 when");
+  const line = m.pickerLine("assemble", "场景装配", "要动手做一件事");
+  assert.match(line, /^assemble · 场景装配/);
+  assert.ok(line.includes("要动手做一件事"), "选项行里没有「何时用它」");
+});

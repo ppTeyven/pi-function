@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.gif?v=2.33.0" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif?v=2.34.0" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 
@@ -521,7 +521,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 263 cases, repository fixture — runs on any machine
+npm test          # 264 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
@@ -543,7 +543,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `scan.test.mjs` | `/function scan` classification: aliases, tag evidence, unassigned reporting | 8 |
 | `completions.test.mjs` | `/function` publishes no argument candidates (by design) | 4 |
 | `banner.test.mjs` | banner spacing, safe degradation, real looping GIF, letters never vanish | 10 |
-| `applied.test.mjs` | every feature of this release is actually in the shipped file | 10 |
+| `applied.test.mjs` | every feature of this release is actually in the shipped file | 11 |
 | `e2e.test.mjs` | command handler main + alternate flows | 9 |
 | `persist.test.mjs` | assembly survives `/reload`: `store.active` write/read/restore/clear | 4 |
 | `refresh.test.mjs` | startup + every call rescans the catalog; new plugins/skills become candidates | 7 |

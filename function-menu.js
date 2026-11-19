@@ -711,7 +711,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.33.0";
+const EXT_VERSION = "2.34.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2484,6 +2484,21 @@ export function menuOptions(store, scenarios = SCENARIOS) {
 // ---------------------------------------------------------------------------
 // 扩展入口
 // ---------------------------------------------------------------------------
+// 选择器的每一行都带上「何时用它」——选项本身就说清什么时候该选。
+const pickerLine = (id, title, when) => `${id} · ${title}${when ? `
+   ${when}` : ""}`;
+
+const SUBCOMMANDS = [
+  { id: "assemble", label: "场景装配 — 工作流 × 应用场景", when: "要动手做一件事，想一次配好插件与技能" },
+  { id: "workflow", label: "仅选工作流 — 只选执行方式，不绑定场景", when: "流程已定，只想换执行节奏" },
+  { id: "profile", label: "能力画像 — 查看插件/技能的自动归类", when: "想核对某个条目被当成了什么能力" },
+  { id: "scan", label: "重新扫描 — 重建能力画像", when: "刚装了新插件/技能，想让它们进入候选" },
+  { id: "status", label: "当前装配 — 查看已启用的组合", when: "想确认这轮到底启用了什么" },
+  { id: "stats", label: "分配统计 — 查看使用反馈与加分", when: "想知道哪些组合真的被用过" },
+  { id: "off", label: "还原工具集 — 恢复默认工具", when: "装配碍事了，想回到干净状态" },
+  { id: "assign", label: "手动归类 — 指定插件/技能的归属", when: "分类器归错或没归类，想钉死归属" },
+];
+
 export default function functionMenu(pi) {
   let store = loadStore();
   ensureProfile(store);
@@ -2628,7 +2643,7 @@ export default function functionMenu(pi) {
 
   const formatScenario = (scenario, ranked = []) => {
     const hit = ranked.find((r) => r.scenario.id === scenario.id);
-    return `${scenario.id} · ${scenario.title}${hit ? `  ← 命中 ${hit.hits.slice(0, 2).join("/") || hit.scenario.id}` : ""}`;
+    return `${pickerLine(scenario.id, scenario.title, scenario.when)}${hit ? `  ← 命中 ${hit.hits.slice(0, 2).join("/") || hit.scenario.id}` : ""}`;
   };
 
 
@@ -2719,8 +2734,7 @@ export default function functionMenu(pi) {
   };
 
   const runAssemble = async (ctx) => {
-    const workflows = await pickManyFrom(ctx, "第 1 步：选工作流（怎么执行）", orderWorkflows(), (w) => `${w.id} · ${w.title}
-   ${w.picker || w.when}`);
+    const workflows = await pickManyFrom(ctx, "第 1 步：选工作流（怎么执行）", orderWorkflows(), (w) => pickerLine(w.id, w.title, w.picker || w.when));
     if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
     const workflow = comboWorkflows(workflows);
     const scenarios = await pickManyFrom(ctx, "第 2 步：选任务场景（做什么）", orderScenarios(), (s) => formatScenario(s));
@@ -2747,19 +2761,10 @@ export default function functionMenu(pi) {
     );
   };
 
-  const FUNCTION_SUBCOMMANDS = [
-    { id: "assemble", label: "场景装配 — 工作流 × 应用场景" },
-    { id: "workflow", label: "仅选工作流 — 只选执行方式，不绑定场景" },
-    { id: "profile", label: "能力画像 — 查看插件/技能的自动归类" },
-    { id: "scan", label: "重新扫描 — 重建能力画像" },
-    { id: "status", label: "当前装配 — 查看已启用的组合" },
-    { id: "stats", label: "分配统计 — 查看使用反馈与加分" },
-    { id: "off", label: "还原工具集 — 恢复默认工具" },
-    { id: "assign", label: "手动归类 — 指定插件/技能的归属" },
-  ];
+  const FUNCTION_SUBCOMMANDS = SUBCOMMANDS;
 
   const pickSubcommand = async (ctx) => {
-    const options = FUNCTION_SUBCOMMANDS.map((s) => `${s.id} · ${s.label}`);
+    const options = FUNCTION_SUBCOMMANDS.map((s) => pickerLine(s.id, s.label, s.when));
     const sel = await ctx.ui.select("Pi-function 子功能", options);
     if (!sel) return null;
     return FUNCTION_SUBCOMMANDS.find((s) => sel.startsWith(`${s.id} ·`))?.id || null;
@@ -2807,7 +2812,7 @@ export default function functionMenu(pi) {
 
       if (args === "workflow") {
         if (!requireUI(ctx)) return;
-        const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(), (w) => `${w.id} · ${w.title}`, 3);
+        const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(), (w) => pickerLine(w.id, w.title, w.picker || w.when), 3);
         if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
         const workflow = comboWorkflows(workflows);
         const scenario = workflowOnlyScenario(workflow);
@@ -2989,7 +2994,7 @@ export default function functionMenu(pi) {
         return;
       }
 
-      const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(recommended), (w) => `${w.id} · ${w.title}${w.id === recommended ? "  ← 推荐" : ""}`);
+      const workflows = await pickManyFrom(ctx, "选工作流", orderWorkflows(recommended), (w) => `${pickerLine(w.id, w.title, w.picker || w.when)}${w.id === recommended ? "  ← 推荐" : ""}`);
       if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
       const workflow = comboWorkflows(workflows);
       const scenario = dynamicScenario(args, analysis, workflow);
@@ -3258,4 +3263,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { EXT_VERSION, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, isIdCombo, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { EXT_VERSION, pickerLine, SUBCOMMANDS, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, isIdCombo, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

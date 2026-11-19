@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.34.0
+
+- **Every option says when to pick it.** `pickManyFrom` is used by three pickers, and each row is now built by one shared `pickerLine(id, title, when)`: `assemble · 场景装配` followed by `   要动手做一件事，想一次配好插件与技能`. Scenarios pass `scenario.when`, workflows pass `w.picker || w.when`, and the sub-command menu passes its own `when` — so you choose by situation instead of guessing from a name.
+- `SUBCOMMANDS` moved to module scope with a `when` for each of the eight entries (assemble / workflow / profile / scan / status / stats / off / assign) and is exported with `pickerLine` for tests.
+- `tests/applied.test.mjs` A11 asserts all 8 sub-commands, all 34 scenarios and all 9 workflows carry a "when", and that a picker line actually renders it. Total 264.
+
 ## 2.33.0
 
 - **Meta verbs are actions, not missing words.** 安排 / 梳理 / 盘点 / 归类 / 重组 / 整理 / 统筹 / 规划 / 整合 / 清点 / 编排 / 协调 / 搭配 / 组合 now live in `ACTION_ROLES` with role `process`. "重新识别插件和工具重新安排组合" used to end with a per-word question ("本机所有插件/技能都没提到「安排」…"); now it is three covered actions (安排/识别/组合) and nothing is asked.
