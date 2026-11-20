@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.35.0
+
+- **`/function resume` — project-wide resume.** It scans `HANDOFF.md`, decisions/ADRs, `ROADMAP.md`, `.planning/`, README and other project docs; reads Git branch / HEAD / dirty files / recent commits; and folds in the recent session messages and compaction summaries. It reports stage, checked/open tasks, blockers, next steps, likely application scenarios, and a recommended workflow + bundle.
+- **Section-aware extraction.** Checkbox lists are read globally, while bullets under `## 阻塞 / 风险` and `## 下一步 / 待办` are treated as blockers/next steps even without a keyword. The scanner skips `node_modules`, `.git`, build output, virtualenvs, logs and other generated trees.
+- **Analysis, not execution.** The report is printed first, then a workflow picker, then the normal proposal/confirm gate. Nothing is enabled until the user approves; the requirement is never sent automatically. The active bundle is stored as `project` and restored after `/reload` while the project directory is available.
+- **No silent shadowing of the 简历 scenario.** `resume` is also a stable application-scenario id, so `/function scenario <id>` is now available as an escape hatch; `/function resume` means project resume.
+- `tests/resume.test.mjs` adds 5 tests: scanner/evidence, report/recommendation, end-to-end `/function resume`, an empty-project fallback, and the `/function scenario resume` escape hatch. Total 269.
+
 ## 2.34.0
 
 - **Every option says when to pick it.** `pickManyFrom` is used by three pickers, and each row is now built by one shared `pickerLine(id, title, when)`: `assemble · 场景装配` followed by `   要动手做一件事，想一次配好插件与技能`. Scenarios pass `scenario.when`, workflows pass `w.picker || w.when`, and the sub-command menu passes its own `when` — so you choose by situation instead of guessing from a name.

@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 const VERSION = "2.8.0";
 const NAME = "Pi-function";
@@ -488,7 +489,7 @@ const SCENARIOS = [
   {
     id: "event", group: "内容", title: "活动 / 旅行 / 生活策划",
     when: "活动方案、旅行行程、婚礼或聚会策划、预算清单",
-    keywords: ["活动", "策划", "旅行", "行程", "婚礼", "聚会", "预算", "清单", "event", "travel", "itinerary", "planning"],
+    keywords: ["活动", "策划", "旅行", "行程", "婚礼", "聚会", "预算", "清单", "event", "travel", "itinerary"],
     brief: "先定目标、人数、预算和日期，再排时间线与分工；留出天气或取消等备选，最后输出可执行清单。",
   },
   {
@@ -711,7 +712,7 @@ function storePath() {
 // 用户能力画像：只识别“这台机器装了什么能力”，不假设插件名
 // ---------------------------------------------------------------------------
 // 与 package.json 的 version 保持一致（测试会断言），用于确认 /reload 到底加载了哪一版。
-const EXT_VERSION = "2.34.0";
+const EXT_VERSION = "2.35.0";
 const PROFILE_FILE = "function-menu.profile.json";
 const PROFILE_VERSION = 10;
 let ACTIVE_PROFILE = null;
@@ -2257,6 +2258,18 @@ function buildProposal(pi, scenario, store, workflow = null) {
     lines.push(`**任务**：${scenario.when}`);
   }
   lines.push("");
+  if (scenario.project) {
+    const p = scenario.project;
+    lines.push("**项目全局视角（不限于这一句需求）**");
+    lines.push(`- 阶段：${p.stage}`);
+    if (p.summary) lines.push(`- 上下文：${p.summary}`);
+    if (p.openTasks?.length) lines.push(`- 未完成：${p.openTasks.slice(0, 3).join("；")}${p.openTasks.length > 3 ? " …" : ""}`);
+    if (p.blockers?.length) lines.push(`- 阻塞/风险：${p.blockers.slice(0, 2).join("；")}`);
+    if (p.nextSteps?.length) lines.push(`- 下一步：${p.nextSteps.slice(0, 3).join("；")}`);
+    if (p.recommendations) lines.push(`- 项目建议：工作流 \`${p.recommendations.workflowId}\` · ${p.recommendations.workflowTitle}${p.recommendations.scenarioTitles?.length ? `；场景 ${p.recommendations.scenarioTitles.join("、")}` : ""}`);
+    lines.push("- 完整进度报告：`/function resume`");
+    lines.push("");
+  }
   if (scenario.dynamic && scenario.analysis?.audit) {
     const a = scenario.analysis.audit;
     lines.push("**全量核对（所有插件与技能）**");
@@ -2388,7 +2401,9 @@ function applyScenario(pi, ctx, scenario, store, baseline, workflow = null, opts
     workflow: workflow?.id || null,
     at: nowIso(),
     tools: next,
-    custom: scenario.dynamic ? { need: scenario.when, packages: scenario.plugins, skills: scenario.skillIds } : null,
+    custom: opts.custom !== undefined
+      ? opts.custom
+      : (scenario.dynamic ? { need: scenario.when, packages: scenario.plugins, skills: scenario.skillIds } : null),
   };
   saveStore(store);
   const coverage = auditCoverage(scenario, store, workflow);
@@ -2441,7 +2456,7 @@ function buildCatalog(pi, store) {
     for (const [id, m] of unclassified) lines.push(`- ${id}（${m.reason || "无命中"}）`);
   }
   lines.push("");
-  lines.push("用法：`/function` 先选子功能；`/function workflow` 只选工作流；`/function <需求>` 自动识别；`/function profile` 查看画像；`/function scan` 重扫；`/function off` 还原。");
+  lines.push("用法：`/function` 先选子功能；`/function resume` 分析整个项目进度；`/function workflow` 只选工作流；`/function <需求>` 自动识别；`/function profile` 查看画像；`/function scan` 重扫；`/function off` 还原。");
   return lines.join("\n");
 }
 
@@ -2472,6 +2487,526 @@ function buildProfileReport(store) {
   return lines.join("\n");
 }
 
+// /function resume：项目续接
+// 不是只读用户这句话，而是从项目文档、Git 状态和当前会话里恢复“整个项目”的
+// 进度、阻塞、下一步与能力缺口，再给出一套需要用户确认的装配。
+// ---------------------------------------------------------------------------
+const PROJECT_DOC_RE = /^(?:HANDOFF|DECISIONS|ADR|ARCHITECTURE|AGENTS|CLAUDE|ROADMAP|PLAN|TODO|TASKS|STATE|PROJECT|REQUIREMENTS|MILESTONES|README|CHANGELOG|NOTES)(?:[._-].*)?\.md$/i;
+const PROJECT_SKIP_DIRS = new Set([
+  "node_modules", ".git", ".next", "dist", "build", "out", "coverage", "target",
+  "vendor", ".venv", "venv", "__pycache__", ".cache", "tmp", "temp", "logs",
+]);
+const PROJECT_DOC_LIMIT = 24;
+const PROJECT_DOC_CHARS = 12000;
+const PROJECT_FOCUS_CHARS = 12000;
+
+function projectDocKind(rel) {
+  const name = path.basename(rel).toLowerCase();
+  if (/^handoff/.test(name)) return "handoff";
+  if (/^(decisions|adr|architecture|agents|claude)/.test(name)) return "decisions";
+  if (/^(roadmap|plan|todo|tasks|state|project|requirements|milestones)/.test(name)) return "plan";
+  if (/^readme/.test(name)) return "readme";
+  if (/^changelog/.test(name)) return "changelog";
+  return "notes";
+}
+
+function isProjectDoc(rel) {
+  const base = path.basename(rel);
+  if (PROJECT_DOC_RE.test(base)) return true;
+  const top = String(rel).split(/[\\/]/)[0]?.toLowerCase();
+  if (top === ".planning" && /\.md$/i.test(base)) return true;
+  if (["docs", "doc", "notes", "设计", "文档"].includes(top) && /\.md$/i.test(base)) {
+    return /(handoff|decision|adr|plan|roadmap|todo|task|status|progress|architect|design|next|项目|进度|计划)/i.test(base);
+  }
+  return false;
+}
+
+function projectDocPriority(rel) {
+  const kind = projectDocKind(rel);
+  const rank = { handoff: 0, decisions: 1, plan: 2, readme: 3, changelog: 4, notes: 5 }[kind] ?? 5;
+  return rank * 100 + String(rel).split(/[\\/]/).length;
+}
+
+function collectProjectDocs(root) {
+  const found = [];
+  const walk = (dir, depth, rel = "") => {
+    if (depth > 3 || found.length >= PROJECT_DOC_LIMIT * 2) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+      const lower = entry.name.toLowerCase();
+      if (entry.isDirectory()) {
+        if (PROJECT_SKIP_DIRS.has(lower)) continue;
+        if (entry.name.startsWith(".") && entry.name !== ".planning") continue;
+        walk(path.join(dir, entry.name), depth + 1, relPath);
+      } else if (entry.isFile() && isProjectDoc(relPath)) {
+        found.push(relPath);
+      }
+    }
+  };
+  walk(root, 0, "");
+  return uniq(found).sort((a, b) => projectDocPriority(a) - projectDocPriority(b) || a.localeCompare(b)).slice(0, PROJECT_DOC_LIMIT);
+}
+
+function readProjectDoc(root, rel) {
+  const abs = path.join(root, rel);
+  try {
+    const stat = fs.statSync(abs);
+    if (stat.size > 1_500_000) return null;
+    const text = fs.readFileSync(abs, "utf8");
+    if (!text || text.includes("\u0000")) return null;
+    return {
+      rel,
+      abs,
+      kind: projectDocKind(rel),
+      text: text.slice(0, PROJECT_DOC_CHARS),
+      bytes: stat.size,
+      mtime: stat.mtime.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function gitOutput(root, args) {
+  try {
+    return execFileSync("git", ["-C", root, ...args], {
+      encoding: "utf8",
+      timeout: 2500,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function findProjectRoot(cwd) {
+  const start = path.resolve(cwd || process.cwd());
+  const top = gitOutput(start, ["rev-parse", "--show-toplevel"]);
+  if (top) {
+    try {
+      if (fs.statSync(top).isDirectory()) return path.resolve(top);
+    } catch { /* 继续用目录探测 */ }
+  }
+  let cur = start;
+  for (let i = 0; i < 6; i += 1) {
+    if ([".git", "HANDOFF.md", "AGENTS.md", ".planning", "README.md"].some((name) => fs.existsSync(path.join(cur, name)))) return cur;
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return start;
+}
+
+function readGitSnapshot(root) {
+  const branch = gitOutput(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const head = gitOutput(root, ["rev-parse", "--short", "HEAD"]);
+  const statusText = gitOutput(root, ["status", "--short"]);
+  const statusLines = statusText ? statusText.split(/\r?\n/).filter(Boolean) : [];
+  const logText = gitOutput(root, ["log", "-6", "--pretty=format:%h %ad %s", "--date=short"]);
+  return {
+    branch: branch && branch !== "HEAD" ? branch : (branch ? "detached HEAD" : ""),
+    head,
+    dirty: statusLines.length > 0,
+    changedCount: statusLines.length,
+    changedFiles: statusLines.map((line) => line.slice(3).trim()).filter(Boolean).slice(0, 20),
+    commits: logText ? logText.split(/\r?\n/).filter(Boolean) : [],
+  };
+}
+
+function readProjectManifests(root) {
+  const tech = [];
+  const scripts = [];
+  const manifests = [];
+  const add = (name, label) => {
+    if (!fs.existsSync(path.join(root, name))) return false;
+    manifests.push(name);
+    if (label) tech.push(label);
+    return true;
+  };
+  const pkgPath = path.join(root, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    manifests.push("package.json");
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      tech.push(`Node${pkg?.name ? ` (${pkg.name})` : ""}`);
+      scripts.push(...Object.keys(pkg?.scripts || {}));
+    } catch {
+      tech.push("Node");
+    }
+  }
+  add("pyproject.toml", "Python");
+  add("requirements.txt", "Python");
+  add("Cargo.toml", "Rust");
+  add("go.mod", "Go");
+  add("pom.xml", "Java/Maven");
+  add("build.gradle", "Java/Gradle");
+  add("Gemfile", "Ruby");
+  add("composer.json", "PHP");
+  const sourceDirs = ["src", "app", "lib", "packages", "components", "tests", "test"]
+    .filter((name) => fs.existsSync(path.join(root, name)));
+  return { tech, scripts: uniq(scripts), manifests: uniq(manifests), sourceDirs };
+}
+
+function projectSectionName(title) {
+  return /目标|背景|进度|状态|下一步|待办|计划|阻塞|风险|里程碑|决策|goal|context|status|progress|next|todo|risk|blocker|milestone|decision/i.test(title);
+}
+
+function projectSections(text) {
+  const out = [];
+  let current = null;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const heading = /^#{1,4}\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      current = projectSectionName(heading[1]) ? { title: heading[1], lines: [] } : null;
+      if (current) out.push(current);
+      continue;
+    }
+    if (current && current.lines.length < 40) current.lines.push(line);
+  }
+  return out.filter((section) => section.lines.some((line) => line.trim()));
+}
+
+function sectionDigest(text, max = 1200) {
+  const parts = projectSections(text)
+    .map((section) => `${section.title}: ${section.lines.join(" ").replace(/\s+/g, " ").trim()}`)
+    .filter(Boolean);
+  return parts.join("；").slice(0, max);
+}
+
+function cleanProjectLine(line) {
+  return String(line || "")
+    .replace(/^\s*[-*+]\s*/, "")
+    .replace(/^\s*\[[ xX]\]\s*/, "")
+    .replace(/^#+\s*/, "")
+    .replace(/[*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+}
+
+function uniqueProjectLines(lines, max = 8) {
+  const seen = new Set();
+  const out = [];
+  for (const line of lines) {
+    const value = cleanProjectLine(line);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function projectSignals(files) {
+  const openTasks = [];
+  const doneTasks = [];
+  const blockers = [];
+  const nextSteps = [];
+  const statusLines = [];
+  const goals = [];
+  for (const file of files) {
+    let section = "";
+    for (const raw of file.text.split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      const heading = /^#{1,4}\s+(.+?)\s*$/.exec(line);
+      if (heading) {
+        section = heading[1];
+        continue;
+      }
+      const bullet = /^\s*[-*+]\s+(.+)$/.exec(line);
+      const sectionIsBlocker = /阻塞|卡住|风险|blocker|risk|待解决|未解决/i.test(section);
+      const sectionIsNext = /下一步|接下来|待办|next|todo/i.test(section);
+      const sectionIsGoal = /目标|背景|goal|context/i.test(section);
+      if (sectionIsGoal && bullet) goals.push(bullet[1]);
+      const open = /^\s*[-*+]\s*\[\s*\]\s+(.+)$/.exec(line);
+      if (open) {
+        openTasks.push(open[1]);
+        if (sectionIsBlocker) blockers.push(open[1]);
+        if (sectionIsNext) nextSteps.push(open[1]);
+        continue;
+      }
+      const done = /^\s*[-*+]\s*\[[xX]\]\s+(.+)$/.exec(line);
+      if (done) { doneTasks.push(done[1]); continue; }
+      if (sectionIsBlocker && bullet) { blockers.push(bullet[1]); continue; }
+      if (sectionIsNext && bullet) { nextSteps.push(bullet[1]); continue; }
+      const next = /^(?:[-*+]\s*)?(?:下一步|接下来|待办|next steps?|todo)\s*[:：]?\s*(.+)$/i.exec(line);
+      if (next) nextSteps.push(next[1]);
+      if (/阻塞|卡住|blocked|blocker|风险|待解决|未解决|卡在/i.test(line)) blockers.push(line);
+      const status = /^(?:[-*+]\s*)?(?:状态|status|进度|progress|当前阶段|阶段)\s*[:：]\s*(.+)$/i.exec(line);
+      if (status) statusLines.push(status[1]);
+    }
+  }
+  return {
+    openTasks: uniqueProjectLines(openTasks, 12),
+    doneTasks: uniqueProjectLines(doneTasks, 8),
+    blockers: uniqueProjectLines(blockers, 8),
+    nextSteps: uniqueProjectLines(nextSteps, 8),
+    statusLines: uniqueProjectLines(statusLines, 5),
+    goals: uniqueProjectLines(goals, 6),
+  };
+}
+function textFromContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part?.type === "text") return part.text || "";
+      return part?.text || "";
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+function recentSessionText(ctx) {
+  const picked = [];
+  try {
+    const entries = ctx?.sessionManager?.getBranch?.() || [];
+    for (let i = entries.length - 1; i >= 0 && picked.length < 8; i -= 1) {
+      const entry = entries[i];
+      let role = "";
+      let text = "";
+      if (entry?.type === "message") {
+        role = entry.message?.role || entry.role || "";
+        text = textFromContent(entry.message?.content ?? entry.content);
+      } else if (entry?.type === "compaction" || entry?.type === "branch_summary") {
+        role = "summary";
+        text = entry.summary || entry.data?.summary || "";
+      } else if (entry?.type === "custom_message") {
+        role = "note";
+        text = textFromContent(entry.content ?? entry.data?.content);
+      }
+      if (!text || !["user", "assistant", "summary"].includes(role)) continue;
+      picked.push(`[${role}] ${String(text).replace(/\s+/g, " ").slice(0, 700)}`);
+    }
+  } catch {
+    return "";
+  }
+  return picked.reverse().join("\n").slice(0, 5000);
+}
+
+function scanProjectContext(ctx) {
+  const cwd = ctx?.cwd || ctx?.sessionManager?.getCwd?.() || process.cwd();
+  const root = findProjectRoot(cwd);
+  const files = collectProjectDocs(root).map((rel) => readProjectDoc(root, rel)).filter(Boolean);
+  const git = readGitSnapshot(root);
+  const manifests = readProjectManifests(root);
+  const signals = projectSignals(files);
+  const sessionText = recentSessionText(ctx);
+  const handoff = files.find((file) => file.kind === "handoff") || null;
+  const project = {
+    root,
+    cwd: path.resolve(cwd || root),
+    files,
+    handoff,
+    git,
+    ...manifests,
+    signals,
+    sessionText,
+    code: manifests.manifests.length > 0 || manifests.sourceDirs.length > 0,
+    planning: fs.existsSync(path.join(root, ".planning")) || files.some((file) => file.kind === "plan"),
+  };
+  project.stage = projectStage(project);
+  project.summary = projectSummary(project);
+  project.needSummary = projectNeedSummary(project);
+  return project;
+}
+
+function projectStage(project) {
+  const { openTasks, blockers, nextSteps } = project.signals;
+  if (blockers.length) return "有阻塞/风险，先排障";
+  if (openTasks.length) return `进行中（${openTasks.length} 项未完成）`;
+  if (nextSteps.length) return "有明确下一步，处于收尾/交接";
+  if (project.git?.dirty) return "有未提交改动，可能在收尾";
+  if (project.handoff) return "有交接文档，等待续接";
+  if (project.git?.commits?.length) return "阶段完成，等待下一目标";
+  return "信息不足，建议先补 HANDOFF / ROADMAP";
+}
+
+function projectSummary(project) {
+  const bits = [
+    `${project.files.length} 个项目文档`,
+    project.git?.branch ? `Git ${project.git.branch}${project.git.dirty ? ` · 未提交 ${project.git.changedCount}` : ""}` : "非 Git 仓库",
+    project.handoff ? `交接 ${project.handoff.rel}` : "无 HANDOFF",
+  ];
+  if (project.signals.openTasks.length) bits.push(`${project.signals.openTasks.length} 项未完成`);
+  if (project.signals.blockers.length) bits.push(`${project.signals.blockers.length} 个阻塞/风险`);
+  return bits.join(" · ");
+}
+
+function projectNeedSummary(project) {
+  const bits = [
+    project.stage,
+    ...project.signals.blockers.slice(0, 2),
+    ...project.signals.nextSteps.slice(0, 3),
+    ...project.signals.openTasks.slice(0, 4),
+  ].filter(Boolean);
+  return uniq(bits).join("；").slice(0, 600);
+}
+
+function projectFallbackScenario(project) {
+  if (project.signals.blockers.length || project.git?.dirty) return SCENARIOS.find((s) => s.id === "maintain") || null;
+  if (project.planning || project.handoff) return SCENARIOS.find((s) => s.id === "process") || null;
+  if (project.files.length) return SCENARIOS.find((s) => s.id === "docs") || null;
+  return SCENARIOS.find((s) => s.id === "general") || SCENARIOS[0] || null;
+}
+
+function mergeProjectCapabilities(project, store, analysis) {
+  if (!analysis.intents.length) {
+    const scenario = projectFallbackScenario(project);
+    if (scenario) analysis.intents = [{ scenario, score: 1.2, hits: ["项目上下文"] }];
+  }
+  const pkgMap = new Map((analysis.packages || []).map((item) => [item.pkg, item]));
+  const skillMap = new Map((analysis.skills || []).map((item) => [item.skill, item]));
+  for (const intent of analysis.intents.slice(0, 2)) {
+    const reason = `项目阶段：${intent.scenario.title}`;
+    for (const pkg of scenarioPackages(intent.scenario, store)) {
+      if (!pkgMap.has(pkg)) pkgMap.set(pkg, { pkg, score: intent.score, reasons: [reason] });
+    }
+    for (const skill of scenarioSkillIds(store, intent.scenario.id).slice(0, 3)) {
+      if (!skillMap.has(skill)) skillMap.set(skill, { skill, score: intent.score, reasons: [reason] });
+    }
+  }
+  analysis.packages = [...pkgMap.values()].slice(0, DYNAMIC_LIMITS.packages);
+  analysis.skills = [...skillMap.values()].slice(0, DYNAMIC_LIMITS.skills);
+  return analysis;
+}
+
+function projectFocus(project) {
+  const docs = project.files
+    .filter((file) => ["handoff", "decisions", "plan"].includes(file.kind))
+    .slice(0, 5)
+    .map((file) => `${file.rel}\n${file.text.slice(0, 2200)}`);
+  return [
+    project.handoff ? project.handoff.text.slice(0, 6000) : "",
+    sectionDigest(project.handoff?.text || "", 1400),
+    ...docs,
+    project.signals.openTasks.map((line) => `未完成：${line}`),
+    project.signals.blockers.map((line) => `阻塞/风险：${line}`),
+    project.signals.nextSteps.map((line) => `下一步：${line}`),
+    project.sessionText,
+    project.tech.join(" "),
+    project.scripts.join(" "),
+  ].filter(Boolean).join("\n").slice(0, PROJECT_FOCUS_CHARS);
+}
+
+function analyzeProjectContext(project, store) {
+  const focus = projectFocus(project);
+  const analysis = mergeProjectCapabilities(project, store, analyzeNeed(focus, store));
+  project.focus = focus;
+  project.analysis = analysis;
+  project.recommendations = projectRecommendations(project, store);
+  return project;
+}
+
+function projectWorkflow(project, analysis) {
+  if (project.signals.blockers.length) return "debug";
+  if (project.planning || project.signals.openTasks.length >= 4) return "phased";
+  if (project.handoff && !project.git?.dirty) return "phased";
+  return recommendWorkflow(analysis.intents[0]?.scenario);
+}
+
+function projectRecommendations(project, store) {
+  const analysis = project.analysis;
+  const workflowId = projectWorkflow(project, analysis);
+  const workflow = workflowById(workflowId);
+  const scenarioIds = uniq(analysis.intents.map((intent) => intent.scenario.id)).slice(0, 4);
+  const scenarioTitles = scenarioIds.map((id) => SCENARIOS.find((scenario) => scenario.id === id)?.title || id);
+  const probe = projectScenario(project, store, workflow);
+  return {
+    workflowId,
+    workflowTitle: workflow?.title || "直接执行",
+    scenarioIds,
+    scenarioTitles,
+    packages: probe.plugins,
+    skills: probe.skillIds,
+  };
+}
+
+function projectScenario(project, store, workflow = null) {
+  project = project.analysis ? project : analyzeProjectContext(project, store);
+  const analysis = project.analysis;
+  const scenario = dynamicScenario(project.needSummary || project.summary, analysis, workflow);
+  scenario.id = "project";
+  scenario.group = "项目";
+  scenario.title = "项目全局";
+  scenario.when = project.needSummary || project.summary;
+  scenario.brief = `项目：${project.root}\n阶段：${project.stage}\n${project.summary}\n先处理阻塞与未完成项，再按工作流推进；不要只顺着最后一句话做。`;
+  scenario.project = {
+    root: project.root,
+    stage: project.stage,
+    summary: project.summary,
+    openTasks: project.signals.openTasks,
+    blockers: project.signals.blockers,
+    nextSteps: project.signals.nextSteps,
+    recommendations: project.recommendations,
+  };
+  return scenario;
+}
+
+function buildProjectReport(project, store) {
+  project = project.analysis ? project : analyzeProjectContext(project, store);
+  const analysis = project.analysis;
+  const rec = project.recommendations;
+  const scenario = projectScenario(project, store, workflowById(rec.workflowId));
+  const lines = [
+    `## 项目续接：${project.root}`,
+    "",
+    `**阶段判断**：${project.stage}`,
+    `**上下文**：${project.summary}`,
+    "",
+    "### 证据",
+  ];
+  if (project.handoff) lines.push(`- 交接文档：\`${project.handoff.rel}\`（更新于 ${project.handoff.mtime.slice(0, 10)}）`);
+  const evidenceDocs = project.files.filter((file) => file !== project.handoff).slice(0, 6);
+  if (evidenceDocs.length) lines.push(`- 计划/决策/说明：${evidenceDocs.map((file) => `\`${file.rel}\``).join("、")}`);
+  if (project.git?.branch) {
+    lines.push(`- Git：\`${project.git.branch}\`${project.git.head ? ` @ ${project.git.head}` : ""}${project.git.dirty ? `，未提交 ${project.git.changedCount} 个文件` : "，工作区干净"}`);
+    if (project.git.commits?.length) lines.push(`- 最近提交：${project.git.commits.slice(0, 3).join("；")}`);
+  } else {
+    lines.push("- Git：不是 Git 仓库（按文件与文档恢复）");
+  }
+  if (project.tech.length || project.scripts.length) {
+    lines.push(`- 技术 / 脚本：${[project.tech.join("、"), project.scripts.length ? `scripts: ${project.scripts.join(", ")}` : ""].filter(Boolean).join(" · ")}`);
+  }
+  if (project.sessionText) lines.push(`- 当前会话：读取了最近 ${project.sessionText.split("\n").length} 条用户/助手/摘要记录，用来补足文档没写到的上下文`);
+  lines.push("");
+  lines.push("### 进度");
+  lines.push(`- 已完成 / 已勾选：${project.signals.doneTasks.length ? project.signals.doneTasks.join("；") : "未在文档里找到勾选项"}`);
+  lines.push(`- 未完成：${project.signals.openTasks.length ? project.signals.openTasks.join("；") : "未发现未完成清单"}`);
+  lines.push(`- 阻塞 / 风险：${project.signals.blockers.length ? project.signals.blockers.join("；") : "未发现"}`);
+  lines.push(`- 下一步：${project.signals.nextSteps.length ? project.signals.nextSteps.join("；") : "文档没有写明，需要你确认目标"}`);
+  if (project.signals.statusLines.length) lines.push(`- 文档里的状态：${project.signals.statusLines.join("；")}`);
+  lines.push("");
+  lines.push("### 全项目需求（自动推断）");
+  if (analysis.intents.length) {
+    for (const intent of analysis.intents.slice(0, 4)) {
+      lines.push(`- ${intent.scenario.title}（${intent.hits.slice(0, 4).join(" / ")}）`);
+    }
+  } else {
+    lines.push("- 没有命中固定场景；按项目文档与最近会话组合。");
+  }
+  lines.push(`- 建议工作流：\`${rec.workflowId}\` · ${rec.workflowTitle}`);
+  lines.push(`- 建议场景：${rec.scenarioIds.length ? rec.scenarioIds.map((id, i) => `${id}（${rec.scenarioTitles[i]}）`).join("、") : "未定"}`);
+  lines.push("");
+  lines.push("### 全项目组合（需要确认后才会装配）");
+  const pkgs = comboPackages(scenario, store, workflowById(rec.workflowId));
+  const skills = comboSkillIds(scenario, store, workflowById(rec.workflowId));
+  lines.push(`- 插件：${pkgs.length ? pkgs.map((pkg) => `\`${pkg}\``).join("、") : "无额外插件（只保留核心工具）"}`);
+  lines.push(`- 技能：${skills.length ? summarizeSkills(skills) : "无自动归入技能"}`);
+  lines.push("- 说明：这是整个项目的续接组合，不是只按你最后一句需求组合；装配前会再让你确认。");
+  lines.push("");
+  lines.push("`/function resume` 只做分析和提议，不会自动执行；要开始做，确认后仍需你自己发下一步指令。");
+  return lines.join("\n");
+}
+
 export function menuOptions(store, scenarios = SCENARIOS) {
   return scenarios.map((s) => {
     const count = scenarioPackages(s, store).length;
@@ -2490,6 +3025,7 @@ const pickerLine = (id, title, when) => `${id} · ${title}${when ? `
 
 const SUBCOMMANDS = [
   { id: "assemble", label: "场景装配 — 工作流 × 应用场景", when: "要动手做一件事，想一次配好插件与技能" },
+  { id: "resume", label: "项目续接 — 分析整个项目的进度与下一步", when: "接手项目、看整体进度，或不确定先做什么" },
   { id: "workflow", label: "仅选工作流 — 只选执行方式，不绑定场景", when: "流程已定，只想换执行节奏" },
   { id: "profile", label: "能力画像 — 查看插件/技能的自动归类", when: "想核对某个条目被当成了什么能力" },
   { id: "scan", label: "重新扫描 — 重建能力画像", when: "刚装了新插件/技能，想让它们进入候选" },
@@ -2771,13 +3307,26 @@ export default function functionMenu(pi) {
   };
 
   const functionCommand = {
-    description: "Pi-function：/function 打开子功能菜单（装配 / 工作流 / 画像 / 扫描 / 状态 / 统计 / 还原 / 归类）；带需求文本时动态分析并组合插件与技能",
+    description: "Pi-function：/function 打开子功能菜单（装配 / 项目续接 / 工作流 / 画像 / 扫描 / 状态 / 统计 / 还原 / 归类）；带需求文本时动态分析并组合插件与技能",
     handler: async (rawArgs, ctx) => {
       captureBaseline();
       let args = String(rawArgs || "").trim().replace(/^["'“”]|["'“”]$/g, "");
+      let forcedScenario = false;
       // 每次调用（含所有子功能）都重扫一遍目录：新装的插件/技能要能立刻进入候选，
       // 而不是等下次 /reload。扫描结果会通知，没新东西就不出声。
       const addedNow = scan(ctx?.hasUI ? (msg, lvl) => ctx.ui.notify(msg, lvl) : false);
+
+      // `/function resume` 现在是项目续接子功能；简历场景的 id 也叫 resume。
+      // 用 `scenario <id>` 作为固定场景的逃生口，避免两个含义互相遮蔽。
+      if (/^scenario\s+/i.test(args)) {
+        const sid = args.replace(/^scenario\s+/i, "").trim();
+        if (!SCENARIOS.some((s) => s.id === sid)) {
+          ctx.ui.notify(`未知场景 id：${sid}。用 /function 查看清单`, "error");
+          return;
+        }
+        args = sid;
+        forcedScenario = true;
+      }
 
       if (!args) {
         if (!requireUI(ctx)) return;
@@ -2802,6 +3351,65 @@ export default function functionMenu(pi) {
         } else {
           args = picked;
         }
+      }
+
+      if (args === "resume" && !forcedScenario) {
+        // 项目续接：先读当前仓库的项目文档、Git 状态和最近会话，再给出
+        // 整个项目的进度/阻塞/下一步与装配建议；确认前不改任何工具。
+        const project = analyzeProjectContext(scanProjectContext(ctx), store);
+        pi.sendMessage({ customType: "function-project", content: buildProjectReport(project, store), display: true });
+        if (!requireUI(ctx)) return;
+        const recommended = project.recommendations?.workflowId || "direct";
+        const workflows = await pickManyFrom(
+          ctx,
+          "项目续接：选执行工作流",
+          orderWorkflows(recommended),
+          (w) => `${pickerLine(w.id, w.title, w.picker || w.when)}${w.id === recommended ? "  ← 按项目状态推荐" : ""}`,
+        );
+        if (!workflows.length) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const workflow = comboWorkflows(workflows);
+        const scenario = projectScenario(project, store, workflow);
+        const ok = await confirmScenario(ctx, scenario, `项目续接：${project.stage}`, workflow);
+        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        await askUnselectedItems(ctx, scenario);
+        const gaps = [...capabilityGaps(scenario, store, workflow), ...deedGaps(`${project.stage} ${project.needSummary}`)]
+          .filter((g, i, all) => all.findIndex((x) => x.id === g.id) === i);
+        const wanted = await askMissingCapabilities(ctx, gaps);
+        const declined = gaps.filter((g) => !wanted.some((w) => w.id === g.id));
+        if (declined.length) scenario.declinedGaps = declined.map((g) => g.label);
+        const res = applyScenario(pi, ctx, scenario, store, baseline, workflow, {
+          custom: { need: project.needSummary, root: project.root, packages: scenario.plugins, skills: scenario.skillIds },
+        });
+        activeScenario = scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", {
+          id: "project",
+          workflow: workflow?.id || null,
+          at: nowIso(),
+          tools: res.next,
+          custom: { need: project.needSummary, root: project.root, packages: scenario.plugins, skills: scenario.skillIds },
+        });
+        dispatchSkillSearch(ctx, scenario, wanted, `${project.stage} ${project.needSummary}`);
+        ctx.ui.notify(
+          `已按项目续接装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具；工作流与阶段提示已注入。`,
+          "info",
+        );
+        return;
+      }
+
+      if (forcedScenario) {
+        const scenario = SCENARIOS.find((s) => s.id === args);
+        if (!scenario) { ctx.ui.notify(`未知场景 id：${args}`, "error"); return; }
+        if (!requireUI(ctx)) return;
+        const workflow = workflowById(recommendWorkflow(scenario));
+        const ok = await confirmScenario(ctx, scenario, "固定场景", workflow);
+        if (!ok) { ctx.ui.notify("已取消，未做任何改动", "info"); return; }
+        const res = applyScenario(pi, ctx, scenario, store, baseline, workflow);
+        activeScenario = scenario;
+        activeWorkflow = workflow;
+        pi.appendEntry("function-scenario", { id: scenario.id, workflow: workflow?.id || null, at: nowIso(), tools: res.next });
+        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个可选工具`, "info");
+        return;
       }
 
       if (args === "assemble") {
@@ -2899,6 +3507,7 @@ export default function functionMenu(pi) {
           lines.push(`需求：${activeScenario.when}`);
           lines.push(`动态插件：${activeScenario.plugins.length ? activeScenario.plugins.join(", ") : "（无）"}`);
           lines.push(`动态技能：${activeScenario.skillIds?.length ? summarizeSkills(activeScenario.skillIds) : "（无）"}`);
+          if (activeScenario.project) lines.push(`项目：${activeScenario.project.root} · ${activeScenario.project.stage}`);
         }
         lines.push(`已收录条目：${Object.keys(store.known).length} 个（自动归类 ${Object.values(store.known).filter((m) => m.auto).length}）`);
         if (store.lastScanAt) {
@@ -3059,6 +3668,19 @@ export default function functionMenu(pi) {
       const comboScs = ids.filter((id) => !workflowById(id)).map((id) => SCENARIOS.find((s) => s.id === id)).filter(Boolean);
       if (comboWfs.length) activeWorkflow = comboWorkflows(comboWfs);
       scenario = comboScs.length ? comboScenarios(comboScs) : (activeWorkflow ? workflowOnlyScenario(activeWorkflow) : null);
+    } else if (last.id === "project") {
+      try {
+        const scanCtx = last.custom?.root ? { ...ctx, cwd: last.custom.root } : ctx;
+        scenario = projectScenario(analyzeProjectContext(scanProjectContext(scanCtx), store), store, activeWorkflow);
+      } catch {
+        // 项目目录不可读时退化成动态任务，至少不让会话恢复整体失败。
+        const need = last.custom?.need || "项目全局";
+        const analysis = analyzeNeed(need, store);
+        scenario = dynamicScenario(need, analysis, activeWorkflow);
+        scenario.id = "project";
+        scenario.group = "项目";
+        scenario.title = "项目全局";
+      }
     } else if (last.id === "custom" && last.custom?.need) {
       const analysis = analyzeNeed(last.custom.need, store);
       scenario = dynamicScenario(last.custom.need, analysis, activeWorkflow);
@@ -3069,7 +3691,7 @@ export default function functionMenu(pi) {
     }
     if (!scenario) return;
     activeScenario = scenario;
-    const res = applyScenario(pi, ctx, scenario, store, baseline, activeWorkflow, { record: false });
+    const res = applyScenario(pi, ctx, scenario, store, baseline, activeWorkflow, { record: false, custom: last.id === "project" ? last.custom : undefined });
     if (silent) return;
     const bad = res.bad || [];
     ctx?.ui?.notify?.(
@@ -3237,6 +3859,9 @@ export default function functionMenu(pi) {
       `## 当前组合（/function 装配）：${activeScenario.workflowOnly ? activeScenario.title : `${activeWorkflow ? activeWorkflow.title + " × " : ""}${activeScenario.title}`}`,
       activeWorkflow ? `### 工作流：${activeWorkflow.title}\n${activeWorkflow.brief}\n流程：${(activeWorkflow.steps || []).join(" → ")}\n检查点：${activeWorkflow.checkpoint || "按流程执行"}\n完成标准：${activeWorkflow.doneWhen || "达到任务目标"}` : "",
       activeScenario.workflowOnly ? "" : `### 任务：${activeScenario.title}\n${activeScenario.brief}`,
+      activeScenario.project
+        ? `### 项目续接（不只看当前这句话）\n阶段：${activeScenario.project.stage}\n未完成：${(activeScenario.project.openTasks || []).slice(0, 6).join("；") || "无"}\n阻塞/风险：${(activeScenario.project.blockers || []).slice(0, 4).join("；") || "无"}\n下一步：${(activeScenario.project.nextSteps || []).slice(0, 4).join("；") || "文档没写，先向用户确认"}\n先处理项目层的阻塞与未完成项，再回到当前消息；不要只顺着最后一句话做。`
+        : "",
       activeScenario.id === "process" || activeWorkflow?.id === "process-design"
         ? `### 分配方法（先拆解再分配）\n${ALLOCATION_METHOD.map((step, i) => `${i + 1}. ${step}`).join("\n")}`
         : "",
@@ -3263,4 +3888,4 @@ export default function functionMenu(pi) {
 
 // 供测试使用
 // 测试用接口：内部纯函数也导出，避免测试只能靠端到端猜（见 function-menu-tests/TEST-PLAN.md L1）
-export { EXT_VERSION, pickerLine, SUBCOMMANDS, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, isIdCombo, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };
+export { EXT_VERSION, pickerLine, SUBCOMMANDS, collectProjectDocs, NEED_CAPABILITIES, ACTION_ROLES, STYLE_ROLES, SINGLE_DEEDS, ALIASES, aliasesFor, aliasVariants, expandItemText, tagRoleHits, deedWords, deedGaps, roleCovered, capabilityGaps, capabilityCovered, capabilityScan, scanTermsFor, catalogTexts, wordTokens, wordAudit, unknownWordAsks, wordGapsFromAnswers, bareCapabilityAsks, bareGapsFromAnswers, auditAskList, includeAuditPicks, BARE_CAPABILITIES, findSkillCommandName, skillSearchMessage, TAG_VOCAB, tagsOf, selectByCoverage, usageBoost, recordUsage, recordToolUse, USAGE_BOOST_CAP, needTerms, termScore, termScoreDistinct, GENERIC_TERMS, NEED_STOP, SCENARIO_HINTS, DYNAMIC_LIMITS as LIMITS, SCENARIO_CONTRACTS, contractFor, auditCoverage, SCENARIOS, WORKFLOWS, workflowOnlyScenario, normalizeWorkflowId, workflowById, buildProfileReport, scanProjectContext, analyzeProjectContext, projectScenario, buildProjectReport, CAPABILITIES, SCENARIO_CAPABILITIES, WORKFLOW_CAPABILITIES, WORKFLOW_SKILL_PATTERNS, buildProfile, hydrateCatalog, scoreScenarios, classifyItem, buildCatalog, buildProposal, discoverItems, reconcile, loadStore, saveStore, storePath, scenarioPackages, scenarioSkillIds, comboPackages, comboSkillIds, comboScenarios, comboWorkflows, isIdCombo, followupQuestions, DYNAMIC_LIMITS, workflowOptions, recommendWorkflow, matchesPkg, CORE_TOOLS, CLASSIFIER_VERSION, summarizeSkills, coreToolNames, applyScenario, analyzeNeed, dynamicScenario };

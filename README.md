@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.gif?v=2.34.0" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif?v=2.35.0" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 
@@ -66,7 +66,8 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 
 | Command | What happens |
 |---|---|
-| `/function` | Opens a sub-function picker first (assemble / workflow-only / profile / scan / status / restore / assign); assemble then prints the catalog, asks for a workflow and an application scenario, and assembles after approval |
+| `/function` | Opens a sub-function picker first (assemble / project-resume / workflow-only / profile / scan / status / stats / restore / assign); assemble then prints the catalog, asks for a workflow and an application scenario, and assembles after approval |
+| `/function resume` | Reads project docs (HANDOFF / ROADMAP / decisions), Git state, and the recent session; reports the whole-project stage, open tasks, blockers, next steps, and a recommended assembly; nothing is enabled until you approve |
 | `/function workflow` | Asks only for a workflow, enables its bundle, and does not bind a task scenario |
 | `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
 | `/function profile` | Shows the generated capability profile: roles, scores, unassigned items, and profile path |
@@ -76,6 +77,8 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 | `/function off` | Restores the tool set from before assembly |
 
 `/pi-function` is an alias.
+
+`/function resume` is the project-resume report. The 简历 / 求职 application scenario also uses the stable id `resume`; select it with `/function scenario resume` or through the assemble picker.
 
 Workflow rows explain the process and show their bundle plugin/skill counts; scenario rows show domain plugin and skill counts. A typical fixed-menu exchange:
 
@@ -107,6 +110,7 @@ Step 2: choose an application scenario (what to make)
 | You want to browse the available combinations | `/function` | Workflow → application scenario → approve assembly |
 | You want a workflow without a specific deliverable | `/function workflow` | Choose only a workflow; enable it without a task scenario |
 | You already have a one-line request | `/function "build a product site and write a launch article"` | Analyze multiple application types → ask only for a workflow → approve the composition; the request goes back to the editor |
+| You are picking up an existing project | `/function resume` | Scan project evidence → show progress, blockers, next steps → recommend and assemble a whole-project bundle |
 
 ### Reading the picker
 
@@ -260,6 +264,25 @@ Because the profile is cached, the classifier version is bumped (`PROFILE_VERSIO
 ```
 
 or `全部 29 个条目都归入了能力角色`. An item is never dropped: it either has a role or appears in the unassigned list (`tests/scan.test.mjs` asserts exactly that).
+
+## Project resume
+
+`/function resume` answers “what does this whole project need next?”, not “what does this one sentence need?”. It is the entry point for picking up work after a break, a handoff, or a context reset.
+
+It reads, with bounded limits:
+
+- `HANDOFF.md`, `DECISIONS.md` / ADRs, `ROADMAP.md`, `.planning/` files, README, and other project docs (skips dependencies and build output);
+- Git branch, short HEAD, uncommitted files, and recent commits;
+- the recent user / assistant / compaction messages in the current session.
+
+The report separates evidence from inference:
+
+- stage (`blocked`, `in progress`, `handoff`, `unknown`);
+- checked vs. open tasks, blockers/risks, and next steps;
+- likely application scenarios and a recommended workflow;
+- the plugins and skills that bundle would enable.
+
+`/function resume` only analyzes and proposes. It asks for a workflow, shows the assembly proposal, and enables tools only after confirmation; it never executes the project work. The active project bundle is recorded as `project` and restored after `/reload` when the project directory is still available.
 
 ## Dynamic needs
 
@@ -521,7 +544,7 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 264 cases, repository fixture — runs on any machine
+npm test          # 269 cases, repository fixture — runs on any machine
 ```
 
 Test layout (`tests/`, plan in `TEST-PLAN.md`):
