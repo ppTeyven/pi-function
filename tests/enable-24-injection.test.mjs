@@ -205,3 +205,27 @@ test("模型装配：预览里带工作流的流程和完成标准", async () =>
   assert.match(text, /\*\*工作流\*\*：/);
   assert.match(text, /1. 复现问题/, "应有编号流程");
 });
+
+test("模型装配：结果清单里每个插件都有用途说明", async () => {
+  const tools = [...coreTools()];
+  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  m.default(pi);
+  await state.registeredTools.find((t) => t.name === "assemble_scenario").execute("1", { scenario: "plugin" });
+  const msg = state.messages.find((x) => x.customType === "function-assembled");
+  const text = String(msg?.content || "");
+  assert.match(text, /\*\*插件\*\*/);
+  assert.match(text, /\*\*技能\*\*/);
+  // 每一行的包/技能后面都要有「 — 说明」
+  const itemLines = text.split("\n").filter((l) => /^- `[^`]+`/.test(l));
+  assert.ok(itemLines.length > 0, "应有条目行");
+  for (const line of itemLines) assert.match(line, /` — .+/, `缺说明：${line}`);
+});
+
+test("模型装配：技能段标题带数量", async () => {
+  const tools = [...coreTools()];
+  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  m.default(pi);
+  await state.registeredTools.find((t) => t.name === "assemble_scenario").execute("1", { scenario: "plugin" });
+  const msg = state.messages.find((x) => x.customType === "function-assembled");
+  assert.match(String(msg?.content || ""), /\*\*技能\*\*（\d+ 个）/);
+});

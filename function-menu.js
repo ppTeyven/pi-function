@@ -4402,15 +4402,40 @@ export default function functionMenu(pi) {
       try {
         pi.sendMessage({
           customType: "function-assembled",
-          content: [
-            `## 已装配：${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}`,
-            `- 启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个`,
-            `- 插件：${repPkgs.join("、") || "无（只用核心工具）"}`,
-            `- 技能：${repSkills.join("、") || "无"}`,
-            params?.reason ? `- 依据：${params.reason}` : "",
-            bad.length ? `- 需注意：${bad.map((r) => `${r.pkg}（${r.state}）`).join("、")}` : "",
-            "还原 /function off · 详情 /function status",
-          ].filter(Boolean).join(String.fromCharCode(10)),
+          content: (() => {
+            const NL = String.fromCharCode(10);
+            const out = [
+              `## 已装配：${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}`,
+              `- 当前 ${res.next.length} 个工具可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）`,
+              "",
+            ];
+            // 每一项都写清楚是干嘛的：只列名字用户和模型都不知道该用哪个。
+            out.push("**插件**");
+            if (!repPkgs.length) out.push("- 无（只用核心工具）");
+            for (const pkg of repPkgs) {
+              const info = ACTIVE_PROFILE?.itemInfo?.[pkg] || {};
+              const roles = uniq((info.roles || []).map((r) => CAPABILITIES[r]?.label).filter(Boolean));
+              const use = roles.length ? roles[0] : shortDesc(info.description || "", 40);
+              const toolN = pi.getAllTools().filter((t) => matchesPkg(t.sourceInfo, pkg)).length;
+              const cmdN = commandsForPkg(pi, pkg).length;
+              const bits = [];
+              if (toolN) bits.push(`${toolN} 个工具`);
+              if (cmdN) bits.push(`${cmdN} 个命令`);
+              out.push(`- \`${pkg}\`${use ? ` — ${use}` : ""}${bits.length ? ` · ${bits.join(" / ")}` : ""}`);
+            }
+            out.push("");
+            out.push(`**技能**（${repSkills.length} 个）`);
+            if (!repSkills.length) out.push("- 无");
+            for (const skill of repSkills) {
+              const desc = shortDesc(store.known?.[`skill:${skill}`]?.description || "", 52);
+              out.push(`- \`${skill}\`${desc ? ` — ${desc}` : ""}`);
+            }
+            if (params?.reason) { out.push(""); out.push(`**依据**：${params.reason}`); }
+            if (bad.length) { out.push(""); out.push(`**需注意**：${bad.map((r) => `${r.pkg}（${r.state}）`).join("、")}`); }
+            out.push("");
+            out.push("还原 /function off · 详情 /function status");
+            return out.join(NL);
+          })(),
           display: true,
         });
       } catch { /* 无 UI 环境忽略 */ }
