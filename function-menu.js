@@ -2636,8 +2636,11 @@ function applyScenario(pi, ctx, scenario, store, workflow = null, opts = {}) {
 
   const keep = active.filter((n) => !optional.has(n));
   const core = coreToolNames(pi);
-  const next = uniq([...keep, ...core, ...wanted]);
-  const disabled = active.filter((n) => optional.has(n) && !wanted.has(n));
+  // 本扩展自己的工具必须永远在：assemble_scenario 是装配入口，
+  // 关掉它等于把钥匙锁在门里（模型下一次既查不到候选也装不了）。
+  const OWN = ["suggest_scenario", "assemble_scenario"].filter((n) => all.some((t) => t.name === n));
+  const next = uniq([...keep, ...core, ...OWN, ...wanted]);
+  const disabled = active.filter((n) => optional.has(n) && !wanted.has(n) && !OWN.includes(n));
   pi.setActiveTools(next);
   // 说清楚哪些插件其实用不了，不再静默
   const bad = auditPackages(pi, scenario, store, workflow).filter((r) => r.state !== "ok");
@@ -4095,6 +4098,14 @@ export default function functionMenu(pi) {
         "3. 用一句话说明为什么选这个组合；确实缺能力就直接说缺什么、别假装能做。",
         "不要让我再手动选场景，也不要声称已经完成了需求本身。",
       ].join("\n");
+      // 兜底：模型要靠这两个工具工作，先把它们放回活动工具集。
+      // 上一次装配可能按“可选工具”把它们关掉过（OWN 修复前的历史状态）。
+      try {
+        const needTools = ["suggest_scenario", "assemble_scenario"].filter((n) => pi.getAllTools?.().some((t) => t.name === n));
+        const missingTools = needTools.filter((n) => !pi.getActiveTools().includes(n));
+        if (missingTools.length) pi.setActiveTools(uniq([...pi.getActiveTools(), ...missingTools]));
+      } catch { /* 旧版 host 没有这两个 API 时忽略 */ }
+
       let sent = false;
       try {
         pi.sendUserMessage(ask, { expandPromptTemplates: false });
