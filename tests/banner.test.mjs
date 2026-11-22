@@ -57,10 +57,11 @@ test("B3 动画是可剥离的：rect 自身不带 opacity / fill=none，剥掉 
 test("B4 动画是波浪：字一直在，只起伏与变暗，可降级", () => {
   assert.match(SVG, /@keyframes bob/);
   assert.match(SVG, /@keyframes dim/);
-  // 波浪要落到每个 26px 方块：<g class="wave"> 的数量不少于 rect 数
   const waveGroups = [...SVG.matchAll(/class="wave"/g)].length;
   assert.ok(waveGroups >= wordRects.length, `只有 ${waveGroups} 个方块在动，rect 有 ${wordRects.length}`);
-  // 同一个字母内部，不同列必须错峰（否则等于整字母一起动）
+  // 设计变更：波浪改为**按字母**驱动（一个字形 5 格宽，按格驱动会让字形内部
+  // 左右高低不一，看起来像被切开）。所以断言反过来了：同一个字母内部必须同相位，
+  // 且整行只能有一个波（相邻字母的相位差很小）。
   const groups = SVG.split('<g class="wave"').slice(1);
   const delaysFor = (letter) =>
     groups
@@ -68,8 +69,10 @@ test("B4 动画是波浪：字一直在，只起伏与变暗，可降级", () =>
       .map((g) => Number.parseFloat(g.split("animation-delay:-")[1]));
   const within = delaysFor(0);
   assert.ok(within.length >= 3, `字母 0 的方块太少：${within.length}`);
-  // 同一列里的方块共享相位是对的（按列驱动），但要能看出"一个字母里有多个相位"
-  assert.ok(new Set(within).size >= 2, `字母 0 内部只有一种相位：${within.join(",")}`);
+  assert.equal(new Set(within).size, 1, `字母 0 内部应同相位：${within.join(",")}`);
+  const firsts = [0, 1, 2, 3, 4, 5, 6, 7].map((l) => delaysFor(l)[0]).filter((x) => Number.isFinite(x));
+  const spread = Math.max(...firsts) - Math.min(...firsts);
+  assert.ok(spread < 0.35, `整行相位跨度过大（${spread.toFixed(2)}s），会出现多个波`);
 });
 
 test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {

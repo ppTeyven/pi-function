@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.gif?v=2.35.0" alt="Pi-function" width="100%">
+  <img src="assets/banner.gif?v=20261123" alt="Pi-function" width="100%">
 
   <h1>Pi-function</h1>
 

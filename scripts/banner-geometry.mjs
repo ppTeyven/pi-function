@@ -128,9 +128,13 @@ export function layout() {
  */
 export const TIMING = {
   wavePeriod: 2.6, // seconds for one full wave (the GIF loop is exactly this)
-  waveAmplitude: 6, // px the crest rises — under a quarter of a pixel cell
-  wavePhaseStep: 0.55, // radians of phase between neighbouring pixel columns
-  waveDim: 0.45, // how much darker the crest is than a letter at rest
+  // Almost fully in phase: the wordmark lifts and settles as one block, with a
+  // 2px lag at the right edge so it feels alive instead of mechanical.
+  // A real wavelength inside "function" (0.785) made letters bob independently;
+  // 0.08 still tilted the whole line. This is the "one wave" reading.
+  wavePhaseStep: 0.02,
+  waveAmplitude: 26, // px the crest rises/sinks — one full pixel cell
+  waveDim: 0.28, // how much darker the crest is than a letter at rest
   breathe: 2.6, // dots share the wave period so the loop is seamless
   dotDelay: [0, 0.2, 0.4], // seconds
 };
@@ -144,14 +148,23 @@ export const TIMING = {
  */
 export function waveAt(col, t) {
   const phase = (2 * Math.PI * t) / TIMING.wavePeriod - col * TIMING.wavePhaseStep;
-  const crest = Math.max(0, Math.sin(phase));
-  const lift = Math.round((TIMING.waveAmplitude * crest) / 2) * 2;
-  return { dy: -lift, alpha: 1 - TIMING.waveDim * crest };
+  const s = Math.sin(phase);
+  // Symmetric around rest: the crest rises, the trough sinks. Clamping at 0
+  // (the old behaviour) made blocks jump upward and never settle down.
+  const lift = Math.round((TIMING.waveAmplitude * s) / 2) * 2;
+  return { dy: -lift, alpha: 1 - TIMING.waveDim * Math.max(0, s) };
 }
 
-/** Pixel column of a block, 0-based from the wordmark's left ink edge. */
+/**
+ * Which letter a block belongs to (0..7), not which pixel column.
+ *
+ * Waves are driven per letter on purpose: one glyph is 5 cells wide, and
+ * driving each cell on its own phase made a single letter slope inside itself
+ * — the wordmark looked chopped rather than moving. Per-letter keeps every
+ * glyph rigid and lets the wave pass through the whole word.
+ */
 export function columnOf(x) {
-  return Math.round((x - TEXT_X) / CELL);
+  return Math.floor(Math.max(0, x - TEXT_X) / (CELL * 6));
 }
 
 /** Seconds of animation per loop (the GIF ships exactly this many frames). */
