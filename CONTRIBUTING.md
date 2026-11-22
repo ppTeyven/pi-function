@@ -105,6 +105,14 @@ schedule, so a fresh release can take hours to days to appear.
 ## Design constraints
 
 - Single file, zero dependencies, zero network calls, zero telemetry.
+- **This extension's own tools never take part in the assembly switch.**
+  `suggest_scenario` and `assemble_scenario` live under `~/.pi/agent/extensions/`,
+  so `isOptionalSource()` classifies them as optional — and `applyScenario`
+  switches every optional tool off unless the scene wants it. That once made a
+  single assembly lock the model out of both tools (the key was locked inside
+  the door). They are infrastructure: always active, never in `disabled`, never
+  audited as plugins. `/function <need>` additionally re-activates them right
+  before handing the need to the model, as a second line of defence.
 - The model reads the need; the local algorithm decides which tools open.
   Keep that boundary — do not let a model response choose tool names directly.
 - The unacceptable outcome is **the user not having the tool they needed**.
