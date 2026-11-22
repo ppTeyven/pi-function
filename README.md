@@ -8,6 +8,7 @@
 
   <p>
     <a href="https://github.com/ppTeyven/pi-function/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ppTeyven/pi-function?style=flat-square&color=F1BE58"></a>
+    <a href="https://www.npmjs.com/package/pi-function"><img alt="npm" src="https://img.shields.io/npm/v/pi-function?style=flat-square&color=CB3837"></a>
     <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/ppTeyven/pi-function?style=flat-square&color=4D9ABF"></a>
     <img alt="Pi extension" src="https://img.shields.io/badge/pi-extension-F09082?style=flat-square">
     <img alt="Node >= 20" src="https://img.shields.io/badge/node-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white">
@@ -54,7 +55,14 @@ There is exactly one hard rule: **the unacceptable outcome is the user not havin
 ## Install
 
 ```bash
-pi install git:github.com/ppTeyven/pi-function
+pi install npm:pi-function
+```
+
+Pin a version, or use git:
+
+```bash
+pi install npm:pi-function@3.0.0
+pi install git:github.com/ppTeyven/pi-function@v3.0.0
 ```
 
 Local development:
