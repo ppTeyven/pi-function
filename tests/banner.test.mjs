@@ -71,8 +71,12 @@ test("B4 动画是波浪：字一直在，只起伏与变暗，可降级", () =>
   assert.ok(within.length >= 3, `字母 0 的方块太少：${within.length}`);
   assert.equal(new Set(within).size, 1, `字母 0 内部应同相位：${within.join(",")}`);
   const firsts = [0, 1, 2, 3, 4, 5, 6, 7].map((l) => delaysFor(l)[0]).filter((x) => Number.isFinite(x));
-  const spread = Math.max(...firsts) - Math.min(...firsts);
-  assert.ok(spread < 0.35, `整行相位跨度过大（${spread.toFixed(2)}s），会出现多个波`);
+  // 一个波长 = 8 个字母 → 相邻字母的相位差应恒为 loop/8 = 0.325s
+  for (let i = 1; i < firsts.length; i += 1) {
+    const d = firsts[i] - firsts[i - 1];
+    assert.ok(Math.abs(d - 0.325) < 0.06, `字母 ${i - 1}→${i} 的相位差 ${d.toFixed(3)}s，应约 0.325s（一个波）`);
+  }
+  assert.ok(Math.max(...firsts) < 2.6, "整行的相位不能超过一个循环，否则会出现第二个波");
 });
 
 test("B5 画布 / Pi 标记 / 无障碍标签没被改动", () => {

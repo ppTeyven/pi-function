@@ -68,11 +68,12 @@ const mark = PI_MARK.polygons
   })
   .join(String.fromCharCode(10) + "    ");
 
-// 每个 26px 方块一个 <g>：delay 由像素列号决定，所以同一字母内也会错峰
+// 每个方块一个 <g>：相位由**字母序号**决定（li），不是像素列 ——
+// 从 run 的 x 反推字母会在边界上落到相邻字母，同一字形就会出现两种相位。
 const wordmark = letters
   .flatMap((letter, li) =>
     letter.runs.map((r) => {
-      const delay = phaseSeconds(columnOf(r.x)).toFixed(3);
+      const delay = phaseSeconds(li).toFixed(3);
       const c = STATIC ? "" : ` class="wave" style="animation-delay:-${delay}s"`;
       return `<g${c}><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" data-letter="${li}"/></g>`;
     }),

@@ -128,11 +128,11 @@ export function layout() {
  */
 export const TIMING = {
   wavePeriod: 2.6, // seconds for one full wave (the GIF loop is exactly this)
-  // Almost fully in phase: the wordmark lifts and settles as one block, with a
-  // 2px lag at the right edge so it feels alive instead of mechanical.
-  // A real wavelength inside "function" (0.785) made letters bob independently;
-  // 0.08 still tilted the whole line. This is the "one wave" reading.
-  wavePhaseStep: 0.02,
+  // Exactly one wavelength across the eight letters: 2π / 8 = 0.785.
+  // A single crest travels from "f" to the last "n" and the loop closes
+  // seamlessly. Larger values put several crests inside the word; smaller
+  // ones flatten into a tilt.
+  wavePhaseStep: 0.785,
   waveAmplitude: 26, // px the crest rises/sinks — one full pixel cell
   waveDim: 0.28, // how much darker the crest is than a letter at rest
   breathe: 2.6, // dots share the wave period so the loop is seamless

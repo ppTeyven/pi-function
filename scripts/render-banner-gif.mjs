@@ -163,11 +163,12 @@ function render(t) {
     const x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
     for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) put(xx, yy, white, a);
   };
-  // 波浪：字始终在屏幕上，只有起伏与明暗；波峰往上抬 6px 并压暗
-  // 每个 26px 方块按自己的列相位起伏：同一字母的格子可以不在同一高度
-  for (const letter of letters) {
+  // 波浪：字始终在屏幕上，只有起伏与明暗。
+  // 相位按**字母**给（index），整个字形刚性移动；按 run.x 反推会把同一个
+  // 字形的线段分到相邻字母的相位上。
+  for (const [li, letter] of letters.entries()) {
     for (const r of letter.runs) {
-      const { dy, alpha } = waveAt(columnOf(r.x), t);
+      const { dy, alpha } = waveAt(li, t);
       fillRect(r.x, r.y + dy, r.w, r.h, alpha);
     }
   }
