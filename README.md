@@ -31,6 +31,26 @@ The scenario and workflow IDs are stable for every user. Which plugins and skill
 
 It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
 
+## Why this exists
+
+After installing a dozen plugins and dozens of skills, the problem is no longer "missing tools" — it is **disorder**:
+
+- The tool you need is off, while irrelevant ones eat your context and distort model judgment;
+- The same capability is implemented by three or four plugins, and you don't know which one is live;
+- Every new task starts with manually remembering which tools to enable, and missing one means starting over;
+- The more you install, the more the model drifts — citing tools that don't exist.
+
+Pi-function exists to fix exactly that. The goal is to **use every installed skill, plugin and tool in the most convenient, most accurate, fastest and most efficient way**:
+
+| Goal | How |
+|---|---|
+| **Most convenient** | One `/function`, or one plain sentence. No plugin names to memorize, no tool list to check — every picker option says *when* to pick it |
+| **Most accurate** | Reading the need is the model's job (it understands the whole sentence); deciding which tools open is the local deterministic algorithm's job (no improvisation). Required capabilities of a scenario are **force-completed** — over-enabling beats under-enabling |
+| **Fastest** | Local decisions are millisecond-scale: `analyzeNeed` 0.8 ms, and assembly applies immediately. Menus, fixed scenes and workflows need no network and no model call |
+| **Most efficient** | After assembly only the tools you actually need stay active (built-ins + this scene's plugins); every other optional tool is switched off. The system prompt spells out what is enabled, which skills and commands exist, so the model cannot pretend a missing tool works |
+
+There is exactly one hard rule: **the unacceptable outcome is the user not having the tool they needed.** Hence force-completion, miss-audits, missing-plugin warnings, and `/function status` explaining *why* a tool did not appear.
+
 ## Install
 
 ```bash

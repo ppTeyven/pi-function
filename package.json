@@ -1,7 +1,7 @@
 {
   "name": "pi-function",
-  "version": "2.35.0",
-  "description": "Application-scenario + workflow-bundle assembler for the Pi coding agent, with project-wide resume.",
+  "version": "3.0.0",
+  "description": "Stop plugin/skill disorder. Assemble the right tools for the job: the model reads the need, the local algorithm decides which tools open, and required capabilities are never left out.",
   "type": "module",
   "license": "MIT",
   "author": "ppTeyven",
@@ -31,18 +31,16 @@
   },
   "files": [
     "function-menu.js",
-    "test.mjs",
     "tests",
     "scripts",
     "assets",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "CHANGELOG.md",
-    "TEST-PLAN.md"
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test \"tests/*.test.mjs\"",
+    "test": "node --test \"tests/*.test.mjs\"",
     "render:banner": "node scripts/render-banner.mjs",
     "test:all": "npm test",
     "render:banner:gif": "node scripts/render-banner-gif.mjs"

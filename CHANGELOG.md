@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.0.0
+
+**The core idea, stated plainly**: the unacceptable outcome is the user not having the tool they needed. Everything below follows from that.
+
+### Division of responsibility
+
+- **The model reads the need.** `/function <need>` asks for the workflow (you decide *how*), then sends the need — together with the project's past and direction — to the model, which decides *what this sentence is actually asking for*.
+- **The local algorithm decides which tools open.** The model can only name a scene id; tool selection, audit, persistence and the enabled-capabilities manifest are deterministic local code. The model cannot add or remove tools on its own.
+
+### Never miss a capability
+
+- **Required capabilities are force-completed.** If a scene's contract requires a capability (`required`) and the machine has a member for it but it did not make it into the bundle, its first package is added and all of its tools enabled — with a notice. `not-installed` is reported honestly instead of faked.
+- **Enabled-capabilities manifest.** `before_agent_start` now injects a block listing every enabled plugin (tool count + commands) and every skill by name. Without it the model knew the tools but not the skills — installing a skill you never use.
+- **`/function status` explains absence**: current tools, current skills, and the optional tools that are registered but not enabled, grouped by package.
+
+### Fewer, better questions
+
+- Word-level interrogation is gone as a default. With a plugin/skill bundle already chosen, unknown words only go into the system prompt (`本机没提到：…`); only a completely empty bundle is worth asking about.
+- The word filter rejects numbers, quantifiers, function words, modal phrases (能不能/是不是), and operation verbs — the screenshot-era prompts like 「50」要当成需求吗？ no longer appear.
+- Multiple real gaps are merged into a single question.
+
+### Assembly semantics
+
+- **`/function off` = global-always-on**, not "restore the snapshot taken at first use": built-in tools + `settings.defaultTools` (plain replaces, `+name` adds, `-name` removes), with `read/bash/edit/write` as a name-based fallback (bash is not always registered as `builtin:`).
+- **Cancel means cancel.** Follow-up questions use a three-way `是 / 否 / 取消本次装配`; cancelling stops the whole flow instead of being read as "no". Cancelling also puts the original need back into the editor.
+- **Options are single-line** in the selector, with the id and a one-line reason; the multi-select loops until you pick 完成 or press Esc (Esc = abandon).
+- **The proposal is compact**: what is enabled (plugins with tool counts, skills by name), core tools, related-but-not-enabled, gaps, and one line for 还原/详情. Analysis detail lives in the system prompt, not in the proposal.
+
+### Bug fixes found by the new test suite
+
+- `comboWorkflows` did not merge `plugins` / `skills`, so multi-workflow bundles silently dropped those workflows' packages and skills.
+- `loadStore` did not return `active`, so the state file was write-only and the post-`/reload` fallback path never worked.
+- `globalTools` judged "built-in" only by a `builtin:` path prefix, so `/function off` dropped `bash` and `powershell` in pi-web.
+- `saveStore` ran before `lastAdded/lastChanged` were set, so scan changes were never persisted.
+- `assemble_scenario` did not capture a baseline, making `/function off` a no-op after model assembly.
+
+### Tests
+
+654 tests across 30 files (`npm test`), covering tool-set edge cases, contracts, properties over 40 random bundles, cross-module contracts, restore paths, injection blocks and handler routing.
+
 ## 2.35.0
 
 - **`/function resume` — project-wide resume.** It scans `HANDOFF.md`, decisions/ADRs, `ROADMAP.md`, `.planning/`, README and other project docs; reads Git branch / HEAD / dirty files / recent commits; and folds in the recent session messages and compaction summaries. It reports stage, checked/open tasks, blockers, next steps, likely application scenarios, and a recommended workflow + bundle.
