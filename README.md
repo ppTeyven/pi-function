@@ -11,7 +11,7 @@
     <a href="https://www.npmjs.com/package/pi-function"><img alt="npm" src="https://img.shields.io/npm/v/pi-function?style=flat-square&color=CB3837"></a>
     <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/ppTeyven/pi-function?style=flat-square&color=4D9ABF"></a>
     <img alt="Pi extension" src="https://img.shields.io/badge/pi-extension-F09082?style=flat-square">
-    <img alt="Node >= 20" src="https://img.shields.io/badge/node-%E2%89%A520-339933?style=flat-square&logo=node.js&logoColor=white">
+    <img alt="Node >= 20" src="https://img.shields.io/badge/node-20%2B-339933?style=flat-square&logo=node.js&logoColor=white">
   </p>
 
   <p>
