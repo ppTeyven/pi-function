@@ -159,7 +159,7 @@ test("目录：buildCatalog 内容足够长（含场景与工作流）", () => {
 test("装配通知：含启用数与下一步", async () => {
   const { state } = await injected();
   const t = noticeText(state);
-  assert.match(t, /启用 \d+ 个，停用 \d+ 个/);
+  assert.match(t, /当前 \d+ 个可用（新增 \d+，停用 \d+）/);
   assert.match(t, /还原 \/function off/);
 });
 

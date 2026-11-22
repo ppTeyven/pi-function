@@ -112,7 +112,7 @@ test("handler：/function status 报出当前组合与已启用的插件工具",
 test("handler：装配通知里给出「启用 N 个 / 停用 M 个」的可核对数字", async () => {
   const { state, run } = env();
   await run("scenario plugin", { confirms: [true] });
-  assert.match(noticeText(state), /启用 \d+ 个，停用 \d+ 个/);
+  assert.match(noticeText(state), /当前 \d+ 个可用（新增 \d+，停用 \d+）/);
 });
 
 test("handler：连续两次装配同一场景，工具集不膨胀", async () => {

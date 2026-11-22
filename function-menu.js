@@ -3708,7 +3708,7 @@ export default function functionMenu(pi) {
     pi.appendEntry("function-scenario", { id: scenario.id, workflow: workflow?.id || null, at: nowIso(), tools: res.next });
     dispatchSkillSearch(ctx, scenario, wanted, `${scenario.title} ${scenario.when || ""}`);
     ctx.ui.notify(
-      `已装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个\n${NEXT_STEP}`,
+      `已装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：当前 ${res.next.length} 个可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）\n${NEXT_STEP}`,
       "info",
     );
   };
@@ -3812,7 +3812,7 @@ export default function functionMenu(pi) {
         });
         dispatchSkillSearch(ctx, scenario, wanted, `${project.stage} ${project.needSummary}`);
         ctx.ui.notify(
-          `已按项目续接装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个；阶段提示已注入\n${NEXT_STEP}`,
+          `已按项目续接装配「${workflow ? `${workflow.title} × ` : ""}${scenario.title}」：当前 ${res.next.length} 个可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）；阶段提示已注入\n${NEXT_STEP}`,
           "info",
         );
         return;
@@ -3829,7 +3829,7 @@ export default function functionMenu(pi) {
         activeScenario = scenario;
         activeWorkflow = workflow;
         pi.appendEntry("function-scenario", { id: scenario.id, workflow: workflow?.id || null, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个\n${NEXT_STEP}`, "info");
+        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：当前 ${res.next.length} 个可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）\n${NEXT_STEP}`, "info");
         return;
       }
 
@@ -4040,7 +4040,7 @@ export default function functionMenu(pi) {
         activeScenario = scenario;
         activeWorkflow = workflow;
         pi.appendEntry("function-scenario", { id: comboIds.join("+"), workflow: workflow?.id || null, at: nowIso(), tools: res.next });
-        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个\n${NEXT_STEP}`, "info");
+        ctx.ui.notify(`已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：当前 ${res.next.length} 个可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）\n${NEXT_STEP}`, "info");
         return;
       }
 
@@ -4061,7 +4061,7 @@ export default function functionMenu(pi) {
           activeWorkflow = wf;
           pi.appendEntry("function-scenario", { id: sc.id, workflow: wf?.id || null, at: nowIso(), tools: res.next });
           ctx.ui.notify(
-            `已装配「${[wf?.title, sc.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个，停用 ${res.disabled.length} 个\n${NEXT_STEP}`,
+            `已装配「${[wf?.title, sc.title].filter(Boolean).join(" × ")}」：当前 ${res.next.length} 个可用（新增 ${res.enabled.length}，停用 ${res.disabled.length}）\n${NEXT_STEP}`,
             "info",
           );
           return;
@@ -4358,10 +4358,15 @@ export default function functionMenu(pi) {
       });
 
       const bad = res.bad || [];
+      // 用 comboPackages/comboSkillIds：固定场景的 plugins/skillIds 字段并不完整
+      // （技能来自能力角色，schema 上写在 comboSkillIds 里）。直接读 scenario.*
+      // 会让模型看到「技能：无」并误判成空装。
+      const repPkgs = comboPackages(scenario, store, workflow);
+      const repSkills = comboSkillIds(scenario, store, workflow);
       const lines = [
-        `已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个`,
-        `插件：${(scenario.plugins || []).join("、") || "无（只用核心工具）"}`,
-        `技能：${(scenario.skillIds || []).join("、") || "无"}`,
+        `已装配「${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}」：当前 ${res.next.length} 个工具可用（本次新增 ${res.enabled.length}，停用 ${res.disabled.length}）`,
+        `插件：${repPkgs.join("、") || "无（只用核心工具）"}`,
+        `技能：${repSkills.join("、") || "无"}`,
       ];
       if (params?.reason) lines.push(`依据：${params.reason}`);
       if (res.autoAdded?.length) lines.push(`已自动补全（避免漏用）：${res.autoAdded.join("、")}`);
@@ -4375,8 +4380,8 @@ export default function functionMenu(pi) {
           content: [
             `## 已装配：${[workflow?.title, scenario.title].filter(Boolean).join(" × ")}`,
             `- 启用 ${res.enabled.length} 个工具，停用 ${res.disabled.length} 个`,
-            `- 插件：${(scenario.plugins || []).join("、") || "无（只用核心工具）"}`,
-            `- 技能：${(scenario.skillIds || []).join("、") || "无"}`,
+            `- 插件：${repPkgs.join("、") || "无（只用核心工具）"}`,
+            `- 技能：${repSkills.join("、") || "无"}`,
             params?.reason ? `- 依据：${params.reason}` : "",
             bad.length ? `- 需注意：${bad.map((r) => `${r.pkg}（${r.state}）`).join("、")}` : "",
             "还原 /function off · 详情 /function status",

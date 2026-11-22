@@ -106,7 +106,7 @@ test("模型装配：返回文本含启用数量与还原入口", async () => {
   const { tool } = env();
   const res = await tool("assemble_scenario").execute("1", { scenario: "plugin" });
   const text = res.content[0].text;
-  assert.match(text, /启用 \d+ 个工具/);
+  assert.match(text, /当前 \d+ 个工具可用/);
   assert.match(text, /还原 \/function off/);
 });
 

@@ -77,7 +77,7 @@ test("通知：装配后给出「还原 /function off · 详情 /function status
 test("通知：报的是「启用 N 个，停用 M 个」的紧凑格式", async () => {
   const { state, run } = env();
   await run("plugin", { confirms: [true] });
-  assert.match(noticeText(state), /启用 \d+ 个，停用 \d+ 个/);
+  assert.match(noticeText(state), /当前 \d+ 个可用（新增 \d+，停用 \d+）/);
 });
 
 test("通知：缺装插件的告警带可执行修复建议", async () => {
