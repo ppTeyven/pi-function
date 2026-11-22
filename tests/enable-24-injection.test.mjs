@@ -181,3 +181,27 @@ test("模型装配：清单消息里含还原入口", async () => {
   const msg = state.messages.find((x) => x.customType === "function-assembled");
   assert.match(String(msg.content), /还原 \/function off/);
 });
+
+/* ---------------- 装配预览框（恢复） ---------------- */
+test("模型装配：会发一条 function-proposal 预览（含工作流流程与检查点）", async () => {
+  const tools = [...coreTools()];
+  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  m.default(pi);
+  await state.registeredTools.find((t) => t.name === "assemble_scenario").execute("1", { scenario: "plugin" });
+  const msg = state.messages.find((x) => x.customType === "function-proposal");
+  assert.ok(msg, "应有 function-proposal 消息");
+  const text = String(msg.content);
+  assert.match(text, /^## 装配：/, "预览应以「## 装配：」开头");
+  assert.match(text, /\*\*插件\*\*/);
+});
+
+test("模型装配：预览里带工作流的流程和完成标准", async () => {
+  const tools = [...coreTools()];
+  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  m.default(pi);
+  await state.registeredTools.find((t) => t.name === "assemble_scenario").execute("1", { scenario: "plugin", workflow: "debug" });
+  const msg = state.messages.find((x) => x.customType === "function-proposal");
+  const text = String(msg?.content || "");
+  assert.match(text, /\*\*工作流\*\*：/);
+  assert.match(text, /1. 复现问题/, "应有编号流程");
+});

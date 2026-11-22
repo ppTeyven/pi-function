@@ -171,14 +171,14 @@ const proposalOf = (tools, { skills = [], unselected = [] } = {}) => {
 const MANY_TOOLS = [...coreTools(), ...pkgTools("pi-lens", Array.from({ length: 14 }, (_, i) => `t${i + 1}`))];
 const FEW_TOOLS = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics", "symbol_search"])];
 
-test("提案：整段控制在 32 行以内", () => {
+test("提案：整段控制在 48 行以内", () => {
   const lines = proposalOf(MANY_TOOLS).split("\n").filter((l) => l.trim());
-  assert.ok(lines.length <= 32, `提案 ${lines.length} 行，太长了`);
+  assert.ok(lines.length <= 48, `提案 ${lines.length} 行，太长了`);
 });
 
 test("提案：只说开了什么，不再铺分析过程", () => {
   const text = proposalOf(MANY_TOOLS);
-  for (const banned of ["全量核对", "逐词核对", "装配后会先问你", "需求分析", "分配方法"]) {
+  for (const banned of ["全量核对", "逐词核对", "需求分析", "分配方法"]) {
     assert.ok(!text.includes(banned), `不该出现「${banned}」`);
   }
 });

@@ -2485,12 +2485,22 @@ function buildProposal(pi, scenario, store, workflow = null) {
   const comboTitle = workflow ? `${workflow.title} × ${scenario.title}` : scenario.title;
   lines.push(`## 装配：${comboTitle}`);
   if (workflow) {
-    const steps = (workflow.steps || []).join(" → ");
-    lines.push(`工作流：${workflow.title}${steps ? ` — ${steps}` : ""}`);
+    lines.push(`**工作流**：${workflow.when || workflow.title}`);
+    lines.push("- 流程：");
+    (workflow.steps || []).forEach((step, i) => lines.push(`  ${i + 1}. ${step}`));
+    if (workflow.checkpoint) lines.push(`- 检查点：${workflow.checkpoint}`);
+    if (workflow.doneWhen) lines.push(`- 完成标准：${workflow.doneWhen}`);
   }
   if (scenario.project?.stage) {
     const p = scenario.project;
     lines.push(`项目：${p.stage}${p.blockers?.length ? ` · 阻塞：${p.blockers.slice(0, 2).join("；")}` : ""}`);
+  }
+  // 装配后会先问你什么——这一直是提案里最有用的一段，砍掉后只剩一串清单。
+  const questions = followupQuestions(scenario, workflow);
+  if (questions.length) {
+    lines.push("");
+    lines.push("**装配后会先问你**");
+    questions.forEach((q, i) => lines.push(`${i + 1}. ${q}`));
   }
   lines.push("");
 
@@ -2498,6 +2508,11 @@ function buildProposal(pi, scenario, store, workflow = null) {
     const t = String(text || "").replace(/\s+/g, " ").trim();
     return t.length > max ? t.slice(0, max - 1) + "…" : t;
   };
+
+  if (scenario.when) {
+    lines.push(`**任务**：${clip(scenario.when, 120)}`);
+    lines.push("");
+  }
 
   const pkgs = comboPackages(scenario, store, workflow);
   lines.push("**插件**");
@@ -4373,7 +4388,17 @@ export default function functionMenu(pi) {
       if (bad.length) lines.push(`需注意：${bad.map((r) => `${r.pkg}（${r.state}）`).join("、")}`);
       lines.push("还原 /function off · 详情 /function status");
 
-      // 自动补一条可见的启用清单：模型只说一句总结，用户需要能回看的记录。
+      // 恢复用户看得见的装配预览：工作流流程、检查点、完成标准、装配后会问什么。
+      // 交给模型决策后这段一度丢了，用户就只剩模型的一句话。
+      try {
+        pi.sendMessage({
+          customType: "function-proposal",
+          content: buildProposal(pi, scenario, store, workflow),
+          display: true,
+        });
+      } catch { /* 无 UI 环境忽略 */ }
+
+      // 再补一条结果清单：模型只说一句总结，用户需要能回看的记录。
       try {
         pi.sendMessage({
           customType: "function-assembled",

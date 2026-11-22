@@ -126,7 +126,8 @@ test("提案：带工作流时标题是「工作流 × 场景」", () => {
 
 test("提案：工作流行含流程箭头", () => {
   const text = m.buildProposal(piOf(), sc(), store(), m.workflowById("debug"));
-  assert.match(text, /复现问题.*→.*定位根因/);
+  assert.match(text, /1. 复现问题/);
+  assert.match(text, /2. 缩小范围/);
 });
 
 test("提案：有缺口时列在「本机没有」", () => {
