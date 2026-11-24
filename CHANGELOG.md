@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Give `/function resume` and `/function <need>` the same project-progress report, workflow picker and approval flow. Free text adds the current request to the analysis; it no longer enables tools without confirmation.
+- Use the Pi session workspace for suggestions, assembly and project-skill discovery. Resume recognizes status fields and blocker lists rather than matching words in command tables or fenced examples.
+- Keep project text in evidence reports, not in shared scene templates or the system prompt. Cancelling a free-text request does not send it. Cancelled/headless resume previews and suggestion calls do not persist the scanned catalog.
+- Respect the current branch’s `off` record, scope fallback restoration to the session/workspace, and restore combined workflows. Honor manual exclusions and report tools actually enabled by the host.
+- Restrict statistics reset to explicit commands; handle complete inventories on small installations. Tests use repository code and a temporary Pi installation instead of the developer’s home directory.
+- Write the store/profile atomically (temp file + fsync + rename): concurrent writers produced 71/248 truncated reads before and 0 after. Flush usage counters on `session_shutdown`. Invalidate the project brief cache when docs or git state change on disk.
+- Merge concurrent saves instead of overwriting: counters are added as `disk + local delta`, `stats reset` wins for the side that reset, shrinking maps take `max` instead of going backwards, and entries deleted locally are not pulled back from disk. Prune orphan `.tmp` files older than an hour.
+
 ## 3.0.0
 
 **The core idea, stated plainly**: the unacceptable outcome is the user not having the tool they needed. Everything below follows from that.

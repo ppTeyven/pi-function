@@ -26,7 +26,7 @@
 
 ---
 
-Pi-function turns your installed Pi extensions into **application scenarios** — making a webpage, writing an article, building a game, creating a report, and so on. Bare `/function` asks **how** to work (workflow), then **what** to make (scenario). A free-text need skips the task picker and is analyzed across multiple application types.
+Pi-function turns your installed Pi extensions into **application scenarios** — making a webpage, writing an article, building a game, creating a report, and so on. Bare `/function` asks **how** to work (workflow), then **what** to make (scenario). Project resume and free-text requests share the same project-progress report and approval flow; free text adds the current request to the analysis.
 
 The scenario and workflow IDs are stable for every user. Which plugins and skills fill those slots is **detected from the current machine** and stored in a per-user profile — the source code does not assume a particular package set.
 
@@ -82,7 +82,7 @@ Requires Node 20+ and a Pi version supporting `pi.registerCommand`, `pi.setActiv
 ### First run
 
 1. Install the extension, then run `/reload` (or restart Pi) so `/function` is recognized.
-2. Run `/function`. It opens a sub-function picker first; choosing “assemble” prints the catalog.
+2. Run `/function`. It opens a sub-function picker first; choosing “assemble” opens the workflow and scenario pickers.
 3. **Choose a workflow** — how this run should proceed (outline/prototype, research, review gate, and so on). The workflow brings its own process bundle; the scenario adds domain capabilities.
 4. **Choose an application scenario** — what you want to make (webpage, article, game, report, and so on).
 5. Review the assembly proposal. Nothing changes until you approve it.
@@ -94,15 +94,16 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 
 | Command | What happens |
 |---|---|
-| `/function` | Opens a sub-function picker first (assemble / project-resume / workflow-only / profile / scan / status / stats / restore / assign); assemble then prints the catalog, asks for a workflow and an application scenario, and assembles after approval |
+| `/function` | Opens a sub-function picker first (assemble / project-resume / workflow-only / profile / scan / status / stats / restore / assign); assemble asks for a workflow and an application scenario, then shows a confirmation |
 | `/function resume` | Reads project docs (HANDOFF / ROADMAP / decisions), Git state, and the recent session; reports the whole-project stage, open tasks, blockers, next steps, and a recommended assembly; nothing is enabled until you approve |
 | `/function workflow` | Asks only for a workflow, enables its bundle, and does not bind a task scenario |
-| `/function <need>` | Analyzes the need across multiple application types, asks for a workflow, composes plugins/skills from the profile, and assembles after approval; never opens the fixed task picker and never executes the need |
+| `/function <need>` | Runs the same project-progress analysis as `resume`, adds the current request, and proposes tools; assembles only after approval |
 | `/function profile` | Shows the generated capability profile: roles, scores, unassigned items, and profile path |
 | `/function scan` | Re-scans installed packages, local extensions, and skills, then rebuilds the profile |
 | `/function status` | Shows the active workflow × scenario (or workflow-only mode) and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none>` | Manually overrides one profile binding |
-| `/function off` | Restores the tool set from before assembly |
+| `/function stats`, `/function stats reset` | Inspect usage; only explicit `reset` (or `clear`) clears the counters |
+| `/function off` | Restores global defaults, including Pi’s `defaultTools`, not a pre-assembly snapshot |
 
 `/pi-function` is an alias.
 
@@ -137,8 +138,8 @@ Step 2: choose an application scenario (what to make)
 |---|---|---|
 | You want to browse the available combinations | `/function` | Workflow → application scenario → approve assembly |
 | You want a workflow without a specific deliverable | `/function workflow` | Choose only a workflow; enable it without a task scenario |
-| You already have a one-line request | `/function "build a product site and write a launch article"` | Analyze multiple application types → ask only for a workflow → approve the composition; the request goes back to the editor |
-| You are picking up an existing project | `/function resume` | Scan project evidence → show progress, blockers, next steps → recommend and assemble a whole-project bundle |
+| You already have a one-line request | `/function "build a product site and write a launch article"` | Project progress + request → choose a workflow → review proposal → approve assembly |
+| You are picking up an existing project | `/function resume` | Scan project evidence → show progress, blockers, next steps → recommend a whole-project bundle; assemble only after approval |
 
 ### Reading the picker
 
@@ -151,7 +152,7 @@ webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-de
 - The leading `webpage` is a stable scenario ID shared by every user.
 - Plugins and skills come from the current machine's capability profile; another user may see different ones.
 - The proposal lists the plugins, tools, skills, and any commands that still need to be run manually.
-- Only **Yes** calls `setActiveTools`. **No** leaves everything untouched.
+- Project resume and free-text requests both show the project report before the workflow picker and require approval of the proposed tools. Declining leaves active tools unchanged.
 
 ### Day-to-day commands
 
@@ -159,7 +160,7 @@ webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-de
 |---|---|
 | See the active assembly | `/function status` |
 | Inspect how plugins and skills were classified | `/function profile` |
-| Restore the pre-assembly tool set | `/function off` |
+| Restore globally enabled defaults | `/function off` |
 | Pick up newly installed plugins/skills | `/function scan` |
 | Correct one binding | `/function assign <package-or-skill> <scenario-id>`; use `none` to exclude it |
 | See the full catalog again | `/function` |
@@ -180,11 +181,11 @@ Run `/function status` to inspect the active combination, choose a different wor
 
 **Will `/function "need"` start working on its own?**
 
-No. It analyzes the need and waits for approval. After approval the need is placed back in the editor; press Enter to start it.
+No. The model proposes a tool set based on the request and project progress. Your approval enables the tools; give a separate instruction when you want the work to start.
 
 **Do multiple projects or sessions interfere?**
 
-No. Assembly and `/reload` are scoped to the current Pi session.
+Tool changes apply to the current session. Restore prefers the active branch, including an explicit `off`. The capability catalog, manual assignments and usage counters are per-user files, not a project security boundary.
 
 ## Scenarios
 
@@ -310,18 +311,20 @@ The report separates evidence from inference:
 - likely application scenarios and a recommended workflow;
 - the plugins and skills that bundle would enable.
 
-`/function resume` only analyzes and proposes. It asks for a workflow, shows the assembly proposal, and enables tools only after confirmation; it never executes the project work. The active project bundle is recorded as `project` and restored after `/reload` when the project directory is still available.
+Project discovery starts at the **Pi session workspace**, not the pi-web installation directory. Command-reference tables, fenced examples and explicit “no blockers” statements are not evidence of a blocker. Use a list under `## Blockers` or a `Blocker: reason` field for actual blockers.
+
+Headless resume only reports; cancelling does not change tools or persist the scan to the catalog/profile. Confirmation enables the bundle but does not execute project work. Evidence reports may quote project documents; the project section of the system prompt uses only stage and counts. Reload restores a confirmed project selection in the same project, not by reading documents from a different workspace.
 
 ## Dynamic needs
 
-`/function "build a product site and write a launch article"` does not choose one scenario. It:
+`/function "build a product site and write a launch article"` differs from `resume` only by adding the current request to the analysis.
 
-1. detects multiple application signals (for example `webpage` + `article`);
-2. collects matching capability roles, packages, and skills from the profile;
-3. asks only for a workflow;
-4. shows the composition and asks for approval.
+1. Read the same project docs, Git state and recent session. Report project progress and show local scenario matches for the request without including the original text in the preview.
+2. Choose a workflow or let the model decide. Esc here restores the original text without sending it to the model.
+3. The model combines the request with the project evidence. It queries `suggest_scenario` for candidates and submits a proposal with `assemble_scenario` (up to three scenarios and three workflows). A workflow already selected by the user takes precedence.
+4. As with `resume`, review the proposal and resolve any capability gaps before tools are enabled. Cancelling leaves tools unchanged and restores the request to the editor.
 
-If nothing matches, it still proposes a capability-based combination instead of refusing. The requirement is never sent automatically.
+Both commands are report-only without an interactive UI. If the model assembly tools are inactive, Pi-function uses local matches for the proposal instead of switching tools before approval. A hosted model can see the submitted request and project evidence when you continue to model analysis. For a local project report, use `/function resume`.
 
 ### When you have no capability for the need
 
@@ -572,10 +575,12 @@ Actual calls come from Pi's `tool_call` hook, mapped back to the owning package 
 ## Development
 
 ```bash
-npm test          # 269 cases, repository fixture — runs on any machine
+npm test          # Node test runner: tests/*.test.mjs
 ```
 
-Test layout (`tests/`, plan in `TEST-PLAN.md`):
+Ad-hoc verification harnesses (SDK smoke, concurrent-write race) are written, run and discarded when needed; they are not kept in the repository. The counted `npm test` suite above is the project’s own persistent suite.
+
+The current suite is `tests/enable-*.test.mjs` plus `tests/banner.test.mjs`. The following table describes **historical** test groups; it is not an index or a count of today’s suite:
 
 | file | layer | cases |
 |---|---|---|
@@ -601,7 +606,7 @@ Test layout (`tests/`, plan in `TEST-PLAN.md`):
 | `migration.test.mjs` | dead scenario ids are migrated to current ones, overrides untouched | 6 |
 | `phrase.test.mjs` | adjacent words are read as one meaning; asks are per-phrase | 6 |
 
-Gates are quantified: required coverage 100%, forbidden hits 0, dynamic precision ≥ 0.80, budget ≤ 5 packages / 5 skills, determinism, read-only paths must not write the store, `analyzeNeed` < 20 ms.
+`TEST-PLAN.md` records historical accuracy and timing targets. A passing current suite is not a new measurement of those benchmarks.
 
 The README banner is generated, not hand-edited:
 
@@ -617,7 +622,7 @@ The motion is a travelling wave through the pixel grid: every 26px block of the 
 
 `banner.test.mjs` B10 decodes the GIF's own LZW stream and asserts two things no palette inspection would catch: every frame still has the wordmark (letters never vanish), and every pixel in the text band is a neutral step between white and the background — the dimming is the only grey, no colour fringe rides along. `TEXT_Y` must stay even, because the 2×2 box filter would otherwise blend half a pixel of grey into every stroke edge.
 
-Tests read `tests/fixtures/store.json` by default so results do not depend on what you have installed; set `PI_FUNCTION_REAL_STORE=1` to audit your own environment instead.
+The test harness in `tests/lib/mock-pi.mjs` creates a temporary Pi directory, store and profile. No changes to an installed extension or user configuration are needed.
 
 ## License
 

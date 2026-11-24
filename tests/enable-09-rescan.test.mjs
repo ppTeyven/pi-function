@@ -101,7 +101,7 @@ test("重扫：子功能之间新增的工具会被识别成「新增能力」",
   const { state, pi, tools, run } = env();
   await run("status");
   const before = (readStore().known["npm:pi-lens"]?.tools || []).length;
-  tools.push({ name: "brand_new_tool", description: "new", sourceInfo: { path: "C:/Users/zzkkg/.pi/agent/npm/node_modules/pi-lens/dist/index.js", source: "npm:pi-lens" } });
+  tools.push(...pkgTools("pi-lens", ["brand_new_tool"]));
   await run("status");
   const after = readStore();
   assert.ok((after.known["npm:pi-lens"]?.tools || []).includes("brand_new_tool"), "新工具应被记录");
@@ -113,7 +113,7 @@ test("重扫：装配用的是实时工具清单（不读 store 缓存）", asyn
   const { state, pi, tools, run } = env();
   // 先让 store 建立，再加工具，直接装配
   await run("status");
-  tools.push({ name: "hot_added", description: "x", sourceInfo: { path: "C:/Users/zzkkg/.pi/agent/npm/node_modules/pi-lens/dist/index.js", source: "npm:pi-lens" } });
+  tools.push(...pkgTools("pi-lens", ["hot_added"]));
   await run("plugin", { confirms: [true] });
   assert.ok(state.active.includes("hot_added"), `新工具应立刻被装配：${state.active.join(",")}`);
 });

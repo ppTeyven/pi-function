@@ -69,10 +69,10 @@ test("提示：列出插件命令（命令也是能力）", async () => {
   assert.match(out.systemPrompt, /命令 \/lens-toggle/);
 });
 
-test("提示：明确“没列出的就是没启用，不要假装能用”", async () => {
+test("提示：区分推荐技能与宿主的实际工具权限", async () => {
   const state = await assembledWith({ "code-intel": { packages: ["pi-lens"] } });
   const out = await state.handlers.before_agent_start[0]({ systemPrompt: "" }, makeCtx(state));
-  assert.match(out.systemPrompt, /没列出的插件\/技能就是没启用/);
+  assert.match(out.systemPrompt, /技能和斜杠命令仍由 Pi 管理/);
 });
 
 /* ---------------- 可见性（3） ---------------- */
@@ -89,11 +89,13 @@ test("模型装配：有自动补全时返回文本会说明补了什么", async
   const asm = state.registeredTools.find((t) => t.name === "assemble_scenario");
   let res;
   try {
-    res = await asm.execute("1", { scenario: "plugin" });
+    res = await asm.execute("1", { scenario: "plugin", workflow: "direct" });
   } finally {
     scene.plugins = backup;
   }
   assert.match(res.content[0].text, /已自动补全（避免漏用）：pi-lens/);
+  assert.match(res.content[0].text, /插件：pi-lens/);
+  assert.ok(!res.details.coverage.missing.some(miss => miss.need === "code-intel"));
 });
 
 test("status：列出当前技能", async () => {

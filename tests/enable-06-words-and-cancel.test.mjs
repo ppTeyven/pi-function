@@ -1,6 +1,5 @@
 // 第 6 组：需求词过滤（别再问蠢问题）+ 取消装配的完整语义
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -233,91 +232,35 @@ function env() {
   return { state, pi, run: (args, opts) => cmd.handler(args, makeCtx(state, opts)) };
 }
 
-test("取消：确认弹窗拒绝 → 不调用 setActiveTools", async () => {
-  const { state, run } = env();
-  await run("plugin", { confirms: [false] });
-  assert.equal(state.setCalls.length, 0);
-});
-
-test("取消：确认弹窗拒绝 → 不写会话记录", async () => {
-  const { state, run } = env();
-  await run("plugin", { confirms: [false] });
-  assert.equal(state.entries.length, 0);
-});
-
-test("取消：确认弹窗拒绝 → 工具集完全不变", async () => {
-  const { state, run } = env();
-  const before = [...state.active];
-  await run("plugin", { confirms: [false] });
-  assert.deepEqual(state.active, before);
-});
-
-test("取消：多选里按 Esc → 放弃，不装配", async () => {
-  const { state, run } = env();
-  // 选了 debug 之后再 Esc：Esc 是放弃，不是“采用已选”
-  await run("workflow", { selects: ["debug", undefined] });
-  assert.equal(state.setCalls.length, 0, `Esc 不应装配：${noticeText(state)}`);
-});
-
-test("取消：多选里 Esc 后提示已取消", async () => {
-  const { state, run } = env();
-  await run("workflow", { selects: ["debug", undefined] });
-  assert.match(noticeText(state), /已取消/);
-});
-
-test("取消：先装配一次，再取消一次 → 保留原装配", async () => {
+test("拒绝新的装配提案：保留已启用的工作流、工具、会话记录，不发找技能请求", async () => {
   const { state, run } = env();
   await run("workflow", { selects: ["debug", "✓ 完成选择"] });
-  const afterFirst = [...state.active];
+  const before = { tools: [...state.active], writes: state.setCalls.length, entries: state.entries.length };
   await run("plugin", { confirms: [false] });
-  assert.deepEqual(state.active, afterFirst, "取消不应破坏上一次装配");
-});
-
-test("取消：先装配一次，再取消 → store.active 仍是旧组合", async () => {
-  const { state, run } = env();
-  await run("workflow", { selects: ["debug", "✓ 完成选择"] });
-  await run("plugin", { confirms: [false] });
-  await run("status");
-  assert.match(noticeText(state), /当前组合：.*[^\s]/);
-});
-
-test("取消：取消后不触发 find-skill（不发用户消息）", async () => {
-  const { pi, state, run } = env();
-  const sent = [];
-  pi.sendUserMessage = (x) => sent.push(x);
-  await run("plugin", { confirms: [false] });
-  assert.deepEqual(sent, []);
-});
-
-test("取消：确认拒绝的提示说明「未做任何改动」", async () => {
-  const { state, run } = env();
-  await run("plugin", { confirms: [false] });
+  assert.deepEqual(state.active, before.tools);
+  assert.equal(state.setCalls.length, before.writes);
+  assert.equal(state.entries.length, before.entries);
+  assert.equal(state.userMessages.length, 0);
+  assert.equal(m.loadStore().active.workflow, "debug");
   assert.match(noticeText(state), /已取消，未做任何改动/);
 });
 
-test("取消：取消后 /function off 仍能重置为全局常开", async () => {
+test("工作流多选：选中后按 Esc，不用当前选择进行装配", async () => {
   const { state, run } = env();
-  await run("plugin", { confirms: [false] });
-  await run("off");
-  const expected = state.tools.filter((t) => String(t.sourceInfo?.path || "").startsWith("builtin:")).map((t) => t.name);
-  assert.deepEqual([...state.active].sort(), [...expected].sort());
+  await run("workflow", { selects: ["debug", undefined] });
+  assert.equal(state.setCalls.length, 0);
+  assert.equal(state.entries.length, 0);
+  assert.match(noticeText(state), /已取消/);
 });
 
-/* ==================== F. 防复发：每个追问点都必须检查取消（3） ==================== */
-const SRC = fs.readFileSync("C:/Users/zzkkg/.pi/agent/extensions/function-menu.js", "utf8");
-
-test("防复发：每处 askMissingCapabilities 都检查了 CANCELLED", () => {
-  // 需求文本已交给模型，本地只剩 assemble/workflow/resume 三条链路
-  const n = (SRC.match(/wanted === CANCELLED/g) || []).length;
-  assert.equal(n, 2, `找到 ${n} 处，应为 2 处`);
-});
-
-test("防复发：clarifyBareCapabilities 的调用点检查了 CANCELLED", () => {
-  const n = (SRC.match(/bareGaps === CANCELLED/g) || []).length;
-  assert.equal(n, 1, `找到 ${n} 处，应为 1 处（仅菜单装配）`);
-});
-
-test("防复发：每处全量核对都检查了 CANCELLED", () => {
-  const n = (SRC.match(/askUnselectedItems\(ctx, scenario\)\) === CANCELLED/g) || []).length;
-  assert.equal(n, 2, `找到 ${n} 处，应为 2 处`);
+test("菜单装配：在能力追问中取消，不装配、不去找技能", async () => {
+  const { state, run } = env();
+  const before = [...state.active];
+  await run("assemble", { selects: ["direct", "✓ 完成选择", "data", "✓ 完成选择"], confirms: [true] });
+  assert.ok(state.selectCalls.some(call => call.options.some(option => option.startsWith("✕ 取消"))), "必须真的到达追问阶段");
+  assert.deepEqual(state.active, before);
+  assert.equal(state.setCalls.length, 0);
+  assert.equal(state.entries.length, 0);
+  assert.equal(state.userMessages.length, 0);
+  assert.match(noticeText(state), /已取消装配/);
 });

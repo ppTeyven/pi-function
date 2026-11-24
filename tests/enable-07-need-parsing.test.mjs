@@ -18,7 +18,7 @@ function env() {
   const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
-  return { state, pi, run: (args, opts) => state.commands.get("function").handler(args, makeCtx(state, opts)) };
+  return { state, pi, run: (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, makeCtx(state, opts)) };
 }
 
 const NEED = "把拼音转换器的多音字处理改一下";

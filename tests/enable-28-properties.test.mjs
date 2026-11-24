@@ -1,221 +1,91 @@
-// 第 28 组：属性测试 —— 随机组合下的装配不变量（20）
-// 不针对具体输入，只断言“无论怎么组合都必须成立”的规则。
+// 固定场景 × 工作流的公共入口矩阵，以及多选组合的不变量。
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import {
-  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, emptyStore,
-} from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, emptyStore } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
-hydrate(m, { "code-intel": { packages: ["pi-lens"] }, testing: { packages: ["pi-test"] } });
-
-/* 固定种子的伪随机：失败可复现 */
-let seed = 20261124;
-const rnd = () => {
-  seed = (seed * 1103515245 + 12345) % 2147483648;
-  return seed / 2147483648;
-};
-const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 
 function makeEnv() {
-  const tools = [
-    ...coreTools(),
-    ...pkgTools("pi-lens", ["lens_a", "lens_b"]),
-    ...pkgTools("pi-test", ["test_a"]),
-    ...pkgTools("other", ["other_a"]),
-  ];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_a", "lens_b"]), ...pkgTools("pi-test", ["test_a"]), ...pkgTools("other", ["other_a"])];
+  const { pi, state } = makePi({ tools });
   m.default(pi);
   return { pi, state, tools };
 }
 
-/** 随机生成一组（场景, 工作流） */
-function randomCase() {
-  const n = 1 + Math.floor(rnd() * 3); // 1-3 个场景
-  const picked = Array.from({ length: n }, () => ({ ...pick(m.SCENARIOS) }));
-  const scenario = picked.length > 1 ? m.comboScenarios(picked) : picked[0];
-  const useWf = rnd() > 0.25;
-  const wfs = useWf ? Array.from({ length: 1 + Math.floor(rnd() * 2) }, () => m.workflowById(pick(m.WORKFLOWS).id)) : [];
-  const workflow = wfs.length ? m.comboWorkflows(wfs) : null;
-  return { scenario, workflow };
+function assertToolChange(before, after, change, tools, label) {
+  const registered = new Set(tools.map(t => t.name));
+  const set = new Set(after);
+  assert.deepEqual(change.enabled.toSorted(), after.filter(n => !before.includes(n)).toSorted(), label);
+  assert.deepEqual(change.disabled.toSorted(), before.filter(n => !set.has(n)).toSorted(), label);
+  assert.equal(set.size, after.length, label);
+  for (const name of m.CORE_TOOLS) assert.ok(set.has(name), `${label}: 缺少核心工具 ${name}`);
+  for (const name of after) assert.ok(registered.has(name), `${label}: 未注册工具 ${name}`);
+  assert.ok(!set.has("other_a"), `${label}: 意外启用了无关工具`);
 }
 
-const CASES = Array.from({ length: 40 }, randomCase);
-
-/* ---------------- 核心不变量 ---------------- */
-test("属性：core 工具永远在 next 里", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const c of m.CORE_TOOLS) {
-      if (pi.getAllTools().some((t) => t.name === c)) {
-        assert.ok(res.next.includes(c), `${scenario.id}: 丢了 ${c}`);
-      }
-    }
+test("公共装配入口：所有固定场景 × 工作流均保留核心工具并回报真实变更", async () => {
+  const { pi, state, tools } = makeEnv();
+  const ctx = makeCtx(state);
+  await state.commands.get("function").handler("scan", ctx);
+  const assemble = state.registeredTools.find(t => t.name === "assemble_scenario");
+  for (const scene of m.SCENARIOS) for (const wf of m.WORKFLOWS) {
+    const pair = `${scene.id} × ${wf.id}`;
+    const before = [...pi.getActiveTools()];
+    const result = await assemble.execute(pair, { scenario: scene.id, workflow: wf.id }, undefined, undefined, ctx);
+    assert.ok(!result.isError, pair);
+    assert.equal(result.details.id, scene.id, pair);
+    assert.equal(result.details.workflow, wf.id, pair);
+    const after = pi.getActiveTools();
+    assertToolChange(before, after, result.details, tools, pair);
+    assert.deepEqual(state.entries.at(-1).d.tools, after, pair);
   }
 });
 
-test("属性：next 里不出现未注册的工具名", () => {
-  for (const { scenario, workflow } of CASES) {
+// 固定种子；不重复选同一个 ID，且必测最大与最小规模。
+function* combinations() {
+  let seed = 20261124;
+  const sample = (entries, size) => {
+    const pool = [...entries];
+    return Array.from({ length: size }, () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return pool.splice(Math.floor(seed / 2 ** 32 * pool.length), 1)[0];
+    });
+  };
+  for (let index = 0; index < 40; index++) {
+    yield { scenes: sample(m.SCENARIOS, 2 + index % 2), workflows: sample(m.WORKFLOWS, Math.floor(index / 2) % 4) };
+  }
+}
+
+test("多选装配：抽样 40 组，核对契约、工具差集、持久状态及重复装配", () => {
+  for (const { scenes, workflows } of combinations()) {
+    const scenario = { ...m.comboScenarios(scenes) };
+    const workflow = m.comboWorkflows(workflows);
+    const label = `${scenes.map(s => s.id).join("+")} × ${workflows.map(w => w.id).join("+") || "无"}`;
     const { pi, state, tools } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    const known = new Set(tools.map((t) => t.name));
-    for (const n of res.next) assert.ok(known.has(n), `${scenario.id}: 幽灵工具 ${n}`);
-  }
-});
-
-test("属性：next 无重复", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    assert.equal(res.next.length, new Set(res.next).size, scenario.id);
-  }
-});
-
-test("属性：disabled 与 next 互斥", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const d of res.disabled) assert.ok(!res.next.includes(d), `${scenario.id}: ${d} 同时被启用和停用`);
-  }
-});
-
-test("属性：disabled 都是可选来源的工具", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const d of res.disabled) {
-      const t = pi.getAllTools().find((x) => x.name === d);
-      assert.equal(m.isOptionalSource(t.sourceInfo), true, `${scenario.id}: ${d} 不是可选来源却被停用`);
-    }
-  }
-});
-
-test("属性：enabled 都是 next 的子集", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const e of res.enabled) assert.ok(res.next.includes(e), `${scenario.id}: ${e}`);
-  }
-});
-
-test("属性：store.active.tools 与实际写入一致", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
+    const ctx = makeCtx(state);
     const store = emptyStore();
-    m.applyScenario(pi, makeCtx(state), scenario, store, workflow);
-    assert.deepEqual(store.active.tools, state.active, scenario.id);
-  }
-});
-
-test("属性：连续两次装配结果一致（幂等）", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    const first = [...state.active].sort();
-    m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    assert.deepEqual([...state.active].sort(), first, scenario.id);
-  }
-});
-
-test("属性：任意组合都不抛异常", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    assert.doesNotThrow(() => m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow), scenario.id);
-  }
-});
-
-test("属性：装配后 active 非空（至少有 core）", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    assert.ok(state.active.length > 0, scenario.id);
-  }
-});
-
-/* ---------------- 组合与覆盖 ---------------- */
-test("属性：组合的 required 是各场景 required 的并集", () => {
-  for (const { scenario } of CASES) {
-    if (!scenario.comboIds) continue;
-    const merged = m.contractFor(scenario).required;
-    for (const id of scenario.comboIds) {
-      for (const r of m.contractFor({ id }).required) assert.ok(merged.includes(r), `${id}.${r}`);
+    const wanted = m.toolsForScenario(pi, scenario, store, workflow);
+    const before = [...state.active];
+    const res = m.applyScenario(pi, ctx, scenario, store, workflow);
+    assert.equal(scenario.id, scenes.map(s => s.id).join("+"), label);
+    const required = new Set(scenes.flatMap(s => m.contractFor(s).required));
+    assert.deepEqual(new Set(m.contractFor(scenario).required), required, label);
+    if (workflow) {
+      const expectedSteps = [...new Set(workflows.flatMap(w => w.steps))];
+      assert.deepEqual(workflow.steps, expectedSteps, label);
     }
-  }
-});
-
-test("属性：coverage.missing 里不会出现已补全的角色", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    const added = new Set(res.autoRoles || []);
-    for (const miss of res.coverage.missing) {
-      assert.ok(!added.has(miss.need), `${scenario.id}: ${miss.need} 已补全却仍报缺`);
+    assertToolChange(before, state.active, res, tools, label);
+    for (const name of wanted) assert.ok(state.active.includes(name), `${label}: 组合漏掉 ${name}`);
+    for (const added of res.autoAdded.filter(x => !x.startsWith("skill:"))) {
+      assert.ok(tools.some(t => state.active.includes(t.name) && m.matchesPkg(t.sourceInfo, added)), `${label}: ${added} 仅在回执出现`);
     }
-  }
-});
-
-test("属性：autoAdded 里的包都能在工具集里找到对应工具", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const pkg of res.autoAdded.filter((x) => !x.startsWith("skill:"))) {
-      const hit = pi.getAllTools().some((t) => m.matchesPkg(t.sourceInfo, pkg));
-      assert.ok(hit, `${scenario.id}: 补了 ${pkg} 但没有对应工具`);
-    }
-  }
-});
-
-test("属性：store.recent 每次都更新到当前场景", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const store = emptyStore();
-    m.applyScenario(pi, makeCtx(state), scenario, store, workflow);
-    assert.equal(store.recent.scenario, scenario.id, scenario.id);
-    assert.equal(store.recent.workflow, workflow?.id || null);
-  }
-});
-
-test("属性：提案文本对任意组合都非空且含还原入口", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi } = makeEnv();
-    const text = m.buildProposal(pi, scenario, emptyStore(), workflow);
-    assert.ok(text.length > 20, scenario.id);
-    assert.match(text, /还原 \/function off/);
-  }
-});
-
-test("属性：审计结果对任意组合都返回数组且状态合法", () => {
-  const valid = new Set(["ok", "warn", "inactive", "absent"]);
-  for (const { scenario, workflow } of CASES) {
-    const { pi } = makeEnv();
-    const rows = m.auditPackages(pi, scenario, emptyStore(), workflow);
-    assert.ok(Array.isArray(rows));
-    for (const r of rows) assert.ok(valid.has(r.state), `${scenario.id}: 非法状态 ${r.state}`);
-  }
-});
-
-test("属性：组合的 id 由各场景 id 用 + 连接", () => {
-  for (const { scenario } of CASES) {
-    if (!scenario.comboIds) continue;
-    assert.equal(scenario.id, scenario.comboIds.join("+"));
-  }
-});
-
-test("属性：工作流组合的 steps 是并集且无重复", () => {
-  for (const { workflow } of CASES) {
-    if (!workflow?.steps) continue;
-    assert.equal(workflow.steps.length, new Set(workflow.steps).size);
-  }
-});
-
-test("属性：任意组合下 toolsForScenario 的结果都在 next 里", () => {
-  for (const { scenario, workflow } of CASES) {
-    const { pi, state } = makeEnv();
-    const wanted = m.toolsForScenario(pi, scenario, emptyStore(), workflow);
-    const res = m.applyScenario(pi, makeCtx(state), scenario, emptyStore(), workflow);
-    for (const w of wanted) assert.ok(res.next.includes(w), `${scenario.id}: 想启用的 ${w} 不在 next`);
+    assert.ok(res.coverage.missing.every(miss => !res.autoRoles.includes(miss.need)), label);
+    assert.deepEqual(store.active.tools, state.active, label);
+    assert.deepEqual([store.recent.scenario, store.recent.workflow], [scenario.id, workflow?.id || null], label);
+    const after = [...state.active];
+    const again = m.applyScenario(pi, ctx, scenario, store, workflow);
+    assert.deepEqual(state.active.toSorted(), after.toSorted(), label);
+    assert.deepEqual([again.enabled, again.disabled], [[], []], label);
   }
 });

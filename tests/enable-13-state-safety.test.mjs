@@ -72,11 +72,13 @@ test("容错：saveStore 会更新 updatedAt", () => {
 
 test("容错：saveStore 到不可写路径返回 false 而不抛", () => {
   const old = process.env.PI_FUNCTION_STORE;
-  process.env.PI_FUNCTION_STORE = "Z:/definitely/not/writable/x.json";
-  let ok = null;
-  assert.doesNotThrow(() => { ok = m.saveStore(emptyStore()); });
-  assert.equal(ok, false);
-  process.env.PI_FUNCTION_STORE = old;
+  const notADirectory = path.join(DIR, "regular-file");
+  fs.writeFileSync(notADirectory, "unchanged");
+  process.env.PI_FUNCTION_STORE = path.join(notADirectory, "store.json");
+  try {
+    assert.equal(m.saveStore(emptyStore()), false);
+    assert.equal(fs.readFileSync(notADirectory, "utf8"), "unchanged");
+  } finally { process.env.PI_FUNCTION_STORE = old; }
 });
 
 /* ---------------- 归类迁移（5） ---------------- */
@@ -209,26 +211,29 @@ test("恢复：/function off 会清空 store.active", async () => {
 });
 
 /* ==================== 缺包清理（4） ==================== */
-test("清理：不在依赖里的 npm 条目先标 missing 并记时间", () => {
-  const store = { version: 1, classifierVersion: m.CLASSIFIER_VERSION, known: { "npm:gone": { kind: "plugin", auto: true, scenario: null } }, overrides: {} };
-  m.reconcile(store, new Map()); // 空枚举
-  // 注意：reconcile 本身不清理，清理在 scan 的完整度守卫之后；这里验证 missing 的写法约定
-  assert.ok(true);
+test("清理：npm 包首次缺失留记录，超过 30 天才移除；独立技能不按 npm 规则清理", () => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const store = { ...emptyStore(), known: {
+    "npm:gone": { kind: "plugin", auto: true },
+    "npm:recent": { kind: "plugin", missing: true, missingSince: now - 29 * day },
+    "npm:expired": { kind: "plugin", missing: true, missingSince: now - 31 * day },
+    "skill:keep": { kind: "skill", missing: true, missingSince: now - 31 * day },
+  } };
+  m.reconcile(store, new Map());
+  assert.equal(store.known["npm:gone"].missing, true);
+  assert.ok(store.known["npm:gone"].missingSince >= now);
+  assert.equal(store.known["npm:recent"].missingSince, now - 29 * day);
+  assert.equal(store.known["npm:expired"], undefined);
+  assert.ok(store.known["skill:keep"]);
 });
 
 test("清理：包重新出现时清除 missing 与 missingSince", () => {
-  const src = fs.readFileSync("C:/Users/zzkkg/.pi/agent/extensions/function-menu.js", "utf8");
-  assert.match(src, /items\.has\(id\)[\s\S]{0,80}delete meta\.missingSince/, "重新出现应清标记");
-});
-
-test("清理：只处理 npm: 条目（local: 走删除、skill: 不动）", () => {
-  const src = fs.readFileSync("C:/Users/zzkkg/.pi/agent/extensions/function-menu.js", "utf8");
-  assert.match(src, /if \(!id\.startsWith\("npm:"\)\) continue;/, "清理范围限定 npm 包");
-});
-
-test("清理：30 天阈值是常量而非硬编码魔数散落", () => {
-  const src = fs.readFileSync("C:/Users/zzkkg/.pi/agent/extensions/function-menu.js", "utf8");
-  assert.match(src, /const TTL = 30 \* 24 \* 60 \* 60 \* 1000;/);
+  const id = "npm:back";
+  const store = { ...emptyStore(), known: { [id]: { missing: true, missingSince: 1 } } };
+  m.reconcile(store, new Map([[id, { id, kind: "plugin", label: "back" }]]));
+  assert.equal(store.known[id].missing, false);
+  assert.equal(store.known[id].missingSince, undefined);
 });
 
 /* ==================== catalogTexts 缓存（3） ==================== */
@@ -319,11 +324,12 @@ test("off：不依赖首次调用时的 active 快照（重启污染也能清干
   assert.ok(!state.active.includes("lens_diagnostics"));
 });
 
-test("off：settings.defaultTools 用 +name 追加", async () => {
-  const { state, run } = offEnv({ defaultTools: ["+web_search"] });
+test("off：settings.defaultTools 追加非内置工具，忽略不存在的工具", async () => {
+  const { state, run } = offEnv({ defaultTools: ["+ext_tool", "+not_a_real_tool"] });
   await run("off");
-  assert.ok(state.active.includes("web_search"));
-  assert.ok(state.active.includes("read"), "内置基线仍在");
+  assert.ok(state.active.includes("ext_tool"), "追加的可选工具应被保留");
+  assert.ok(state.active.includes("read"), "追加不替换内置基线");
+  assert.ok(!state.active.includes("not_a_real_tool"));
 });
 
 test("off：settings.defaultTools 给普通名时替换基线", async () => {
@@ -337,12 +343,6 @@ test("off：settings.defaultTools 用 -name 排除", async () => {
   await run("off");
   assert.ok(!state.active.includes("read"));
   assert.ok(state.active.includes("bash"));
-});
-
-test("off：settings.defaultTools 指向不存在的工具会被忽略", async () => {
-  const { state, run } = offEnv({ defaultTools: ["+not_a_real_tool"] });
-  await run("off");
-  assert.ok(!state.active.includes("not_a_real_tool"));
 });
 
 test("off：通知说明「全局常开工具」并列出工具", async () => {

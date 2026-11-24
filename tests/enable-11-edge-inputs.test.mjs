@@ -172,8 +172,10 @@ test("边界：/function 传空参数不崩（走子功能菜单，无 UI 则退
 
 test("边界：/function 传超长文本不崩", async () => {
   const { state, run } = env();
-  await run("需求".repeat(2000), { hasUI: false });
-  assert.equal(state.userMessages.length, 1, "应交给模型而不是崩");
+  const need = "需求".repeat(2000);
+  await run(need, { hasUI: false });
+  const report = state.messages.find((x) => x.customType === "function-project");
+  assert.match(report?.content || "", /### 本轮需求\n- 本地匹配候选：/, "能完成本地分析");
 });
 
 test("边界：/function scenario 后接空 id 不崩", async () => {
@@ -190,8 +192,8 @@ test("边界：/function 传只有空格的参数不崩", async () => {
 
 test("边界：/function 传引号包裹的需求会被剥掉引号", async () => {
   const { state, run } = env();
-  await run('"写个爬虫"', { hasUI: false });
-  const text = String(state.userMessages[0]?.text || "");
-  assert.ok(text.includes("写个爬虫"));
+  await run('"写个爬虫"', { selects: ["✓ 让模型决定工作流（推荐）"] });
+  const text = state.userMessages[0]?.text || "";
+  assert.match(text, /^需求：写个爬虫$/m);
   assert.ok(!text.includes('"写个爬虫"'), "引号应被剥掉");
 });

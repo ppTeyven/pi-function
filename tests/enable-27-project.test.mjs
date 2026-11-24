@@ -1,22 +1,17 @@
-// 第 27 组：项目续接的推荐逻辑 + project 场景与装配（25）
+// 项目证据的判定优先级、文档边界和续接装配的实际效果。
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
-import {
-  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, emptyStore,
-} from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, emptyStore } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
-hydrate(m, { "code-intel": { packages: ["pi-lens"] } });
 
-const store = (over = {}) => ({ known: {}, overrides: {}, usage: {}, itemUse: {}, manualAdds: {}, ...over });
-
-function makeProject(files) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fn-proj27-"));
+function makeProject(t, files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fn-project-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const [name, text] of Object.entries(files)) {
     const full = path.join(dir, name);
     fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -25,181 +20,56 @@ function makeProject(files) {
   return dir;
 }
 
-const analyze = (dir) => m.analyzeProjectContext(m.scanProjectContext({ cwd: dir }), store());
-
-/* ==================== projectStage（5） ==================== */
-test("阶段：有阻塞优先报阻塞", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "## 阻塞\n- 额度用完\n" }));
-  assert.match(p.stage, /阻塞/);
-});
-
-test("阶段：有未完成项报进行中", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] 做 A\n- [ ] 做 B\n" }));
-  assert.match(p.stage, /进行中|未完成/);
-});
-
-test("阶段：有下一步报收尾/交接", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "## 下一步\n- 上线\n" }));
-  assert.match(p.stage, /下一步|收尾|交接/);
-});
-
-test("阶段：只有 HANDOFF 时报等待续接", () => {
-  const p = analyze(makeProject({ "HANDOFF.md": "# 交接\n阶段：开发中\n" }));
-  assert.ok(p.stage.length > 0);
-});
-
-test("阶段：空目录给出可执行的下一步建议", () => {
-  const p = analyze(fs.mkdtempSync(path.join(os.tmpdir(), "fn-empty27-")));
-  assert.match(p.stage, /信息不足|阶段完成/);
-});
-
-/* ==================== projectWorkflow（6） ==================== */
-const proj = (over = {}) => ({
-  root: "/x", stage: "s", summary: "", needSummary: "",
-  signals: { openTasks: [], blockers: [], nextSteps: [] },
-  files: [], git: null, tech: [], scripts: [], planning: false, handoff: null,
-  ...over,
-});
-
-test("推荐工作流：有阻塞 → debug", () => {
-  assert.equal(m.recommendWorkflow ? true : true, true);
-  const p = proj({ signals: { openTasks: [], blockers: ["卡住"], nextSteps: [] } });
-  const wf = m.analyzeProjectContext({ ...p, cwd: "/x" }, store()).recommendations.workflowId;
-  assert.equal(wf, "debug");
-});
-
-test("推荐工作流：>=4 个未完成 → phased", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d\n" }));
-  assert.equal(p.recommendations.workflowId, "phased");
-});
-
-test("推荐工作流：有 .planning 目录 → phased", () => {
-  const dir = makeProject({ ".planning/x.md": "plan", "AGENTS.md": "x" });
-  const p = analyze(dir);
-  assert.equal(p.recommendations.workflowId, "phased");
-});
-
-test("推荐工作流：推荐结果一定是合法工作流 id", () => {
-  for (const text of ["- [ ] a\n", "## 阻塞\n- b\n", "## 下一步\n- c\n", "随便写点\n"]) {
-    const p = analyze(makeProject({ "AGENTS.md": text }));
-    assert.ok(m.workflowById(p.recommendations.workflowId), `非法工作流：${p.recommendations.workflowId}`);
+test("项目阶段和工作流：阻塞优先，其次待办、下一步和交接", (t) => {
+  const cases = [
+    ["阻塞优先", { "HANDOFF.md": "- [ ] 验收\n## 阻塞\n- 服务未就绪\n## 下一步\n- 发布" }, /有阻塞/, "debug"],
+    ["未完成", { "AGENTS.md": "- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d\n## 下一步\n- 发布" }, /进行中（4 项/, "phased"],
+    ["下一步", { "HANDOFF.md": "## 下一步\n- 上线" }, /有明确下一步/, "phased"],
+    ["交接", { "HANDOFF.md": "阶段：开发中" }, /等待续接/, "phased"],
+    ["计划", { ".planning/x.md": "plan", "AGENTS.md": "- [ ] a" }, /进行中/, "phased"],
+    ["缺少证据", { "README.md": "# 项目说明" }, /信息不足/, null],
+    ["空目录", {}, /信息不足/, "direct"],
+  ];
+  for (const [label, files, stage, workflow] of cases) {
+    const cwd = makeProject(t, files);
+    const p = m.analyzeProjectContext(m.scanProjectContext({ cwd }), emptyStore());
+    assert.match(p.stage, stage, label);
+    if (workflow) assert.equal(p.recommendations.workflowId, workflow, label);
+    assert.equal(p.recommendations.workflowTitle, m.workflowById(p.recommendations.workflowId)?.title, label);
+    assert.deepEqual(p.recommendations.scenarioTitles, p.recommendations.scenarioIds.map(id => m.SCENARIOS.find(s => s.id === id).title), label);
   }
 });
 
-test("推荐：workflowTitle 与 workflowId 对应", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "## 阻塞\n- b\n" }));
-  const wf = m.workflowById(p.recommendations.workflowId);
-  assert.equal(p.recommendations.workflowTitle, wf?.title || "直接执行");
+test("续接场景从未分析的证据取出工作，并实际启用推荐插件", (t) => {
+  hydrate(m, { "code-intel": { packages: ["pi-lens"] } });
+  const cwd = makeProject(t, { "HANDOFF.md": "- [ ] 修 bug、补测试与回归" });
+  const store = emptyStore();
+  const scene = m.projectScenario(m.scanProjectContext({ cwd }), store, m.workflowById("debug"));
+  assert.equal(scene.id, "project");
+  assert.equal(scene.title, "项目全局");
+  assert.match(scene.when, /修 bug/);
+  assert.equal(scene.project.root, cwd);
+  assert.match(scene.brief, /阶段：进行中/);
+  assert.ok(scene.plugins.includes("pi-lens"));
+  const { pi, state } = makePi({ tools: [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])], active: ["read"] });
+  m.applyScenario(pi, { ...makeCtx(state), cwd }, scene, store);
+  assert.ok(state.active.includes("lens_diagnostics"));
+  assert.equal(store.active.id, "project");
+  assert.deepEqual(store.active.tools, state.active);
 });
 
-test("推荐：scenarioIds 与 scenarioTitles 等长且 id 合法", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] 修 bug\n" }));
-  const r = p.recommendations;
-  assert.equal(r.scenarioIds.length, r.scenarioTitles.length);
-  for (const id of r.scenarioIds) assert.ok(m.SCENARIOS.some((s) => s.id === id), id);
+test("项目报告从 package.json 提取技术栈和脚本名", async (t) => {
+  const cwd = makeProject(t, { "package.json": JSON.stringify({ name: "fixture", scripts: { test: "node --test", build: "node build.js" } }) });
+  const { pi, state } = makePi({ tools: coreTools() });
+  m.default(pi);
+  await state.commands.get("function").handler("resume", { ...makeCtx(state, { hasUI: false }), cwd });
+  const report = state.messages.find(x => x.customType === "function-project")?.content || "";
+  assert.match(report, /技术 \/ 脚本：Node \(fixture\)/);
+  assert.match(report, /scripts:.*test.*build/);
 });
 
-/* ==================== projectScenario（6） ==================== */
-test("项目场景：id/group/title 固定为 project", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  assert.equal(sc.id, "project");
-  assert.equal(sc.group, "项目");
-  assert.equal(sc.title, "项目全局");
-});
-
-test("项目场景：when 来自 needSummary/summary", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] 修多音字\n" }));
-  const sc = m.projectScenario(p, store());
-  assert.ok(sc.when.length > 0);
-});
-
-test("项目场景：brief 里带根目录与阶段", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  assert.match(sc.brief, /项目：/);
-  assert.match(sc.brief, /阶段：/);
-});
-
-test("项目场景：project 字段含 root/stage/summary", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  for (const k of ["root", "stage", "summary"]) assert.ok(k in sc.project, `缺 ${k}`);
-});
-
-test("项目场景：传入未分析的 project 会自动分析", () => {
-  const raw = m.scanProjectContext({ cwd: makeProject({ "AGENTS.md": "- [ ] a\n" }) });
-  assert.doesNotThrow(() => m.projectScenario(raw, store()));
-});
-
-test("项目场景：可选工作流会带进 brief", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const withWf = m.projectScenario(p, store(), m.workflowById("debug"));
-  assert.ok(withWf.brief.length > 0);
-});
-
-/* ==================== 与装配的交互（5） ==================== */
-test("交互：project 场景装配后 store.active 记录 project id", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
-  const st = emptyStore();
-  m.applyScenario(pi, makeCtx(state), sc, st);
-  assert.equal(st.active.id, "project");
-});
-
-test("交互：record:false 时仍写 active（供 reload 恢复）", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  const { pi, state } = makePi({ tools: coreTools(), active: coreTools().map((t) => t.name) });
-  const st = emptyStore();
-  m.applyScenario(pi, makeCtx(state), sc, st, null, { record: false });
-  assert.ok(st.active);
-  assert.deepEqual(st.usage, {});
-});
-
-test("交互：project 场景的 plugins 会真的启用工具", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] 修 bug\n" }));
-  const sc = m.projectScenario(p, store());
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
-  const { pi, state } = makePi({ tools, active: coreTools().map((t) => t.name) });
-  m.applyScenario(pi, makeCtx(state), sc, emptyStore());
-  assert.ok(state.active.length >= m.CORE_TOOLS.length);
-});
-
-test("交互：project 场景不破坏 core 工具", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  const tools = [...coreTools()];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
-  m.applyScenario(pi, makeCtx(state), sc, emptyStore());
-  for (const c of m.CORE_TOOLS) assert.ok(state.active.includes(c), c);
-});
-
-test("交互：project 场景装配后 store.recent.scenario=project", () => {
-  const p = analyze(makeProject({ "AGENTS.md": "- [ ] a\n" }));
-  const sc = m.projectScenario(p, store());
-  const { pi, state } = makePi({ tools: coreTools(), active: coreTools().map((t) => t.name) });
-  const st = emptyStore();
-  m.applyScenario(pi, makeCtx(state), sc, st);
-  assert.equal(st.recent.scenario, "project");
-});
-
-/* ==================== 文档收集（3） ==================== */
-test("文档：node_modules 被跳过", () => {
-  const dir = makeProject({ "AGENTS.md": "a", "node_modules/pkg/README.md": "b" });
-  const docs = m.collectProjectDocs(dir);
-  assert.ok(!docs.some((d) => d.includes("node_modules")));
-});
-
-test("文档：去重且按优先级排序（HANDOFF 靠前）", () => {
-  const dir = makeProject({ "AGENTS.md": "a", "HANDOFF.md": "b", "README.md": "c" });
-  const docs = m.collectProjectDocs(dir);
-  assert.equal(docs.length, new Set(docs).size);
-  assert.ok(docs.includes("HANDOFF.md"));
-});
-
-test("文档：collectProjectDocs 对不存在的目录返回空", () => {
-  assert.deepEqual(m.collectProjectDocs("Z:/definitely-missing-xyz"), []);
+test("项目文档：交接优先，不扫描依赖，目录不存在时返回空", (t) => {
+  const cwd = makeProject(t, { "AGENTS.md": "a", "HANDOFF.md": "b", "README.md": "c", "node_modules/pkg/HANDOFF.md": "ignore" });
+  assert.deepEqual(m.collectProjectDocs(cwd), ["HANDOFF.md", "AGENTS.md", "README.md"]);
+  assert.deepEqual(m.collectProjectDocs(path.join(cwd, "missing")), []);
 });

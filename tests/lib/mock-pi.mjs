@@ -4,13 +4,25 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const AGENT_DIR = path.join(process.env.USERPROFILE || os.homedir(), ".pi", "agent");
+export let AGENT_DIR;
 // 仓库内测试直接加载本仓库的扩展（不依赖 ~/.pi/agent 里的安装副本）
 export const EXT = new URL("../../function-menu.js", import.meta.url).href;
 
 /** 隔离 store / profile，返回临时目录 */
 export function isolate() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fn-enable-"));
+  // 发现/归属测试也必须隔离：空机器上没有开发者的 npm 包、本地扩展或技能。
+  AGENT_DIR = path.join(dir, ".pi", "agent");
+  process.env.PI_CODING_AGENT_DIR = AGENT_DIR;
+  const pkg = path.join(AGENT_DIR, "npm", "node_modules", "pi-lens");
+  const skill = path.join(AGENT_DIR, "skills", "pi-lens-lsp-navigation");
+  fs.mkdirSync(pkg, { recursive: true });
+  fs.mkdirSync(skill, { recursive: true });
+  fs.mkdirSync(path.join(AGENT_DIR, "extensions"));
+  fs.writeFileSync(path.join(AGENT_DIR, "npm", "package.json"), JSON.stringify({ dependencies: { "pi-lens": "1.0.0" } }));
+  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "pi-lens", version: "1.0.0", description: "LSP code intelligence" }));
+  fs.writeFileSync(path.join(skill, "SKILL.md"), "---\nname: pi-lens-lsp-navigation\ndescription: LSP diagnostics and code navigation\n---\n");
+  fs.writeFileSync(path.join(AGENT_DIR, "extensions", "function-menu.js"), "// discovery fixture\n");
   process.env.PI_FUNCTION_STORE = path.join(dir, "function-menu.json");
   process.env.PI_FUNCTION_PROFILE = path.join(dir, "function-menu.profile.json");
   return dir;

@@ -60,7 +60,7 @@ test("直达：/function resume 仍是项目续接（简历场景用 scenario re
 
 test("直达：不存在的 id 当作需求文本交给模型", async () => {
   const { state, run } = env();
-  await run("zzz-not-a-real-id", { hasUI: false });
+  await run("zzz-not-a-real-id", { selects: ["✓ 让模型决定工作流（推荐）"] });
   assert.equal(state.userMessages.length, 1);
   assert.match(state.userMessages[0].text, /zzz-not-a-real-id/);
 });

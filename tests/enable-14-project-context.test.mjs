@@ -16,6 +16,7 @@ function makeProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fn-proj-"));
   fs.writeFileSync(path.join(dir, "AGENTS.md"), [
     "# 规则",
+    "- [x] 已跑过初版转换测试",
     "- [ ] 把拼音转换器的多音字处理做完",
     "- [ ] 补 100 个测试",
     "## 阻塞",
@@ -77,45 +78,119 @@ function env(dir) {
   const tools = [...coreTools()];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
-  const run = (args, opts) => state.commands.get("function").handler(args, { ...makeCtx(state, opts), cwd: dir });
-  return { state, pi, run };
+  const context = (opts) => ({
+    ...makeCtx(state, opts), cwd: dir,
+    sessionManager: { getSessionId: () => "project-14", getBranch: () => [{ type: "compaction", summary: "上次停在初版测试" }] },
+  });
+  const run = (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, context(opts));
+  const tool = (name) => state.registeredTools.find((t) => t.name === name);
+  return { state, run, context, tool };
 }
 
-test("交给模型：消息里带【项目来路与走向】", async () => {
-  const { state, run } = env(makeProject());
-  await run("把多音字处理接完");
-  assert.match(state.userMessages[0].text, /【项目来路与走向】/);
-});
+const progress = (report) => report.split(/### 本轮需求|### 全项目需求/)[0];
+const needRequestId = (state) => /^装配请求 ID：([^\n]+)/m.exec(state.userMessages[0].text)?.[1];
 
-test("交给模型：消息里带未完成事项与阻塞", async () => {
-  const { state, run } = env(makeProject());
-  await run("继续");
+test("两个入口报告同一份项目进度，模型同时收到本轮需求和具体项目证据", async () => {
+  const dir = makeProject();
+  const resume = env(dir);
+  await resume.run("resume", { selects: [] });
+  const { state, run, tool, context } = env(dir);
+  const need = "把多音字处理接完";
+  await run(need);
+  const [a, b] = [resume.state, state].map(({ messages }) => messages.find((x) => x.customType === "function-project").content);
+  assert.equal(progress(a), progress(b), "两个入口的项目证据和进度不能缩水或分叉");
+  assert.match(b, /已完成.*初版转换测试/);
+  assert.match(b, /当前会话：读取了最近 1 条/);
+  assert.match(b, /### 本轮需求\n- 本地匹配候选：/);
+  assert.equal(resume.state.selectCalls[0].title, state.selectCalls[0].title);
   const text = state.userMessages[0].text;
-  assert.match(text, /未完成：/);
-  assert.match(text, /阻塞\/风险：/);
+  assert.match(text, /^需求：把多音字处理接完$/m);
+  assert.match(text, /结合上面的项目上下文判断/);
+  assert.match(text, /未完成：.*多音字处理/);
+  assert.match(text, /阻塞\/风险：.*云端额度用完/);
+  assert.match(text, /下一步：先修多音字再跑回归/);
+  const suggest = await tool("suggest_scenario").execute("1", { text: need }, undefined, undefined, context());
+  assert.match(suggest.content[0].text, /阻塞\/风险：.*云端额度用完/);
 });
 
-test("交给模型：明确要求结合项目上下文判断", async () => {
-  const { state, run } = env(makeProject());
-  await run("继续");
-  assert.match(state.userMessages[0].text, /结合上面的项目上下文判断/);
+test("模型提出方案后仍须确认；取消、遗漏或跨会话使用请求 ID 不得切换工具", async () => {
+  const { state, run, context, tool } = env(makeProject());
+  const need = "把多音字处理接完";
+  await run(need);
+  const requestId = needRequestId(state);
+  assert.ok(requestId);
+  const ctx = context();
+  const assemble = (params, owner = ctx) => tool("assemble_scenario").execute("2", { scenario: "plugin", ...params }, undefined, undefined, owner);
+  assert.equal((await assemble({})).isError, true);
+  assert.equal((await assemble({ requestId }, { ...ctx, sessionManager: { getSessionId: () => "different" } })).isError, true);
+  ctx.ui.confirm = async (_title, text) => {
+    assert.match(text, /当前阶段：.*阻塞/);
+    assert.equal(state.messages.at(-1).customType, "function-proposal");
+    assert.equal(state.setCalls.length, 0);
+    return false;
+  };
+  assert.equal((await assemble({ requestId })).details.cancelled, true);
+  assert.equal((await assemble({ requestId })).isError, true);
+  assert.equal(state.editorText, need);
+  assert.equal(state.entries.length, 0);
+  assert.equal(state.setCalls.length, 0);
+  await run("resume", { selects: [] });
+  assert.equal((await assemble({})).isError, true, "被其他命令打断的请求也不能脱离原确认流程");
+  assert.equal(state.setCalls.length, 0);
 });
 
-/* ---------------- 装配后注入（2） ---------------- */
+test("确认后实际装配模型提出的场景，使用用户已选工作流", async () => {
+  const { state, run, context, tool } = env(makeProject());
+  await run("编写项目文档", { selects: ["research", "✓ 完成选择"] });
+  assert.equal(state.setCalls.length, 0);
+  assert.match(state.userMessages[0].text, /工作流（用户已指定，必须使用）：research/);
+  const ctx = context({ confirms: [true, false, false, false, false, false, false] });
+  const result = await tool("assemble_scenario").execute("3", { scenario: "docs", workflow: "debug", requestId: needRequestId(state) }, undefined, undefined, ctx);
+  assert.equal(result.details?.workflow, "research");
+  assert.equal(state.entries.at(-1)?.d.id, "docs");
+  assert.deepEqual(state.entries.at(-1).d.tools, state.active);
+  assert.deepEqual(state.messages.map((x) => x.customType), ["function-project", "function-proposal", "function-assembled"]);
+});
+
+test("缺少 PDF 能力：取消、跳过、同意查找分别作用于工具与提示", async () => {
+  for (const choice of ["cancel", "skip", "search"]) {
+    const { state, run, context, tool } = env(makeProject());
+    const need = "把项目报告导出 PDF";
+    await run(need);
+    const ctx = context({ confirms: [true] });
+    let asked = false;
+    ctx.ui.select = async (title, options) => {
+      if (!title.startsWith("本机没有「PDF")) return options[1];
+      asked = true;
+      return options[{ cancel: 2, skip: 1, search: 0 }[choice]];
+    };
+    const answer = await tool("assemble_scenario").execute("pdf", { scenario: "docs", requestId: needRequestId(state) }, undefined, undefined, ctx);
+    assert.ok(asked, `必须问到真实的缺口：${choice}`);
+    if (choice === "cancel") {
+      assert.equal(answer.details.cancelled, true);
+      assert.equal(state.setCalls.length, 0);
+      assert.equal(state.entries.length, 0);
+      assert.equal(state.editorText, need);
+      assert.equal(state.userMessages.length, 1, "取消不得派发找技能");
+      continue;
+    }
+    assert.equal(answer.details.id, "docs");
+    assert.equal(state.userMessages.length, choice === "search" ? 2 : 1);
+    if (choice === "search") assert.match(state.userMessages[1].text, /PDF.*等我确认/s);
+    const hook = state.handlers.before_agent_start[0];
+    const out = await hook({ systemPrompt: "base" }, ctx);
+    assert.match(out.systemPrompt, choice === "search" ? /能力缺口：已征得同意去找\nPDF/ : /能力缺口：用户选择不找\nPDF/);
+  }
+});
+
+/* ---------------- 装配后注入 ---------------- */
 test("模型装配：项目上下文会挂到场景上，由 before_agent_start 注入", async () => {
   const dir = makeProject();
   const tools = [...coreTools()];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
   const asm = state.registeredTools.find((t) => t.name === "assemble_scenario");
-  // 工具内部用 process.cwd()，这里切到项目目录
-  const old = process.cwd();
-  process.chdir(dir);
-  try {
-    await asm.execute("1", { scenario: "plugin" });
-  } finally {
-    process.chdir(old);
-  }
+  await asm.execute("1", { scenario: "plugin" }, undefined, undefined, { cwd: dir });
   const hook = state.handlers.before_agent_start?.[0];
   assert.ok(hook, "应有 before_agent_start 钩子");
   const out = await hook({ systemPrompt: "base" });
@@ -127,13 +202,8 @@ test("模型装配：注入内容包含项目阶段", async () => {
   const tools = [...coreTools()];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
-  const old = process.cwd();
-  process.chdir(dir);
-  try {
-    await state.registeredTools.find((t) => t.name === "assemble_scenario").execute("1", { scenario: "plugin" });
-  } finally {
-    process.chdir(old);
-  }
+  await state.registeredTools.find((t) => t.name === "assemble_scenario")
+    .execute("1", { scenario: "plugin" }, undefined, undefined, { cwd: dir });
   const out = await state.handlers.before_agent_start[0]({ systemPrompt: "" });
   assert.match(out.systemPrompt, /项目续接（不只看当前这句话）/);
 });

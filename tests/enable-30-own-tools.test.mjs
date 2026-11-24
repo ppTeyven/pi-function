@@ -20,7 +20,8 @@ function env({ active } = {}) {
   const tools = [...coreTools(), ...OWN, ...pkgTools("pi-lens", ["lens_diagnostics"])];
   const { pi, state } = makePi({ tools, active: active || tools.map((t) => t.name) });
   m.default(pi);
-  return { pi, state, tools, run: (a, o) => state.commands.get("function").handler(a, makeCtx(state, o || {})) };
+  const run = (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, makeCtx(state, opts));
+  return { pi, state, tools, run };
 }
 
 const sc = () => ({ id: "plugin", title: "插件", plugins: ["pi-lens"], skillIds: [] });
@@ -44,12 +45,12 @@ test("死锁回归：disabled 列表里不包含自有工具", () => {
   assert.ok(!res.disabled.includes("assemble_scenario"));
 });
 
-test("死锁回归：自有工具被手动关掉后，/function <需求> 会在发给模型前加回来", async () => {
-  const { state, run } = env({ active: [...coreTools().map((t) => t.name)] }); // 两个自有工具都不在
-  await run("写个爬虫抓取网页");
-  assert.ok(state.active.includes("suggest_scenario"), `没加回来：${state.active.join(",")}`);
-  assert.ok(state.active.includes("assemble_scenario"));
-  assert.equal(state.userMessages.length, 1, "仍然要把需求发给模型");
+test("死锁回归：自有工具被手动关掉时，本地仍能出提案，取消后不改工具", async () => {
+  const { state, run } = env({ active: coreTools().map((t) => t.name) });
+  await run("写个爬虫抓取网页", { selects: ["✓ 使用项目推荐工作流"], confirms: [false] });
+  assert.ok(state.messages.some((x) => x.customType === "function-proposal"));
+  assert.equal(state.setCalls.length, 0);
+  assert.equal(state.userMessages.length, 0, "不能把请求发给缺少入口工具的模型");
 });
 
 test("死锁回归：自有工具本来就在时不重复加", async () => {
@@ -71,6 +72,7 @@ test("死锁回归：/function off 之后仍然能通过 /function <需求> 恢�
   const { state, run } = env();
   await run("off");
   assert.ok(!state.active.includes("assemble_scenario"), "off = 全局常开，自有工具会关掉");
-  await run("写个爬虫抓取网页");
-  assert.ok(state.active.includes("assemble_scenario"), "下次发需求时应自动恢复");
+  await run("编写项目文档", { selects: ["✓ 使用项目推荐工作流"], confirms: [true, false, false, false, false, false, false] });
+  assert.ok(state.active.includes("assemble_scenario"), "确认本地提案后应恢复自有工具");
+  assert.ok(state.active.includes("suggest_scenario"));
 });
