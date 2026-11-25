@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, tool, hydrate, noticeText,
+  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, modelAssemblyTools,
 } from "./lib/mock-pi.mjs";
 
 isolate();
@@ -15,10 +15,10 @@ hydrate(m, {
 });
 
 function env() {
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
+  const tools = [...coreTools(), ...modelAssemblyTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
-  return { state, pi, run: (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, makeCtx(state, opts)) };
+  return { state, pi, run: (args, opts) => state.commands.get("function").handler(args, makeCtx(state, { ...opts, sessionId: "need-parsing" })) };
 }
 
 const NEED = "把拼音转换器的多音字处理改一下";
@@ -27,25 +27,24 @@ const NEED = "把拼音转换器的多音字处理改一下";
 test("交给模型：需求文本会发成一条消息给模型", async () => {
   const { state, run } = env();
   await run(NEED);
-  assert.equal(state.userMessages.length, 1);
+  assert.equal(state.modelTurns.length, 1);
 });
 
 test("交给模型：消息里带需求原文与装配指引", async () => {
   const { state, run } = env();
   await run(NEED);
-  const text = state.userMessages[0].text;
+  const text = state.modelTurns[0].content;
   assert.ok(text.includes(NEED), "要带原文");
   assert.match(text, /suggest_scenario/);
   assert.match(text, /assemble_scenario/);
 });
 
-test("交给模型：只弹工作流选择，不弹场景选择，本地不装配", async () => {
+test("交给模型前不推断工作流或场景，也不改工具", async () => {
   const { state, run } = env();
   await run(NEED);
-  const titles = state.selectCalls.map((c) => c.title).join(" | ");
-  assert.match(titles, /选工作流/, "用户先定执行方式");
-  assert.ok(!/选任务场景/.test(titles), "场景由模型判断，不再让用户选");
-  assert.equal(state.setCalls.length, 0, "本地不替模型装配");
+  assert.equal(state.selectCalls.length, 0);
+  assert.equal(state.setCalls.length, 0);
+  assert.equal(state.entries.length, 0);
 });
 
 /* ==================== B. 需求解析：词级而非碎片（8） ==================== */

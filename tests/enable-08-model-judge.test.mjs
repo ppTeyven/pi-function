@@ -1,142 +1,101 @@
-// 第 8 组：完全交给模型决策 —— assemble_scenario 工具（模型可真正装配）
+// 模型负责选组合；插件只列事实、验证、确认并应用显式清单。
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, emptyStore } from "./lib/mock-pi.mjs";
+import fs from "node:fs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, skillInfo, modelPlan } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
 
-hydrate(m, { "code-intel": { packages: ["pi-lens"] }, testing: { packages: ["pi-test"] } });
-
 function env() {
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"]), ...pkgTools("pi-test", ["test_run"])];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics", "read_symbol"]), ...pkgTools("pi-test", ["test_run"])];
+  const active = [...coreTools().map(t => t.name), "test_run", "read_symbol"];
+  const { pi, state } = makePi({ tools, active, commands: [{ name: "skill:proof", source: "skill", sourceInfo: skillInfo("proof"), description: "Verification skill" }] });
   m.default(pi);
-  const tool = (name) => state.registeredTools.find((t) => t.name === name);
-  return { state, pi, tool, tools };
+  const invoke = (input, ctx = makeCtx(state, { confirms: [true] })) => state.registeredTools.find(t => t.name === "assemble_scenario").execute("fixture", input, undefined, undefined, ctx);
+  return { pi, state, invoke, active };
 }
 
-/* ---------------------- 工具注册（3） ---------------------- */
-test("模型装配：注册了 assemble_scenario 工具", () => {
-  const { tool } = env();
-  assert.ok(tool("assemble_scenario"), "缺 assemble_scenario");
+const complete = (over = {}) => modelPlan({ scenario: "plugin+docs", workflow: "debug+research", plugins: ["npm:pi-lens"], tools: ["lens_diagnostics"], skills: ["proof"], ...over });
+
+test("直接模型提案：只应用明确选择的单个工具，记录真实差集，绝不补选同插件其它工具", async () => {
+  const { state, invoke, active } = env();
+  const context = makeCtx(state);
+  context.ui.confirm = async (title, content) => {
+    assert.match(title, /排查修复.*证据先行/);
+    assert.match(content, /保留或启用的插件：npm:pi-lens/);
+    assert.match(content, /工具将新增启用：lens_diagnostics/);
+    assert.match(content, /工具将停用：.*read_symbol.*test_run/);
+    assert.deepEqual(state.active, active);
+    return true;
+  };
+  const result = await invoke(complete(), context);
+  assert.ok(!result.isError, result.content[0].text);
+  assert.deepEqual(result.details.enabled, ["lens_diagnostics"]);
+  assert.deepEqual(result.details.disabled, ["read_symbol", "test_run"]);
+  assert.deepEqual(state.active, [...coreTools().map(t => t.name), "lens_diagnostics"]);
+  assert.deepEqual(state.entries.at(-1).d.tools, state.active);
+  assert.equal(state.entries.at(-1).d.by, "model");
+  assert.equal(state.entries.at(-1).d.workflow, "debug+research");
+  assert.match(result.content[0].text, /还原 \/function off/);
+  assert.match(result.content[0].text, /会话技能（1 个）：proof/);
 });
 
-test("模型装配：工具参数要求 scenario 必填", () => {
-  const { tool } = env();
-  const t = tool("assemble_scenario");
-  assert.deepEqual(t.parameters.required, ["scenario"]);
+test("明确空清单有效：即使场景或工作流有插件套餐，也不得自动增加能力", async () => {
+  const { state, invoke } = env();
+  const approved = await invoke(modelPlan({ scenario: "plugin", workflow: "debug" }));
+  assert.ok(!approved.isError, approved.content[0].text);
+  assert.deepEqual(state.active, coreTools().map(t => t.name));
+  assert.deepEqual(m.loadStore().active.custom.plan.skills, []);
 });
 
-test("模型装配：suggest_scenario 仍然存在且只读", async () => {
-  const { tool, state } = env();
-  const before = [...state.active];
-  const res = await tool("suggest_scenario").execute("1", { text: "写个爬虫" });
-  assert.ok(res.content[0].text.length > 0);
-  assert.deepEqual(state.active, before);
+test("错误的模型 ID、越界或不完整的提案不能打开确认或改变状态", async () => {
+  const { invoke, state, active } = env();
+  const ctx = makeCtx(state);
+  ctx.ui.confirm = async () => assert.fail("无效清单不得确认");
+  for (const [input, msg] of [
+    [complete({ standalone: undefined }), /没有已绑定的项目回合/],
+    [{ standalone: true, scenario: "plugin" }, /工作流/],
+    [complete({ scenario: "not-a-scene" }), /未知场景/],
+    [complete({ workflow: "nope" }), /未知工作流/],
+    [complete({ scenario: "plugin+docs+api+report" }), /最多 3/],
+    [complete({ plugins: ["npm:ghost"] }), /插件不可用/],
+    [complete({ tools: ["nonexistent"] }), /工具不可用/],
+    [complete({ skills: ["fake"] }), /技能不可用/],
+    [complete({ tools: ["read"] }), /工具不可用/],
+    [complete({ plugins: [], tools: ["lens_diagnostics"] }), /没有保留该插件/],
+  ]) {
+    const failure = await invoke(input, ctx);
+    assert.equal(failure.isError, true);
+    assert.match(failure.content[0].text, msg);
+  }
+  assert.deepEqual(state.active, active);
+  assert.equal(state.entries.length, 0);
 });
 
-/* ---------------------- 装配成功（5） ---------------------- */
-test("模型装配：单个场景真的改变工具集", async () => {
-  const { tool, state } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  assert.ok(!res.isError, res.content[0].text);
-  assert.ok(state.setCalls.length > 0, "应调用 setActiveTools");
+test("尊重用户手动排除；无确认界面也不应用直接提案", async (t) => {
+  t.after(() => fs.rmSync(process.env.PI_FUNCTION_STORE, { force: true }));
+  fs.writeFileSync(process.env.PI_FUNCTION_STORE, JSON.stringify({ version: 1, known: {}, overrides: { "npm:pi-lens": "none" } }));
+  const { invoke, state } = env();
+  const excluded = await invoke(complete());
+  assert.match(excluded.content[0].text, /插件不可用/);
+  const headless = await invoke(modelPlan(), makeCtx(state, { hasUI: false }));
+  assert.match(headless.content[0].text, /没有交互确认界面/);
+  assert.deepEqual(state.setCalls, []);
 });
 
-test("模型装配：写入会话记录，by=model", async () => {
-  const { tool, state } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  const entry = state.entries.at(-1);
-  assert.equal(entry.type, "function-scenario");
-  assert.equal(entry.d.by, "model");
-  assert.deepEqual(entry.d.tools, state.active);
-});
-
-test("模型装配：组合场景 id 用 + 连接", async () => {
-  const { tool, state } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin+api" });
-  assert.equal(state.entries.at(-1).d.id, "plugin+api");
-});
-
-test("模型装配：可以指定工作流", async () => {
-  const { tool, state } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin", workflow: "debug" });
-  assert.equal(state.entries.at(-1).d.workflow, "debug");
-});
-
-test("模型装配：不指定工作流时按场景推荐", async () => {
-  const { tool, state } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  assert.ok(state.entries.at(-1).d.workflow, "应带上推荐工作流");
-});
-
-/* ---------------------- 拒绝非法输入（4） ---------------------- */
-test("模型装配：未知场景 id 返回错误且不改工具集", async () => {
-  const { tool, state } = env();
-  const before = [...state.active];
-  const res = await tool("assemble_scenario").execute("1", { scenario: "not-a-scene" });
-  assert.equal(res.isError, true);
-  assert.match(res.content[0].text, /未知场景 id/);
-  assert.deepEqual(state.active, before);
-});
-
-test("模型装配：未知工作流 id 返回错误", async () => {
-  const { tool, state } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "plugin", workflow: "nope" });
-  assert.equal(res.isError, true);
-  assert.match(res.content[0].text, /未知工作流 id/);
-});
-
-test("模型装配：缺 scenario 参数返回错误", async () => {
-  const { tool } = env();
-  const res = await tool("assemble_scenario").execute("1", {});
-  assert.equal(res.isError, true);
-});
-
-test("模型装配：错误信息里给出可用 id（便于模型自我纠正）", async () => {
-  const { tool } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "zzz" });
-  assert.match(res.content[0].text, /可用 id：/);
-});
-
-/* ---------------------- 返回给模型的内容（3） ---------------------- */
-test("模型装配：返回文本含启用数量与还原入口", async () => {
-  const { tool } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  const text = res.content[0].text;
-  assert.match(text, /当前 \d+ 个工具可用/);
-  assert.match(text, /还原 \/function off/);
-});
-
-test("模型装配：返回文本列出插件与技能", async () => {
-  const { tool } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  const text = res.content[0].text;
-  assert.match(text, /插件：/);
-  assert.match(text, /技能：/);
-});
-
-test("模型装配：reason 会回显给用户", async () => {
-  const { tool } = env();
-  const res = await tool("assemble_scenario").execute("1", { scenario: "plugin", reason: "需要代码检查" });
-  assert.match(res.content[0].text, /依据：需要代码检查/);
-});
-
-/* ---------------------- 与 off 的配合（2） ---------------------- */
-test("模型装配：装配后 /function off 重置为全局常开", async () => {
-  const { tool, state, tools } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  await state.commands.get("function").handler("off", makeCtx(state));
-  const expected = tools.filter((t) => String(t.sourceInfo?.path || "").startsWith("builtin:")).map((t) => t.name);
-  assert.deepEqual([...state.active].sort(), [...expected].sort());
-});
-
-test("模型装配：连续装配两次不膨胀", async () => {
-  const { tool, state } = env();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  const first = [...state.active].sort();
-  await tool("assemble_scenario").execute("1", { scenario: "plugin" });
-  assert.deepEqual([...state.active].sort(), first);
+test("宿主未应用整个提案时回滚工具，不保存或宣称成功", async () => {
+  const { pi, invoke, state, active } = env();
+  const original = pi.setActiveTools;
+  pi.setActiveTools = (names) => original(names.filter(name => name !== "lens_diagnostics"));
+  const result = await invoke(modelPlan({ plugins: ["npm:pi-test"], tools: ["test_run"] }), makeCtx(state, { confirms: [false] }));
+  assert.equal(result.details.cancelled, true);
+  assert.deepEqual(state.active, active);
+  // 只拒绝计划新增的工具；原清单可完整恢复。
+  const failed = await invoke(complete());
+  assert.equal(failed.isError, true);
+  assert.match(failed.content[0].text, /已恢复原工具集/);
+  assert.deepEqual(state.active, active);
+  assert.equal(state.entries.length, 0);
+  assert.equal(state.messages.some(x => x.customType === "function-assembled"), false);
 });

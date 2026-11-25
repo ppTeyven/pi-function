@@ -1,0 +1,1185 @@
+{
+  "method": "AI (not human)",
+  "run": "ecb87af4-2861-4c4b-8818-21330215d09c",
+  "children": [
+    "45811c74-1cbe-40cf-a8b5-20c40fe91a3f",
+    "7c099751-c132-49d2-b1ad-2635e42ecbf8"
+  ],
+  "blindBriefSha256": "9d205dac99d6d6d6ba81445de259990d178b94a0a96ce14a8c86ee1f94e2b2d0",
+  "rules": "Matched intent sets. Required disagreements decided from the requested deliverable. Keep optional roles corroborated by both or explicitly adjudicated. Keep forbidden roles corroborated by both plus clear conflicts with the requested output or integration boundary. Do not use any classifier output during arbitration.",
+  "arbitratedRequired": {
+    "A03": "幻灯片与备注是一个交付件，写作技能可帮助，不要求单独的写作能力。",
+    "A11": "定义接口结构不要求单独的文档产物。",
+    "A22": "成套培训材料含练习与考核；写作能加强表达，但不是单独交付。",
+    "A24": "一次性活动计划不是制度建设；职责梳理可帮助，但不要求单独做 SOP。",
+    "A28": "工作重心是实现能答问和转接的机器人；题目给了现有制度，不需要重新编写制度文档。"
+  },
+  "explicitForbidden": {
+    "A04": "交付按顺序查阅的手册，不交演示文稿。",
+    "A05": "已有报名链接，不要求接入登记系统。",
+    "A33": "正式可编辑 Word 通知，不改为演示页；海报被明确拒绝。"
+  },
+  "reviews": [
+    {
+      "key": "task-1",
+      "labels": [
+        {
+          "id": "A01",
+          "status": "scored",
+          "accept": [
+            "article"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "交付物是以年轻人为何留下为主线的公众号长文，采访原话和数字均已核实，重点是组织叙事。"
+        },
+        {
+          "id": "A02",
+          "status": "scored",
+          "accept": [
+            "report"
+          ],
+          "required": [
+            "data",
+            "writing"
+          ],
+          "optional": [
+            "web"
+          ],
+          "forbidden": [],
+          "reason": "管理层需要一份能核对出处、复算两处仓储方案差异并据此做决定的比较报告，联网只在出处需在线查证时有帮助。"
+        },
+        {
+          "id": "A03",
+          "status": "scored",
+          "accept": [
+            "presentation"
+          ],
+          "required": [
+            "slides"
+          ],
+          "optional": [
+            "writing",
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "七分钟董事会汇报明确按页组织决策，并交付开场、拨款请求和演讲者备注。"
+        },
+        {
+          "id": "A04",
+          "status": "scored",
+          "accept": [
+            "docs"
+          ],
+          "required": [
+            "docs"
+          ],
+          "optional": [
+            "process"
+          ],
+          "forbidden": [
+            "slides"
+          ],
+          "reason": "明确要把已有门店操作整理成独立值班时可逐步查阅的手册，流程梳理有助于标出关账必做步骤和异常查阅入口。"
+        },
+        {
+          "id": "A05",
+          "status": "scored",
+          "accept": [
+            "webpage"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [
+            "browser",
+            "writing"
+          ],
+          "forbidden": [
+            "mcp"
+          ],
+          "reason": "交付的是手机上好读的公开义卖信息页，报名跳转现有链接，不需要接入登记系统或另建后台。"
+        },
+        {
+          "id": "A06",
+          "status": "scored",
+          "accept": [
+            "webapp"
+          ],
+          "required": [
+            "design",
+            "code-intel"
+          ],
+          "optional": [
+            "browser",
+            "testing",
+            "plan-review"
+          ],
+          "forbidden": [],
+          "reason": "登录、库存查询、权限审批和跨办公室共享记录要求可操作、有共享状态的浏览器应用。"
+        },
+        {
+          "id": "A07",
+          "status": "scored",
+          "accept": [
+            "mobile"
+          ],
+          "required": [
+            "design",
+            "code-intel"
+          ],
+          "optional": [
+            "testing",
+            "release"
+          ],
+          "forbidden": [],
+          "reason": "订座须在微信内使用并具备送审条件，因此重点是微信端实现、真机验证和送审构建准备，而不是独立 App。"
+        },
+        {
+          "id": "A08",
+          "status": "scored",
+          "accept": [
+            "game"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "design",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "必须交付能实际游玩的翻牌配对游戏，并让轮流操作、得分和重开规则生效。"
+        },
+        {
+          "id": "A09",
+          "status": "scored",
+          "accept": [
+            "design"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [
+            "docs"
+          ],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "本轮要统一跨物料复用的字体、配色和使用规范，不制作或实现各个应用成品。"
+        },
+        {
+          "id": "A10",
+          "status": "scored",
+          "accept": [
+            "data"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "需对照两份退款流水找出异常集中的渠道和日期，再用一张图把证据与解释讲清楚。"
+        },
+        {
+          "id": "A11",
+          "status": "scored",
+          "accept": [
+            "api"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "docs",
+            "testing"
+          ],
+          "forbidden": [
+            "design"
+          ],
+          "reason": "交付是现有服务中可调用的 JSON 端点，重点是请求、响应和状态码契约及其实现，而非用户界面。"
+        },
+        {
+          "id": "A12",
+          "status": "scored",
+          "accept": [
+            "automation"
+          ],
+          "required": [
+            "automation"
+          ],
+          "optional": [
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "缺口计算已能手动完成，本轮新增的是每周准时运行并且只在有缺口时发送提醒。"
+        },
+        {
+          "id": "A13",
+          "status": "scored",
+          "accept": [
+            "integration"
+          ],
+          "required": [
+            "mcp"
+          ],
+          "optional": [
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "需要把现有公司搜索接口接进 Pi，并验证原有鉴权边界得到保留，而不是改造搜索服务。"
+        },
+        {
+          "id": "A14",
+          "status": "scored",
+          "accept": [
+            "plugin"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "testing",
+            "docs"
+          ],
+          "forbidden": [],
+          "reason": "交付物是随 Pi 会话加载、先预览文件再请求确认的命令扩展，独立脚本不满足要求。"
+        },
+        {
+          "id": "A15",
+          "status": "scored",
+          "accept": [
+            "process"
+          ],
+          "required": [
+            "process"
+          ],
+          "optional": [
+            "docs",
+            "plan-review"
+          ],
+          "forbidden": [],
+          "reason": "需要新定一套可反复执行的照片交接流程，明确接收、授权核对、归档和完成判据。"
+        },
+        {
+          "id": "A16",
+          "status": "scored",
+          "accept": [
+            "maintain"
+          ],
+          "required": [
+            "code-intel",
+            "testing"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "任务要求找出现有索引构造路径的行为差异，在库内修复并新增回归用例，不改调用方。"
+        },
+        {
+          "id": "A17",
+          "status": "scored",
+          "accept": [
+            "localization"
+          ],
+          "required": [
+            "i18n"
+          ],
+          "optional": [
+            "writing",
+            "testing"
+          ],
+          "forbidden": [
+            "design"
+          ],
+          "reason": "任务是在原预约界面内完成日语本地化，同时保留占位符并统一地区格式、称呼和敬语。"
+        },
+        {
+          "id": "A18",
+          "status": "scored",
+          "accept": [
+            "social"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "交付的是三条可直接发布到小红书、读起来像门店员工在说话的试吃短文案。"
+        },
+        {
+          "id": "A19",
+          "status": "scored",
+          "accept": [
+            "novel"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "用户要求创作小说第一章，让读者发现钟楼异常，同时有意延后解释。"
+        },
+        {
+          "id": "A20",
+          "status": "scored",
+          "accept": [
+            "video"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "交付的是供他人拍摄的三十秒短片脚本，要对齐镜头、屏幕字幕和旁白时点，不负责实际拍摄。"
+        },
+        {
+          "id": "A21",
+          "status": "scored",
+          "accept": [
+            "image"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "要做的是一张具体的竖版演出主视觉，以空椅为主体并给演出信息预留叠字空间。"
+        },
+        {
+          "id": "A22",
+          "status": "scored",
+          "accept": [
+            "course"
+          ],
+          "required": [
+            "docs"
+          ],
+          "optional": [
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "四节课要循序训练工单分流判断，并交付逐节练习和考核，核心是教案而非幻灯片。"
+        },
+        {
+          "id": "A23",
+          "status": "scored",
+          "accept": [
+            "resume"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs",
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "交付物是面向采购岗位的投递简历，要保留原有量化事实并重组谈判、交期和降本经历。"
+        },
+        {
+          "id": "A24",
+          "status": "scored",
+          "accept": [
+            "event"
+          ],
+          "required": [],
+          "optional": [
+            "web",
+            "task",
+            "writing"
+          ],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "这是八十人线下活动的可执行方案，包含场地、议程、志愿者分工和雨天备选，查找场地与梳理分工都有帮助。"
+        },
+        {
+          "id": "A25",
+          "status": "scored",
+          "accept": [
+            "commerce"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "browser"
+          ],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "任务是重写购买页上的卖点、规格和常见疑问，使买家下单前确认包装内容，查阅原页有助于把新文案放回现有结构。"
+        },
+        {
+          "id": "A26",
+          "status": "scored",
+          "accept": [
+            "dashboard"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "design",
+            "automation"
+          ],
+          "forbidden": [],
+          "reason": "要长期复用同一指标看板，按日期和区域筛选新增、积压和超时订单，并用固定来源更新。"
+        },
+        {
+          "id": "A27",
+          "status": "scored",
+          "accept": [
+            "api"
+          ],
+          "required": [
+            "code-intel",
+            "testing"
+          ],
+          "optional": [
+            "docs"
+          ],
+          "forbidden": [
+            "release"
+          ],
+          "reason": "要为既有 CLI 增加可校验参数并预演操作的选项，须验证试跑不触发创建发布的副作用，而不是执行发布。"
+        },
+        {
+          "id": "A28",
+          "status": "scored",
+          "accept": [
+            "chatbot"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "docs",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "交付的是按学校现行制度回答问题、无法回答时转给值班同事的聊天助手，而不是静态问答文档。"
+        },
+        {
+          "id": "A29",
+          "status": "scored",
+          "accept": [
+            "email"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "只需写一封不超过一百五十词的邮件，列明两个备选交付周并请经销商在周五前确认。"
+        },
+        {
+          "id": "A30",
+          "status": "scored",
+          "accept": [
+            "music"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "交付的是可按四四拍演唱、由两段主歌和重复副歌组成的民谣歌词，而不是叙事散文或音频。"
+        },
+        {
+          "id": "A31",
+          "status": "scored",
+          "accept": [
+            "spreadsheet"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "必须交付可编辑的 Excel 工作簿，保留原始表、可计算的勾稽公式和有条件的差额标色。"
+        },
+        {
+          "id": "A32",
+          "status": "scored",
+          "accept": [
+            "legal"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [
+            "code-intel"
+          ],
+          "reason": "要逐条分析提前退租条款的承租方风险，并指出值得律师确认的措辞，不是润色合同。"
+        },
+        {
+          "id": "A33",
+          "status": "scored",
+          "accept": [
+            "docx"
+          ],
+          "required": [
+            "docx"
+          ],
+          "optional": [
+            "writing"
+          ],
+          "forbidden": [
+            "design",
+            "slides",
+            "code-intel"
+          ],
+          "reason": "交付的是符合公文格式、带发文字号和签发落款的可修订 Word 通知，明确排除宣传海报。"
+        },
+        {
+          "id": "X01",
+          "status": "clarify",
+          "accept": [],
+          "required": [],
+          "optional": [],
+          "forbidden": [],
+          "reason": "请提供「这几个」具体是什么、给谁在什么场合使用，以及希望交付什么形式的成品？"
+        },
+        {
+          "id": "X02",
+          "status": "scored",
+          "accept": [
+            "docx"
+          ],
+          "required": [
+            "docx"
+          ],
+          "optional": [],
+          "forbidden": [
+            "web"
+          ],
+          "reason": "可打印 PDF 的目录和页码属于正式排版，无论目录里是否有能离线生成 PDF 的能力，交付需求都已明确且禁止联网。"
+        },
+        {
+          "id": "X03",
+          "status": "scored",
+          "accept": [
+            "presentation"
+          ],
+          "required": [
+            "data",
+            "slides"
+          ],
+          "optional": [
+            "writing",
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "销量归因是必须完成的数据分析，但点名交付的是承载分析结论的董事会演示稿，并未另要一份报告。"
+        }
+      ]
+    },
+    {
+      "key": "task-2",
+      "labels": [
+        {
+          "id": "A01",
+          "status": "scored",
+          "accept": [
+            "article"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "验收的是一篇围绕年轻人为何留下、用已核实的数字与采访原话写成的公众号长文。"
+        },
+        {
+          "id": "A02",
+          "status": "scored",
+          "accept": [
+            "report"
+          ],
+          "required": [
+            "data",
+            "writing"
+          ],
+          "optional": [
+            "web",
+            "docs"
+          ],
+          "forbidden": [],
+          "reason": "选址建议必须有可复算的对比和可追溯的出处；只有出处不在已有资料内时才需要联网查证。"
+        },
+        {
+          "id": "A03",
+          "status": "scored",
+          "accept": [
+            "presentation"
+          ],
+          "required": [
+            "slides",
+            "writing"
+          ],
+          "optional": [
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "董事会需要七分钟内讲完的一页一项决策的幻灯片，还要有开场、拨款请求和讲者备注。"
+        },
+        {
+          "id": "A04",
+          "status": "scored",
+          "accept": [
+            "docs"
+          ],
+          "required": [
+            "docs"
+          ],
+          "optional": [
+            "process",
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "要把已有操作写成新人可顺序查用、不会漏掉关账且能定位异常处理指引的手册，而非重新划分岗位流程。"
+        },
+        {
+          "id": "A05",
+          "status": "scored",
+          "accept": [
+            "webpage"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [
+            "browser",
+            "code-intel",
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "验收的是手机上易读的公开活动页，报名按钮只须指向现成链接，不需要自建账号或后台。"
+        },
+        {
+          "id": "A06",
+          "status": "scored",
+          "accept": [
+            "webapp"
+          ],
+          "required": [
+            "design",
+            "code-intel"
+          ],
+          "optional": [
+            "browser",
+            "testing",
+            "safety"
+          ],
+          "forbidden": [],
+          "reason": "登录、按权限审批和两处办公室共享库存及借用记录，要求交付一套可交互的浏览器应用。"
+        },
+        {
+          "id": "A07",
+          "status": "scored",
+          "accept": [
+            "mobile"
+          ],
+          "required": [
+            "design",
+            "code-intel"
+          ],
+          "optional": [
+            "testing",
+            "release"
+          ],
+          "forbidden": [],
+          "reason": "交付物须让顾客扫码后在微信内完成订座，并符合微信审核要求，而不是另做独立 App。"
+        },
+        {
+          "id": "A08",
+          "status": "scored",
+          "accept": [
+            "game"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "design",
+            "browser",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "翻牌、配对计分和重新开局必须在交付版本中实际可玩，规则说明或视觉稿不能替代它。"
+        },
+        {
+          "id": "A09",
+          "status": "scored",
+          "accept": [
+            "design"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [
+            "docs",
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "本轮验收的是跨包装、价牌和头像复用的字体、配色与使用规范，不是逐个制作应用成品。"
+        },
+        {
+          "id": "A10",
+          "status": "scored",
+          "accept": [
+            "data"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "要对照两份退款流水，定位异常集中的渠道和日期，并用一张图解释有数据支持的原因。"
+        },
+        {
+          "id": "A11",
+          "status": "scored",
+          "accept": [
+            "api"
+          ],
+          "required": [
+            "code-intel",
+            "docs"
+          ],
+          "optional": [
+            "testing"
+          ],
+          "forbidden": [
+            "design"
+          ],
+          "reason": "交付既包括请求、响应和状态码的接口契约，也包括现有服务里的 JSON 端点，明确不做 UI。"
+        },
+        {
+          "id": "A12",
+          "status": "scored",
+          "accept": [
+            "automation"
+          ],
+          "required": [
+            "automation"
+          ],
+          "optional": [
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "缺口已经能由现有脚本算出，新增工作是每周定时运行并在触发条件满足时发提醒。"
+        },
+        {
+          "id": "A13",
+          "status": "scored",
+          "accept": [
+            "integration"
+          ],
+          "required": [
+            "mcp"
+          ],
+          "optional": [
+            "code-intel",
+            "safety",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "核心是让 Pi 调用现有公司的搜索接口并沿用其鉴权边界，适配应留在接入侧而非改造原服务。"
+        },
+        {
+          "id": "A14",
+          "status": "scored",
+          "accept": [
+            "plugin"
+          ],
+          "required": [
+            "code-intel"
+          ],
+          "optional": [
+            "testing",
+            "safety",
+            "docs"
+          ],
+          "forbidden": [],
+          "reason": "交付的是随 Pi 会话加载的命令扩展，须先展示文件范围再等确认，独立 shell 脚本不能满足要求。"
+        },
+        {
+          "id": "A15",
+          "status": "scored",
+          "accept": [
+            "process"
+          ],
+          "required": [
+            "process"
+          ],
+          "optional": [
+            "docs",
+            "task"
+          ],
+          "forbidden": [],
+          "reason": "要明确跨组交接中的收集、授权核对和归档责任及完成条件，形成下次可照做的流程。"
+        },
+        {
+          "id": "A16",
+          "status": "scored",
+          "accept": [
+            "maintain"
+          ],
+          "required": [
+            "code-intel",
+            "testing"
+          ],
+          "optional": [
+            "repo-wiki"
+          ],
+          "forbidden": [],
+          "reason": "须在 pandas 内部找出两条索引构造路径的差异并修复，新增回归用例，不改调用方绕过缺陷。"
+        },
+        {
+          "id": "A17",
+          "status": "scored",
+          "accept": [
+            "localization"
+          ],
+          "required": [
+            "i18n"
+          ],
+          "optional": [
+            "writing",
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [
+            "design"
+          ],
+          "reason": "日本站验收的是保留占位符且统一日期、称呼和敬语的界面及报错译文，明确不重做页面。"
+        },
+        {
+          "id": "A18",
+          "status": "scored",
+          "accept": [
+            "social"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "验收的是三条能直接发小红书、听起来像店员的试吃短文案，不是新闻稿或配图。"
+        },
+        {
+          "id": "A19",
+          "status": "scored",
+          "accept": [
+            "novel"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "memory"
+          ],
+          "forbidden": [],
+          "reason": "交付的是以返乡维修工开场的小说第一章，读者只能先发现钟楼每天慢一分钟，不能提前知道原因。"
+        },
+        {
+          "id": "A20",
+          "status": "scored",
+          "accept": [
+            "video"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs"
+          ],
+          "forbidden": [],
+          "reason": "本轮交付的是三十秒安全短片的镜头拆解、屏幕字幕和旁白时点，拍摄由别人完成。"
+        },
+        {
+          "id": "A21",
+          "status": "scored",
+          "accept": [
+            "image"
+          ],
+          "required": [
+            "design"
+          ],
+          "optional": [
+            "vision"
+          ],
+          "forbidden": [],
+          "reason": "验收的是一张以舞台空椅为焦点、留出时间地点叠字空间的竖版主视觉，不是一整套品牌系统。"
+        },
+        {
+          "id": "A22",
+          "status": "scored",
+          "accept": [
+            "course"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs",
+            "slides"
+          ],
+          "forbidden": [],
+          "reason": "四节课要围绕工单优先级安排练习和考核，并检验新客服能否解释分流理由，但未指定必须做幻灯片。"
+        },
+        {
+          "id": "A23",
+          "status": "scored",
+          "accept": [
+            "resume"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs",
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "要改写用于采购岗位投递的简历，保留原有量化事实并突出谈判、交期和降本。"
+        },
+        {
+          "id": "A24",
+          "status": "scored",
+          "accept": [
+            "event"
+          ],
+          "required": [
+            "process"
+          ],
+          "optional": [
+            "web",
+            "task",
+            "writing"
+          ],
+          "forbidden": [],
+          "reason": "八十人读书会需要一份能落地的活动安排，协调场地、当天节奏、志愿者分工和下雨后的备选流程。"
+        },
+        {
+          "id": "A25",
+          "status": "scored",
+          "accept": [
+            "commerce"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs"
+          ],
+          "forbidden": [],
+          "reason": "指定交付是商品购买页的卖点、规格和问答文案，关键是让买家下单前知道是否附插头以及包装内有什么。"
+        },
+        {
+          "id": "A26",
+          "status": "scored",
+          "accept": [
+            "dashboard"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "design",
+            "automation",
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "验收的是连接固定数据源、可持续刷新且能按日期和区域切换的订单看板，不是一次性图表。"
+        },
+        {
+          "id": "A27",
+          "status": "scored",
+          "accept": [
+            "api"
+          ],
+          "required": [
+            "code-intel",
+            "testing"
+          ],
+          "optional": [
+            "docs",
+            "safety"
+          ],
+          "forbidden": [
+            "release"
+          ],
+          "reason": "要给现有 CLI 新增能校验参数并预览动作的试跑模式，且须验证不会真的创建发布，而不是用 echo 模拟命令。"
+        },
+        {
+          "id": "A28",
+          "status": "scored",
+          "accept": [
+            "chatbot"
+          ],
+          "required": [
+            "code-intel",
+            "docs"
+          ],
+          "optional": [
+            "mcp",
+            "process",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "要在聊天窗口里依据学校现有制度回答家长问题，并把无法回答的问题转给值班同事。"
+        },
+        {
+          "id": "A29",
+          "status": "scored",
+          "accept": [
+            "email"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "只需起草一封不超过 150 词的邮件，列出两个备选交货周并请分销商在周五前确认，不需要发送。"
+        },
+        {
+          "id": "A30",
+          "status": "scored",
+          "accept": [
+            "music"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "验收的是适合 4/4 拍唱、围绕坐夜班车回家写成的两段主歌和重复副歌，不是音频制作。"
+        },
+        {
+          "id": "A31",
+          "status": "scored",
+          "accept": [
+            "spreadsheet"
+          ],
+          "required": [
+            "data"
+          ],
+          "optional": [
+            "automation",
+            "code-intel",
+            "testing"
+          ],
+          "forbidden": [],
+          "reason": "会计必须拿到可编辑且含原始表、勾稽公式和差额标色的 Excel 工作簿，截图或总结不能替代。"
+        },
+        {
+          "id": "A32",
+          "status": "scored",
+          "accept": [
+            "legal"
+          ],
+          "required": [
+            "writing"
+          ],
+          "optional": [
+            "docs",
+            "advisor"
+          ],
+          "forbidden": [],
+          "reason": "书面输出应根据两条提前退租条款指出承租方的风险及需请律师确认的措辞，而不是润色租约。"
+        },
+        {
+          "id": "A33",
+          "status": "scored",
+          "accept": [
+            "docx"
+          ],
+          "required": [
+            "docx"
+          ],
+          "optional": [
+            "writing"
+          ],
+          "forbidden": [
+            "design"
+          ],
+          "reason": "明确验收可修订的 Word 正式公文，必须排好发文字号、签发和落款，不做宣传海报。"
+        },
+        {
+          "id": "X01",
+          "status": "clarify",
+          "accept": [],
+          "required": [
+            "ask"
+          ],
+          "optional": [],
+          "forbidden": [],
+          "reason": "请提供要处理的材料，并说明最终要交付什么给谁使用？"
+        },
+        {
+          "id": "X02",
+          "status": "scored",
+          "accept": [
+            "docs"
+          ],
+          "required": [
+            "docs"
+          ],
+          "optional": [],
+          "forbidden": [
+            "web"
+          ],
+          "reason": "目标明确为离线交付带目录和页码的可打印 PDF；文档角色可归类，但题设目录缺少所需的排版与 PDF 生成能力，不能用联网替代。"
+        },
+        {
+          "id": "X03",
+          "status": "scored",
+          "accept": [
+            "presentation"
+          ],
+          "required": [
+            "data",
+            "slides"
+          ],
+          "optional": [
+            "writing",
+            "design"
+          ],
+          "forbidden": [],
+          "reason": "销量下跌分析是不可省略的证据工作，但最终明确交付的是董事会演示稿，没有另要一份分析报告。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,209 +1,201 @@
-// 第 14 组：需求分析必须看到项目的来路与走向
+// 两个入口共享证据和显式模型提案；本地不替模型判断项目阶段或选能力。
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
-import { EXT, isolate, makePi, makeCtx, coreTools, hydrate } from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, skillInfo, modelAssemblyTools, modelPlan } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
-hydrate(m, { "code-intel": { packages: ["pi-lens"] } });
 
-/** 造一个带 AGENTS.md + HANDOFF.md 的项目 */
-function makeProject() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fn-proj-"));
-  fs.writeFileSync(path.join(dir, "AGENTS.md"), [
-    "# 规则",
-    "- [x] 已跑过初版转换测试",
-    "- [ ] 把拼音转换器的多音字处理做完",
-    "- [ ] 补 100 个测试",
-    "## 阻塞",
-    "- 云端额度用完",
-    "## 下一步",
-    "- 先修多音字再跑回归",
-  ].join("\n"));
-  fs.writeFileSync(path.join(dir, "HANDOFF.md"), "阶段：功能开发中\n未完成：多音字处理\n");
-  return dir;
-}
-const EMPTY = fs.mkdtempSync(path.join(os.tmpdir(), "fn-empty-"));
-
-const projectOf = (dir) => m.analyzeProjectContext(m.scanProjectContext({ cwd: dir }), { known: {} });
-
-/* ---------------- projectBrief（5） ---------------- */
-test("项目摘要：空目录也能给出阶段（不崩）", () => {
-  const text = m.projectBrief(projectOf(EMPTY));
-  assert.ok(typeof text === "string");
-  assert.match(text, /阶段：/);
-});
-
-test("项目摘要：列出未完成事项（来路）", () => {
-  const text = m.projectBrief(projectOf(makeProject()));
-  assert.match(text, /未完成：.*多音字/);
-});
-
-test("项目摘要：列出阻塞与下一步（走向）", () => {
-  const text = m.projectBrief(projectOf(makeProject()));
-  assert.match(text, /阻塞\/风险：.*额度/);
-  assert.match(text, /下一步：/);
-});
-
-test("项目摘要：列出关键文档名", () => {
-  const text = m.projectBrief(projectOf(makeProject()));
-  assert.match(text, /HANDOFF\.md/);
-  assert.match(text, /AGENTS\.md/);
-});
-
-test("项目摘要：null 输入返回空串", () => {
-  assert.equal(m.projectBrief(null), "");
-});
-
-/* ---------------- 缓存（2） ---------------- */
-test("缓存：同一 cwd 内重复取用同一份结果", () => {
-  const dir = makeProject();
-  const a = m.projectBriefFor({ cwd: dir }, { known: {} });
-  const b = m.projectBriefFor({ cwd: dir }, { known: {} });
-  assert.equal(a, b, "应命中缓存（同一对象）");
-});
-
-test("缓存：换 cwd 会重新扫描", () => {
-  const a = m.projectBriefFor({ cwd: makeProject() }, { known: {} });
-  const b = m.projectBriefFor({ cwd: makeProject() }, { known: {} });
-  assert.notEqual(a.cwd, b.cwd);
-});
-
-/* ---------------- /function <需求>（3） ---------------- */
-function env(dir) {
-  const tools = [...coreTools()];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+function fixture(t, { model = { id: "fixture" }, enabled = true } = {}) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fn-project-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(cwd, "HANDOFF.md"), "# 交接\n- [x] 已跑过初版转换和 LSP 调试\n- [ ] 把多音字说明写完\n## 阻塞\n- 样例还需要确认\n");
+  const tools = [...coreTools(), ...modelAssemblyTools(), ...pkgTools("pi-lens", ["lens_diagnostics"]), ...pkgTools("manual-kit", ["manual_render", "manual_upload"])];
+  const active = [...coreTools().map(t => t.name), ...(enabled ? modelAssemblyTools().map(t => t.name) : []), "lens_diagnostics", "manual_upload"];
+  const commands = ["pi-lens-lsp-navigation", "guide-writing"].map(name => ({ name: `skill:${name}`, source: "skill", sourceInfo: skillInfo(name), description: `${name} doc` }));
+  const { pi, state } = makePi({ tools, active, commands });
   m.default(pi);
-  const context = (opts) => ({
-    ...makeCtx(state, opts), cwd: dir,
-    sessionManager: { getSessionId: () => "project-14", getBranch: () => [{ type: "compaction", summary: "上次停在初版测试" }] },
-  });
-  const run = (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, context(opts));
-  const tool = (name) => state.registeredTools.find((t) => t.name === name);
-  return { state, run, context, tool };
+  const entries = [{ type: "compaction", summary: "上次停在初版测试" }];
+  const ctx = (opts = {}) => ({ ...makeCtx(state, opts), model, cwd, sessionManager: { getSessionId: () => "same", getBranch: () => entries } });
+  const run = (cmd, context = ctx()) => state.commands.get("function").handler(cmd, context);
+  const tool = (name, input, context = ctx(), signal) => state.registeredTools.find(t => t.name === name).execute("fixture", input, signal, undefined, context);
+  return { cwd, tools, commands, active, state, ctx, run, tool, entries };
 }
 
-const progress = (report) => report.split(/### 本轮需求|### 全项目需求/)[0];
-const needRequestId = (state) => /^装配请求 ID：([^\n]+)/m.exec(state.userMessages[0].text)?.[1];
+const startTurn = (env, message, context) => env.state.handlers.before_agent_start[0]({ messageType: "custom", message, systemPrompt: "base" }, context);
+async function openRequest(env, cmd, context = env.ctx()) {
+  await env.run(cmd, context);
+  const message = env.state.modelTurns.at(-1);
+  assert.ok(message?.content, "必须交给模型，不可退回本地提案");
+  assert.ok(message.details?.token, "宿主保有自己的回合标记");
+  assert.ok(!message.content.includes(message.details.token), "模型文本不得带内部编号");
+  assert.doesNotMatch(message.content, /requestId|装配请求 ID/);
+  await startTurn(env, message, context);
+  return message;
+}
 
-test("两个入口报告同一份项目进度，模型同时收到本轮需求和具体项目证据", async () => {
-  const dir = makeProject();
-  const resume = env(dir);
-  await resume.run("resume", { selects: [] });
-  const { state, run, tool, context } = env(dir);
-  const need = "把多音字处理接完";
-  await run(need);
-  const [a, b] = [resume.state, state].map(({ messages }) => messages.find((x) => x.customType === "function-project").content);
-  assert.equal(progress(a), progress(b), "两个入口的项目证据和进度不能缩水或分叉");
-  assert.match(b, /已完成.*初版转换测试/);
-  assert.match(b, /当前会话：读取了最近 1 条/);
-  assert.match(b, /### 本轮需求\n- 本地匹配候选：/);
-  assert.equal(resume.state.selectCalls[0].title, state.selectCalls[0].title);
-  const text = state.userMessages[0].text;
-  assert.match(text, /^需求：把多音字处理接完$/m);
-  assert.match(text, /结合上面的项目上下文判断/);
-  assert.match(text, /未完成：.*多音字处理/);
-  assert.match(text, /阻塞\/风险：.*云端额度用完/);
-  assert.match(text, /下一步：先修多音字再跑回归/);
-  const suggest = await tool("suggest_scenario").execute("1", { text: need }, undefined, undefined, context());
-  assert.match(suggest.content[0].text, /阻塞\/风险：.*云端额度用完/);
+const progress = { stage: "模型判断：交付说明阶段", goal: "写供用户验收的说明", done: ["转换测试完成"], openTasks: ["收尾文档"], blockers: ["尚无最终样例"], nextSteps: ["补例并校对"], evidence: ["HANDOFF.md"] };
+const docsPlan = () => modelPlan({ standalone: undefined, workflow: "research", plugins: ["npm:manual-kit"], tools: ["manual_render"], skills: ["guide-writing"], gaps: ["缺最终验收样例"], progress });
+const persisted = () => [process.env.PI_FUNCTION_STORE, process.env.PI_FUNCTION_PROFILE].map(file => fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null);
+
+test("resume 与需求读取同一份证据，并不预判进度、工作流或能力", async (t) => {
+  const env = fixture(t);
+  const before = persisted();
+  const a = await openRequest(env, "resume");
+  const aData = await env.tool("suggest_scenario", {});
+  env.state.handlers.agent_settled[0]({}, env.ctx());
+  const need = "把多音字处理结果整理给新同事";
+  const b = await openRequest(env, need);
+  const bData = await env.tool("suggest_scenario", {});
+  assert.ok(!aData.isError && !bData.isError);
+  assert.match(a.content, /无额外需求/);
+  assert.ok(!a.content.includes(need));
+  assert.ok(b.content.includes(`需求：${need}`));
+  assert.match(b.content, /按该环节的验收目标选场景，不被文案、图表等产物形式带偏/);
+  assert.match(b.content, /不得把用户要验收的可运行功能降成只写文档或规则/);
+  assert.match(b.content, /手动预设是参考/);
+  assert.match(b.content, /先提交能确定的最小装配；把未取得的材料列为执行前阻塞/);
+  assert.match(b.content, /主要目标、核心能力或必要授权未定/);
+  assert.match(b.content, /只用普通回复问一个会改变装配的问题；不调用 assemble_scenario，不为提问启用 ask/);
+  assert.match(b.content, /只用装配工具，不用其他工具搜索或试做任务/);
+  assert.ok(!JSON.stringify(bData).includes(b.details.token));
+  for (const tool of env.state.registeredTools) assert.ok(!Object.hasOwn(tool.parameters.properties, "requestId"));
+  assert.deepEqual(aData.details, bData.details);
+  assert.match(bData.details.project.documents[0].excerpt, /\[x\].*转换.*\[ \].*多音字/s);
+  assert.match(aData.details.project.recentSession, /初版测试/);
+  assert.ok(!("stage" in aData.details.project));
+  assert.ok(!("ranked" in aData.details));
+  assert.equal(env.state.selectCalls.length, 0, "不先用本地工作流选择覆盖模型判断");
+  assert.equal(env.state.setCalls.length, 0);
+  assert.deepEqual(persisted(), before);
 });
 
-test("模型提出方案后仍须确认；取消、遗漏或跨会话使用请求 ID 不得切换工具", async () => {
-  const { state, run, context, tool } = env(makeProject());
-  const need = "把多音字处理接完";
-  await run(need);
-  const requestId = needRequestId(state);
-  assert.ok(requestId);
-  const ctx = context();
-  const assemble = (params, owner = ctx) => tool("assemble_scenario").execute("2", { scenario: "plugin", ...params }, undefined, undefined, owner);
-  assert.equal((await assemble({})).isError, true);
-  assert.equal((await assemble({ requestId }, { ...ctx, sessionManager: { getSessionId: () => "different" } })).isError, true);
-  ctx.ui.confirm = async (_title, text) => {
-    assert.match(text, /当前阶段：.*阻塞/);
-    assert.equal(state.messages.at(-1).customType, "function-proposal");
-    assert.equal(state.setCalls.length, 0);
-    return false;
-  };
-  assert.equal((await assemble({ requestId })).details.cancelled, true);
-  assert.equal((await assemble({ requestId })).isError, true);
-  assert.equal(state.editorText, need);
-  assert.equal(state.entries.length, 0);
-  assert.equal(state.setCalls.length, 0);
-  await run("resume", { selects: [] });
-  assert.equal((await assemble({})).isError, true, "被其他命令打断的请求也不能脱离原确认流程");
-  assert.equal(state.setCalls.length, 0);
-});
-
-test("确认后实际装配模型提出的场景，使用用户已选工作流", async () => {
-  const { state, run, context, tool } = env(makeProject());
-  await run("编写项目文档", { selects: ["research", "✓ 完成选择"] });
-  assert.equal(state.setCalls.length, 0);
-  assert.match(state.userMessages[0].text, /工作流（用户已指定，必须使用）：research/);
-  const ctx = context({ confirms: [true, false, false, false, false, false, false] });
-  const result = await tool("assemble_scenario").execute("3", { scenario: "docs", workflow: "debug", requestId: needRequestId(state) }, undefined, undefined, ctx);
-  assert.equal(result.details?.workflow, "research");
-  assert.equal(state.entries.at(-1)?.d.id, "docs");
-  assert.deepEqual(state.entries.at(-1).d.tools, state.active);
-  assert.deepEqual(state.messages.map((x) => x.customType), ["function-project", "function-proposal", "function-assembled"]);
-});
-
-test("缺少 PDF 能力：取消、跳过、同意查找分别作用于工具与提示", async () => {
-  for (const choice of ["cancel", "skip", "search"]) {
-    const { state, run, context, tool } = env(makeProject());
-    const need = "把项目报告导出 PDF";
-    await run(need);
-    const ctx = context({ confirms: [true] });
-    let asked = false;
-    ctx.ui.select = async (title, options) => {
-      if (!title.startsWith("本机没有「PDF")) return options[1];
-      asked = true;
-      return options[{ cancel: 2, skip: 1, search: 0 }[choice]];
-    };
-    const answer = await tool("assemble_scenario").execute("pdf", { scenario: "docs", requestId: needRequestId(state) }, undefined, undefined, ctx);
-    assert.ok(asked, `必须问到真实的缺口：${choice}`);
-    if (choice === "cancel") {
-      assert.equal(answer.details.cancelled, true);
-      assert.equal(state.setCalls.length, 0);
-      assert.equal(state.entries.length, 0);
-      assert.equal(state.editorText, need);
-      assert.equal(state.userMessages.length, 1, "取消不得派发找技能");
-      continue;
-    }
-    assert.equal(answer.details.id, "docs");
-    assert.equal(state.userMessages.length, choice === "search" ? 2 : 1);
-    if (choice === "search") assert.match(state.userMessages[1].text, /PDF.*等我确认/s);
-    const hook = state.handlers.before_agent_start[0];
-    const out = await hook({ systemPrompt: "base" }, ctx);
-    assert.match(out.systemPrompt, choice === "search" ? /能力缺口：已征得同意去找\nPDF/ : /能力缺口：用户选择不找\nPDF/);
+test("缺模型、工具或 UI 时只展示证据；不猜测、不自动补开", async (t) => {
+  for (const [config, options] of [[{ model: null }, {}], [{ enabled: false }, {}], [{}, { hasUI: false }]]) {
+    const env = fixture(t, config);
+    const before = persisted();
+    for (const cmd of ["resume", "把原文留在输入框，不发送"]) await env.run(cmd, env.ctx(options));
+    assert.equal(env.state.messages.filter(m => m.customType === "function-project").length, 2);
+    assert.ok(!env.state.messages.some(m => m.content.includes("把原文留在输入框，不发送")));
+    assert.equal(env.state.modelTurns.length, 0);
+    assert.equal(env.state.setCalls.length, 0);
+    assert.equal(env.state.entries.length, 0);
+    assert.deepEqual(persisted(), before);
   }
 });
 
-/* ---------------- 装配后注入 ---------------- */
-test("模型装配：项目上下文会挂到场景上，由 before_agent_start 注入", async () => {
-  const dir = makeProject();
-  const tools = [...coreTools()];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
-  m.default(pi);
-  const asm = state.registeredTools.find((t) => t.name === "assemble_scenario");
-  await asm.execute("1", { scenario: "plugin" }, undefined, undefined, { cwd: dir });
-  const hook = state.handlers.before_agent_start?.[0];
-  assert.ok(hook, "应有 before_agent_start 钩子");
-  const out = await hook({ systemPrompt: "base" });
-  assert.match(out.systemPrompt, /项目续接|阶段/);
+test("两种入口按完整模型提案确认启停，取消时不保存也不改工具", async (t) => {
+  for (const cmd of ["resume", "编写文档使用手册"]) {
+    const env = fixture(t);
+    const before = persisted();
+    for (const approve of [false, true]) {
+      const current = env.ctx();
+      await openRequest(env, cmd, current);
+      const plan = docsPlan();
+      assert.equal((await env.tool("assemble_scenario", plan, current)).isError, true, "未查事实不得提交");
+      await env.tool("suggest_scenario", {}, current);
+      current.ui.confirm = async (_title, text) => {
+        assert.match(text, /模型判断：交付说明阶段/);
+        assert.match(text, /工具将新增启用：manual_render/);
+        assert.match(text, /工具将停用：.*lens_diagnostics.*manual_upload/);
+        assert.match(text, /插件工具将全部停用：npm:pi-lens/);
+        assert.match(text, /会话技能将停用：pi-lens-lsp-navigation/);
+        assert.match(text, /缺最终验收样例/);
+        assert.deepEqual(env.state.active, env.active);
+        const concurrent = await env.tool("assemble_scenario", plan, current);
+        assert.match(concurrent.content[0].text, /已提交/, "等待确认期间不能再打开一次确认");
+        return approve;
+      };
+      const res = await env.tool("assemble_scenario", plan, current);
+      assert.equal((await env.tool("assemble_scenario", plan, current)).isError, true, "禁止重放已提交提案");
+      if (!approve) {
+        assert.equal(res.details.cancelled, true);
+        assert.deepEqual(persisted(), before);
+        assert.equal(env.state.setCalls.length, 0);
+        assert.equal(env.state.entries.length, 0);
+        if (cmd !== "resume") assert.equal(env.state.editorText, cmd);
+        continue;
+      }
+      assert.ok(!res.isError, res.content[0].text);
+      assert.equal(res.details.workflow, "research");
+      assert.deepEqual(res.details.enabled, ["manual_render"]);
+      assert.deepEqual(res.details.disabled, ["lens_diagnostics", "manual_upload"]);
+      assert.deepEqual(res.details.disabledSkills, ["pi-lens-lsp-navigation"]);
+      assert.deepEqual(env.state.entries.at(-1).d.tools, env.state.active);
+      assert.deepEqual(m.loadStore().active.custom.plan.tools, ["manual_render"]);
+      const prompt = { systemPrompt: "base", systemPromptOptions: { skills: env.commands.map(c => ({ name: c.name.slice(6) })) } };
+      await env.state.handlers.before_agent_start[0](prompt, current);
+      assert.deepEqual(prompt.systemPromptOptions.skills.map(s => s.name), ["guide-writing"]);
+      assert.deepEqual(await env.state.handlers.input[0]({ text: "/skill:pi-lens-lsp-navigation" }, current), { action: "handled" });
+      await env.run("off", current);
+      assert.equal(await env.state.handlers.input[0]({ text: "/skill:pi-lens-lsp-navigation" }, current), undefined);
+    }
+  }
 });
 
-test("模型装配：注入内容包含项目阶段", async () => {
-  const dir = makeProject();
-  const tools = [...coreTools()];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
+test("宿主必须启动真实回合：错标记、跨会话、跨工作区和取消信号不授权读取或提案", async (t) => {
+  const env = fixture(t);
+  const current = env.ctx();
+  const foreign = { ...current, sessionManager: { getSessionId: () => "different" } };
+  const otherCwd = { ...current, cwd: path.join(env.cwd, "other") };
+  await env.run("resume", current);
+  const message = env.state.modelTurns.at(-1);
+  assert.ok(message);
+  assert.equal((await env.tool("suggest_scenario", {}, current)).isError, true, "入队不等于启动模型回合");
+  await startTurn(env, { ...message, details: { token: "wrong" } }, current);
+  assert.equal((await env.tool("suggest_scenario", {}, current)).isError, true);
+  assert.equal((await env.tool("assemble_scenario", modelPlan(), current)).isError, true, "错标记也不能降级为独立装配");
+  await startTurn(env, message, current);
+  for (const wrong of [foreign, otherCwd]) {
+    assert.equal((await env.tool("suggest_scenario", {}, wrong)).isError, true);
+    assert.equal((await env.tool("assemble_scenario", docsPlan(), wrong)).isError, true);
+  }
+  assert.equal((await env.tool("assemble_scenario", modelPlan(), current)).isError, true);
+  const aborted = AbortSignal.abort();
+  assert.equal((await env.tool("suggest_scenario", {}, current, aborted)).isError, true);
+  assert.equal((await env.tool("assemble_scenario", docsPlan(), current, aborted)).isError, true);
+  assert.equal(env.state.handlers.tool_call[0]({ toolName: "bash" }, current).block, true);
+  assert.deepEqual(env.state.active, env.active);
+});
+
+test("目录变化拒绝旧计划；回合结束或触发消息重放均不能再次装配", async (t) => {
+  const env = fixture(t);
+  const current = env.ctx();
+  const message = await openRequest(env, "resume", current);
+  await env.tool("suggest_scenario", {}, current);
+  current.ui.confirm = async () => { env.state.tools.splice(env.state.tools.findIndex(t => t.name === "manual_render"), 1); return true; };
+  const res = await env.tool("assemble_scenario", docsPlan(), current);
+  assert.equal(res.details.cancelled, true);
+  env.state.handlers.agent_settled[0]({}, current);
+  assert.ok(!(await env.tool("suggest_scenario", {}, current)).details.project, "普通调用不再看到过期项目证据");
+  assert.equal((await env.tool("assemble_scenario", docsPlan(), current)).isError, true);
+  assert.equal((await env.tool("assemble_scenario", { ...docsPlan(), standalone: true }, current)).isError, true);
+  await startTurn(env, message, current);
+  assert.equal((await env.tool("suggest_scenario", {}, current)).isError, true);
+  assert.equal((await env.tool("assemble_scenario", modelPlan(), current)).isError, true);
+  assert.equal(env.state.handlers.tool_call[0]({ toolName: "bash" }, current).block, true);
+  env.state.handlers.agent_settled[0]({}, current);
+  assert.equal(env.state.handlers.tool_call[0]({ toolName: "bash" }, current), undefined);
+  assert.deepEqual(env.state.active, env.active);
+  assert.equal(env.state.setCalls.length, 0);
+});
+
+test("恢复只应用存档里确认过的模型清单，不用新文档或分类器补选", async (t) => {
+  const env = fixture(t);
+  const ctx = env.ctx({ confirms: [true] });
+  await openRequest(env, "resume", ctx);
+  await env.tool("suggest_scenario", {}, ctx);
+  const applied = await env.tool("assemble_scenario", docsPlan(), ctx);
+  assert.ok(!applied.isError, applied.content[0].text);
+  const last = env.state.entries.at(-1).d;
+  fs.writeFileSync(path.join(env.cwd, "HANDOFF.md"), "- [ ] 开发 Pi 插件，分析 LSP 错误");
+  const { pi, state } = makePi({ tools: env.tools, active: env.active, commands: env.commands });
   m.default(pi);
-  await state.registeredTools.find((t) => t.name === "assemble_scenario")
-    .execute("1", { scenario: "plugin" }, undefined, undefined, { cwd: dir });
-  const out = await state.handlers.before_agent_start[0]({ systemPrompt: "" });
-  assert.match(out.systemPrompt, /项目续接（不只看当前这句话）/);
+  const reload = { ...makeCtx(state), cwd: env.cwd, sessionManager: { getSessionId: () => "same", getBranch: () => [{ type: "custom", customType: "function-scenario", data: last }] } };
+  await state.handlers.before_agent_start[0]({ systemPrompt: "base" }, reload);
+  assert.deepEqual(state.active, applied.details.tools);
+  assert.equal(state.entries.length, 0, "恢复不重新提交或增加统计");
 });

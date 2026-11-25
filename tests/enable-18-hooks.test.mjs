@@ -31,15 +31,31 @@ test("工具反馈：关闭前落盘，三种宿主事件都记到所属插件�
   assert.deepEqual(m.loadStore().itemUse, after);
 });
 
-test("候选建议：可以隐藏逐场景插件明细，不改变排名和活动工具", async () => {
+test("模型查询：不同需求得到完全相同的只读目录，不返回本地排名", async () => {
   const { state } = env();
-  const suggest = state.registeredTools.find(t => t.name === "suggest_scenario");
+  const read = state.registeredTools.find(t => t.name === "suggest_scenario");
   const before = [...state.active];
-  const detailed = await suggest.execute("detailed", { text: "写报告", withPlugins: true });
-  const compact = await suggest.execute("compact", { text: "写报告", withPlugins: false });
-  assert.equal(detailed.details.matched, true);
-  assert.match(detailed.content[0].text, /^### report$/m);
-  assert.doesNotMatch(compact.content[0].text, /^### report$/m);
-  assert.deepEqual(compact.details.ranked, detailed.details.ranked);
+  const report = await read.execute("a", { text: "写报告" });
+  const software = await read.execute("b", { text: "查当前插件的错误" });
+  assert.deepEqual(report, software);
+  assert.ok(!("ranked" in report.details));
+  assert.ok(report.details.scenarios.some(s => s.id === "report"));
+  const course = report.details.scenarios.find(s => s.id === "course");
+  const docs = report.details.scenarios.find(s => s.id === "docs");
+  const commerce = report.details.scenarios.find(s => s.id === "commerce");
+  const chatbot = report.details.scenarios.find(s => s.id === "chatbot");
+  assert.deepEqual(course.manualPreset.required, ["slides"]);
+  assert.deepEqual(m.SCENARIO_CONTRACTS.course.required, ["slides"], "手动预设不变");
+  assert.ok(!Object.hasOwn(course, "contract"), "不向模型呈现未区分范围的硬必需项");
+  assert.match(course.boundary, /不做幻灯片也可以有课程/);
+  assert.deepEqual(docs.forbidden, m.SCENARIO_CONTRACTS.docs.forbidden);
+  assert.match(report.details.roleBoundaries.docs, /可独立查阅或重复使用/);
+  assert.match(report.details.roleBoundaries.writing, /书面分析意见或审阅结论.*不等于润色或改写原材料/);
+  assert.deepEqual(commerce.manualPreset.required, m.SCENARIO_CONTRACTS.commerce.required);
+  assert.match(commerce.boundary, /只改商品内容不动界面.*不自动要求页面设计/);
+  assert.match(chatbot.boundary, /实际对话行为.*仅交人工参考材料/);
+  assert.match(report.details.roleBoundaries["code-intel"], /新建项目和已有项目都可能需要/);
+  assert.ok(report.details.inventory.tools.some(t => t.name === "lens_diagnostics" && t.active));
   assert.deepEqual(state.active, before);
+  assert.equal(state.setCalls.length, 0);
 });

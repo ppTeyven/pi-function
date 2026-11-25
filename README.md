@@ -28,9 +28,9 @@
 
 Pi-function turns your installed Pi extensions into **application scenarios** — making a webpage, writing an article, building a game, creating a report, and so on. Bare `/function` asks **how** to work (workflow), then **what** to make (scenario). Project resume and free-text requests share the same project-progress report and approval flow; free text adds the current request to the analysis.
 
-The scenario and workflow IDs are stable for every user. Which plugins and skills fill those slots is **detected from the current machine** and stored in a per-user profile — the source code does not assume a particular package set.
+Scene and workflow IDs are stable. Project commands give the LLM the host's actual capability inventory; the LLM picks plugins, skills and individual tools. The local profile is retained for the manual preset menu.
 
-It is a single file, always loaded, with no dependencies, no network calls, and no telemetry.
+The extension is a single file with no additional dependencies or telemetry. It uses the current Pi session model, not a separate provider or service.
 
 ## Why this exists
 
@@ -46,11 +46,11 @@ Pi-function exists to fix exactly that. The goal is to **use every installed ski
 | Goal | How |
 |---|---|
 | **Most convenient** | One `/function`, or one plain sentence. No plugin names to memorize, no tool list to check — every picker option says *when* to pick it |
-| **Most accurate** | Reading the need is the model's job (it understands the whole sentence); deciding which tools open is the local deterministic algorithm's job (no improvisation). Required capabilities of a scenario are **force-completed** — over-enabling beats under-enabling |
-| **Fastest** | Local decisions are millisecond-scale: `analyzeNeed` 0.8 ms, and assembly applies immediately. Menus, fixed scenes and workflows need no network and no model call |
+| **Most accurate** | The model judges progress, intent, workflow, capability gaps and which plugins, skills and tools to keep, enable or disable. The extension validates and applies only the approved proposal |
+| **Fastest** | Assembly applies after approval; model reasoning time depends on the current Pi model. Explicit manual presets do not require a model call |
 | **Most efficient** | After assembly only the tools you actually need stay active (built-ins + this scene's plugins); every other optional tool is switched off. The system prompt spells out what is enabled, which skills and commands exist, so the model cannot pretend a missing tool works |
 
-There is exactly one hard rule: **the unacceptable outcome is the user not having the tool they needed.** Hence force-completion, miss-audits, missing-plugin warnings, and `/function status` explaining *why* a tool did not appear.
+The model reports capability gaps rather than claiming unavailable tools are active. `/function status` shows the session's actual tool set.
 
 ## Install
 
@@ -61,8 +61,8 @@ pi install npm:pi-function
 Pin a version, or use git:
 
 ```bash
-pi install npm:pi-function@3.0.0
-pi install git:github.com/ppTeyven/pi-function@v3.0.0
+pi install npm:pi-function@3.0.1
+pi install git:github.com/ppTeyven/pi-function@v3.0.1
 ```
 
 Local development:
@@ -103,7 +103,7 @@ If you only want an execution style, run `/function workflow`; it asks for a wor
 | `/function status` | Shows the active workflow × scenario (or workflow-only mode) and enabled plugin tools |
 | `/function assign <name> <scenario-id\|none>` | Manually overrides one profile binding |
 | `/function stats`, `/function stats reset` | Inspect usage; only explicit `reset` (or `clear`) clears the counters |
-| `/function off` | Restores global defaults, including Pi’s `defaultTools`, not a pre-assembly snapshot |
+| `/function off` | Restores global defaults, keeps the assembly entry points available, and clears session skill restrictions |
 
 `/pi-function` is an alias.
 
@@ -138,7 +138,7 @@ Step 2: choose an application scenario (what to make)
 |---|---|---|
 | You want to browse the available combinations | `/function` | Workflow → application scenario → approve assembly |
 | You want a workflow without a specific deliverable | `/function workflow` | Choose only a workflow; enable it without a task scenario |
-| You already have a one-line request | `/function "build a product site and write a launch article"` | Project progress + request → choose a workflow → review proposal → approve assembly |
+| You already have a one-line request | `/function "build a product site and write a launch article"` | LLM reads evidence and the request → proposes a workflow and exact enable/disable list → approve assembly |
 | You are picking up an existing project | `/function resume` | Scan project evidence → show progress, blockers, next steps → recommend a whole-project bundle; assemble only after approval |
 
 ### Reading the picker
@@ -152,7 +152,7 @@ webpage · Web page / landing page / site — 2 plugins · 3 skills (frontend-de
 - The leading `webpage` is a stable scenario ID shared by every user.
 - Plugins and skills come from the current machine's capability profile; another user may see different ones.
 - The proposal lists the plugins, tools, skills, and any commands that still need to be run manually.
-- Project resume and free-text requests both show the project report before the workflow picker and require approval of the proposed tools. Declining leaves active tools unchanged.
+- Project resume and free-text requests both show evidence before model analysis, then require approval of the complete model proposal. Declining leaves active tools unchanged.
 
 ### Day-to-day commands
 
@@ -304,33 +304,21 @@ It reads, with bounded limits:
 - Git branch, short HEAD, uncommitted files, and recent commits;
 - the recent user / assistant / compaction messages in the current session.
 
-The report separates evidence from inference:
-
-- stage (`blocked`, `in progress`, `handoff`, `unknown`);
-- checked vs. open tasks, blockers/risks, and next steps;
-- likely application scenarios and a recommended workflow;
-- the plugins and skills that bundle would enable.
-
-Project discovery starts at the **Pi session workspace**, not the pi-web installation directory. Command-reference tables, fenced examples and explicit “no blockers” statements are not evidence of a blocker. Use a list under `## Blockers` or a `Blocker: reason` field for actual blockers.
-
-Headless resume only reports; cancelling does not change tools or persist the scan to the catalog/profile. Confirmation enables the bundle but does not execute project work. Evidence reports may quote project documents; the project section of the system prompt uses only stage and counts. Reload restores a confirmed project selection in the same project, not by reading documents from a different workspace.
+Project discovery starts at the **Pi session workspace**, not the pi-web installation directory. The preview lists facts only. The model judges the stage, completed and open tasks, blockers and next steps, then proposes a loadout. The same project can restore its prior approved list on reload without reinterpreting documents.
 
 ## Dynamic needs
 
-`/function "build a product site and write a launch article"` differs from `resume` only by adding the current request to the analysis.
+`/function "build a product site and write a launch article"` differs from `resume` only by adding the current request to the evidence.
 
-1. Read the same project docs, Git state and recent session. Report project progress and show local scenario matches for the request without including the original text in the preview.
-2. Choose a workflow or let the model decide. Esc here restores the original text without sending it to the model.
-3. The model combines the request with the project evidence. It queries `suggest_scenario` for candidates and submits a proposal with `assemble_scenario` (up to three scenarios and three workflows). A workflow already selected by the user takes precedence.
-4. As with `resume`, review the proposal and resolve any capability gaps before tools are enabled. Cancelling leaves tools unchanged and restores the request to the editor.
+1. Show a local evidence preview, then the model calls `suggest_scenario` to read project evidence and the host's actual inventory. The catalog does not rank or recommend scenes.
+2. The model interprets the facts, selects scene(s), workflow(s), and the complete list of plugins, skills and optional tools. It can ask a question instead of proposing a loadout if the answer would materially change it.
+3. The host binds evidence and proposals to the current session, workspace and model turn, without a model-supplied request ID. `assemble_scenario` validates the resources, shows the enable/keep/disable list and waits for confirmation. Approval applies that exact list without executing the project task. Declining leaves tools unchanged and restores the request to the editor.
 
-Both commands are report-only without an interactive UI. If the model assembly tools are inactive, Pi-function uses local matches for the proposal instead of switching tools before approval. A hosted model can see the submitted request and project evidence when you continue to model analysis. For a local project report, use `/function resume`.
+Both commands show facts only when the model, tool entry points, or interactive confirmation is unavailable. There is no local matching fallback. In interactive analysis, a hosted Pi model can see the submitted need and bounded excerpts of the project evidence.
 
 ### When you have no capability for the need
 
-Requests name deliverables the machine may simply not be able to produce (PDF, video, dubbing, OCR). Those words belong to no scenario, so silently dropping them is worse than a wrong tool — you would plan around a capability you do not have.
-
-So assembly checks two things and reports them in the proposal:
+Requests may need capabilities that are not installed (PDF, video, dubbing, OCR). In a model proposal, the model checks the actual inventory and lists gaps explicitly. The following checks describe the **manual preset** path only:
 
 1. **Need words** — `NEED_CAPABILITIES` maps `pdf / slides / docx / xlsx / video / audio / ocr / imagegen` to a detector for the request and a pattern for installed items. Direction matters: `markdown-converter` (PDF → Markdown) does **not** count as being able to produce a PDF.
 2. **Contracts** — a `required` role with no installed member (`auditCoverage.missing`, `not-installed`).
@@ -490,14 +478,16 @@ Each hit carries its part of speech, so the report is honest about what it saw:
 - keeps core tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) available;
 - disables optional tools from other plugins;
 - injects the workflow and scenario process into the system prompt;
-- leaves plugin code loaded; it does not uninstall anything.
+- for `/function resume` and `/function "need"`, recomputes the loadout from blockers, next steps and open tasks rather than completed work. The proposal lists plugin tools and session skills it will remove; approval is required;
+- for those project loadouts, excludes unselected skills from the model's skill list and pauses their `/skill:name` commands until reassembly or `/function off`;
+- leaves extensions, skill files and other extension commands installed and managed by Pi. This is session scoping, not an uninstall or a file-access sandbox.
 
 ## Portability: what is guaranteed, what is not
 
 This plugin never hardcodes plugin or skill names. It classifies whatever is installed into capability roles (`code-intel`, `writing`, `data`, `automation`, `process`, `docx`, …) and assembles by role, so a different plugin set still works — but "works" means "reports honestly", not "always perfect":
 
 - **Adapts by itself**: the profile is rebuilt from your install on every start; items are matched by name, tool, command and description patterns. Unknown items land in `unassigned` and are still reachable by description matching.
-- **Never silently under-allocates**: each scenario has a contract (`required / optional / forbidden`). If a required capability is missing you get `缺「数据 / 图表 / 分析」：当前没有可用条目`, and `/function` still lets you assemble with a warning.
+- **Shows capability gaps**: scene contracts (`required / optional / forbidden`) are visible to the model as reference. The model reports missing capabilities; the extension does not invent or silently add them to an approved list.
 - **Manual override always wins**: `/function assign <item> <scenario|none|infra>` and `/function scan` correct any misclassification.
 - **What is *not* guaranteed**: keyword tables are tuned for Chinese office/dev tasks; a non-Chinese or very domain-specific workflow may need scenario keyword edits. Capability patterns target common naming; a plugin named nothing like its function needs `assign`.
 - **No network calls, no writes outside the agent dir**: store and profile live in `~/.pi/agent/` (overridable with `PI_FUNCTION_STORE` / `PI_FUNCTION_PROFILE`, and `PI_CODING_AGENT_DIR` for the root).

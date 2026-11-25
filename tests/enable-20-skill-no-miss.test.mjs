@@ -75,29 +75,7 @@ test("提示：区分推荐技能与宿主的实际工具权限", async () => {
   assert.match(out.systemPrompt, /技能和斜杠命令仍由 Pi 管理/);
 });
 
-/* ---------------- 可见性（3） ---------------- */
-test("模型装配：有自动补全时返回文本会说明补了什么", async () => {
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
-  const { pi, state } = makePi({ tools, active: coreTools().map((t) => t.name) });
-  m.default(pi);
-  // default 会按临时 store 重建画像，这里再灌一次测试画像
-  hydrate(m, { "code-intel": { packages: ["pi-lens"] } });
-  // 模拟“场景没把该包列进来”的漏用风险：清空场景插件，契约 required 仍在
-  const scene = m.SCENARIOS.find((x) => x.id === "plugin");
-  const backup = scene.plugins;
-  scene.plugins = [];
-  const asm = state.registeredTools.find((t) => t.name === "assemble_scenario");
-  let res;
-  try {
-    res = await asm.execute("1", { scenario: "plugin", workflow: "direct" });
-  } finally {
-    scene.plugins = backup;
-  }
-  assert.match(res.content[0].text, /已自动补全（避免漏用）：pi-lens/);
-  assert.match(res.content[0].text, /插件：pi-lens/);
-  assert.ok(!res.details.coverage.missing.some(miss => miss.need === "code-intel"));
-});
-
+/* ---------------- 手动预设的可见性 ---------------- */
 test("status：列出当前技能", async () => {
   hydrate(m, { "code-intel": { packages: ["pi-lens"], skills: ["pi-lens-lsp"] } });
   const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];

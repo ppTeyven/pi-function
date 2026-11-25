@@ -60,11 +60,12 @@ test("无确认界面时两个项目入口都只报告，不发送或装配", as
   await run("写一个爬虫脚本", { hasUI: false });
   const reports = state.messages.filter((x) => x.customType === "function-project");
   assert.equal(reports.length, 2);
-  assert.doesNotMatch(reports[0].content, /### 本轮需求/);
-  assert.match(reports[1].content, /### 本轮需求\n- 本地匹配候选：/);
+  assert.doesNotMatch(reports[0].content, /本轮包含需求/);
+  assert.match(reports[1].content, /本轮包含需求/);
+  assert.ok(reports.every(r => !r.content.includes("阶段判断")));
   assert.doesNotMatch(reports[1].content, /写一个爬虫脚本/, "未接受模型分析前，原文不进会话报告");
   assert.deepEqual(state.active, before);
   assert.equal(state.setCalls.length, 0);
   assert.equal(state.entries.length, 0);
-  assert.equal(state.userMessages.length, 0);
+  assert.equal(state.modelTurns.length, 0);
 });

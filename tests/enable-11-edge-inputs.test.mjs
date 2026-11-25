@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate } from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, hydrate, modelAssemblyTools } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
@@ -158,10 +158,10 @@ test("边界：buildProposal 的 CORE_TOOLS 行始终存在", () => {
 
 /* ---------------- handler 边界（5） ---------------- */
 function env() {
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
+  const tools = [...coreTools(), ...modelAssemblyTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
   const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
   m.default(pi);
-  return { state, run: (args, opts) => state.commands.get("function").handler(args, makeCtx(state, opts)) };
+  return { state, run: (args, opts) => state.commands.get("function").handler(args, makeCtx(state, { ...opts, sessionId: "edge-inputs" })) };
 }
 
 test("边界：/function 传空参数不崩（走子功能菜单，无 UI 则退出）", async () => {
@@ -175,7 +175,8 @@ test("边界：/function 传超长文本不崩", async () => {
   const need = "需求".repeat(2000);
   await run(need, { hasUI: false });
   const report = state.messages.find((x) => x.customType === "function-project");
-  assert.match(report?.content || "", /### 本轮需求\n- 本地匹配候选：/, "能完成本地分析");
+  assert.match(report?.content || "", /本轮包含需求/, "无 UI 时仍能显示事实");
+  assert.equal(state.modelTurns.length, 0);
 });
 
 test("边界：/function scenario 后接空 id 不崩", async () => {
@@ -192,8 +193,8 @@ test("边界：/function 传只有空格的参数不崩", async () => {
 
 test("边界：/function 传引号包裹的需求会被剥掉引号", async () => {
   const { state, run } = env();
-  await run('"写个爬虫"', { selects: ["✓ 让模型决定工作流（推荐）"] });
-  const text = state.userMessages[0]?.text || "";
+  await run('"写个爬虫"');
+  const text = state.modelTurns[0]?.content || "";
   assert.match(text, /^需求：写个爬虫$/m);
   assert.ok(!text.includes('"写个爬虫"'), "引号应被剥掉");
 });

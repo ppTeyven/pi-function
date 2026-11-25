@@ -1,7 +1,4 @@
-// 第 26 组：三处“静默降级”路径（25）
-// A. suggest_scenario 的置信度判定
-// B. restoreScenario 的各分支与降级
-// C. scan 的完整度守卫
+// 恢复旧记录的边界与手动扫描的完整度守卫。
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
@@ -14,79 +11,6 @@ isolate();
 const m = await import(EXT);
 hydrate(m, { "code-intel": { packages: ["pi-lens"] } });
 
-const suggestTool = () => {
-  const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
-  const { pi, state } = makePi({ tools, active: tools.map((t) => t.name) });
-  m.default(pi);
-  return { tool: state.registeredTools.find((t) => t.name === "suggest_scenario"), state };
-};
-
-/* ==================== A. 置信度判定（8） ==================== */
-test("置信度：confident 与 ranked 的关系自洽（不变量）", async () => {
-  const { tool } = suggestTool();
-  for (const text of ["写个爬虫抓取网页", "做个报告", "修 bug", "画个海报", "今天天气不错"]) {
-    const res = await tool.execute("1", { text });
-    const d = res.details;
-    if (!d.ranked?.length) continue;
-    const best = d.ranked[0];
-    const next = d.ranked[1];
-    const expected = best.score >= 1.2 && (!next || best.score >= next.score * 1.5);
-    assert.equal(d.confident, expected, `「${text}」confident 不自洽`);
-  }
-});
-
-test("置信度：details.confident 是布尔值", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "写个报告" });
-  assert.equal(typeof res.details.confident, "boolean");
-});
-
-test("置信度：文本里给出置信度结论", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "写个报告" });
-  assert.match(res.content[0].text, /置信度：(足够|不足)/);
-});
-
-test("置信度：并列时即使只展示第一名也不假报领先，不要求用户手动装配", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "文档 插件", top: 1 });
-  assert.equal(res.details.confident, false);
-  assert.match(res.content[0].text, /置信度：不足/);
-  assert.doesNotMatch(res.content[0].text, /需用户执行/);
-});
-
-test("置信度：没有命中时 matched=false 且 ranked 为空", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "   " });
-  assert.equal(res.details.matched, false);
-  assert.deepEqual(res.details.ranked, []);
-});
-
-test("置信度：top 参数限制返回条数", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "写报告并做数据分析", top: 2 });
-  assert.ok(res.details.ranked.length <= 2);
-});
-
-test("置信度：top 越界会被夹到 1-5", async () => {
-  const { tool } = suggestTool();
-  const hi = await tool.execute("1", { text: "写报告", top: 99 });
-  assert.ok(hi.details.ranked.length <= 5);
-  const lo = await tool.execute("1", { text: "写报告", top: -3 });
-  assert.ok(lo.details.ranked.length >= 1);
-});
-
-test("置信度：details 里带 best（id/score/hits）", async () => {
-  const { tool } = suggestTool();
-  const res = await tool.execute("1", { text: "写个报告" });
-  if (res.details.matched) {
-    assert.ok(res.details.best?.id);
-    assert.equal(typeof res.details.best.score, "number");
-    assert.ok(Array.isArray(res.details.best.hits));
-  }
-});
-
-/* ==================== B. restoreScenario（10） ==================== */
 function envWithStore(active) {
   // 预写 store，session_start 时会读它
   fs.writeFileSync(process.env.PI_FUNCTION_STORE, JSON.stringify({ version: 1, known: {}, overrides: {}, active }));

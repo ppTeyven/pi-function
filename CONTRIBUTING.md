@@ -38,7 +38,7 @@ Rules the suite enforces (do not weaken these):
 |---|---|
 | `EXT_VERSION` equals `package.json` version | `enable-*` |
 | `/function off` keeps `read/bash/edit/write` even when they are not `builtin:` | `enable-21` |
-| Required capabilities of a scenario are force-completed, never silently skipped | `enable-19` |
+| Manual presets retain required-capability checks; model proposals are never auto-expanded | `enable-19`, `enable-08` |
 | `store.active` written by `applyScenario` is readable by `loadStore` | `enable-29` |
 | No tool name reaches `setActiveTools` unless it is registered | `enable-28` (properties) |
 
@@ -59,7 +59,7 @@ function-menu.js  const EXT_VERSION = "3.0.1";
 2. Add a `## 3.0.1` section at the top of `CHANGELOG.md`. Version headings follow
    Pi's changelog format (`## 3.0.1`), which is what Pi matches against
    `package.json` when showing an update notice.
-3. `npm test` — must be green.
+3. Run `npm test`, then capture and score the release benchmark. `npm run capture:release -- --out <new-results.json> --limit 8` starts a batch; repeat with `--resume --out <same-file> --limit 8` for the remaining cases (one writer per file). Each case is saved before moving to the next. Capture uses the configured Pi model on synthetic/public evidence and declines every confirmation. Supply `--sdk <dist/index.js>` outside Windows pi-web. Once complete, `npm run verify:release -- --results <same-file>` rejects partial, stale, or wrong-dataset results. See `TEST-PLAN.md` for the other gates. Do not change labels to make a run pass.
 4. Commit, tag, push:
    ```bash
    git commit -am "release: 3.0.1"
@@ -81,6 +81,10 @@ function-menu.js  const EXT_VERSION = "3.0.1";
    ```bash
    gh release create v3.0.1 --notes-file notes.md
    ```
+
+### Diagnose a missing proposal
+
+Run `npm run capture:release -- --diagnose --case <id> --out <new-local-file.json>` to investigate one case without replacing its accepted release capture. Cases without a valid proposal also record diagnostics during ordinary capture. This logs tool outcomes, unexpected legacy request ID use (not the ID itself), and the model's final visible text. It does not log raw prompts or reasoning. Diagnostic artifacts are deliberately rejected by `verify:release`; do not commit local capture files.
 
 ## npm credentials
 
@@ -104,18 +108,14 @@ schedule, so a fresh release can take hours to days to appear.
 
 ## Design constraints
 
-- Single file, zero dependencies, zero network calls, zero telemetry.
-- **This extension's own tools never take part in the assembly switch.**
-  `suggest_scenario` and `assemble_scenario` live under `~/.pi/agent/extensions/`,
-  so `isOptionalSource()` classifies them as optional — and `applyScenario`
-  switches every optional tool off unless the scene wants it. That once made a
-  single assembly lock the model out of both tools (the key was locked inside
-  the door). They are infrastructure: always active, never in `disabled`, never
-  audited as plugins. `/function <need>` additionally re-activates them right
-  before handing the need to the model, as a second line of defence.
-- The model reads the need; the local algorithm decides which tools open.
-  Keep that boundary — do not let a model response choose tool names directly.
-- The unacceptable outcome is **the user not having the tool they needed**.
-  When in doubt, over-enable and say so.
-- `/function ...` must never silently degrade: every skip, every missing plugin
-  and every auto-completion has to be visible to the user.
+- Single extension file, no added runtime dependency or telemetry. Model analysis uses the current Pi model; don't add a provider.
+- **Treat `suggest_scenario` and `assemble_scenario` as infrastructure.**
+  `/function off` keeps both available unless explicitly excluded in Pi settings;
+  project commands do not change the active set to start model analysis.
+- The model chooses project stage, targets, workflow and exact resources.
+  `suggest_scenario` lists facts; `assemble_scenario` validates the submitted IDs,
+  displays the enable/disable diff, and only applies an approved proposal. No local
+  ranker, default bundle, or automatic capability refill on this path.
+- Project evidence and proposals bind to an active `before_agent_start` turn using host-only custom-message metadata, never a model-supplied ID. `agent_settled` retires the binding. Standalone model assembly in an ordinary turn must explicitly submit `standalone: true` and omit project progress, so an expired project proposal cannot fall back to standalone confirmation.
+- Report model-unavailable states, gaps, declined proposals, and host readback
+  mismatches explicitly. Keep the manual preset path separate from model plans.

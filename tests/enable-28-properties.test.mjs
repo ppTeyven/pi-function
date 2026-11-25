@@ -1,7 +1,7 @@
 // 固定场景 × 工作流的公共入口矩阵，以及多选组合的不变量。
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, emptyStore } from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, makeProfile, emptyStore, modelPlan } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
@@ -26,20 +26,52 @@ function assertToolChange(before, after, change, tools, label) {
 
 test("公共装配入口：所有固定场景 × 工作流均保留核心工具并回报真实变更", async () => {
   const { pi, state, tools } = makeEnv();
-  const ctx = makeCtx(state);
-  await state.commands.get("function").handler("scan", ctx);
   const assemble = state.registeredTools.find(t => t.name === "assemble_scenario");
   for (const scene of m.SCENARIOS) for (const wf of m.WORKFLOWS) {
     const pair = `${scene.id} × ${wf.id}`;
     const before = [...pi.getActiveTools()];
-    const result = await assemble.execute(pair, { scenario: scene.id, workflow: wf.id }, undefined, undefined, ctx);
-    assert.ok(!result.isError, pair);
+    const result = await assemble.execute(pair, modelPlan({ scenario: scene.id, workflow: wf.id }), undefined, undefined, { ...makeCtx(state, { confirms: [true] }), cwd: process.env.PI_CODING_AGENT_DIR });
+    assert.ok(!result.isError, `${pair}: ${result.content[0].text}`);
     assert.equal(result.details.id, scene.id, pair);
     assert.equal(result.details.workflow, wf.id, pair);
     const after = pi.getActiveTools();
     assertToolChange(before, after, result.details, tools, pair);
+    assert.deepEqual(after, coreTools().map(t => t.name), `${pair}: 不得自动追加能力`);
     assert.deepEqual(state.entries.at(-1).d.tools, after, pair);
   }
+});
+
+test("场景禁用优先于工作流附带能力，但不删工作流步骤或允许的能力", () => {
+  const { pi, state, tools } = makeEnv();
+  const store = emptyStore();
+  const codeSkill = "gate-lsp";
+  m.hydrateCatalog(makeProfile(Object.fromEntries(Object.keys(m.CAPABILITIES).map(role => [role, {
+    packages: [role === "code-intel" ? "pi-lens" : `gate-${role}`],
+    skills: [role === "code-intel" ? codeSkill : `gate-skill-${role}`],
+  }]))));
+  for (const scenario of m.SCENARIOS) for (const workflow of m.WORKFLOWS) {
+    const { missing, forbiddenHit } = m.auditCoverage(scenario, store, workflow);
+    assert.deepEqual({ missing, forbiddenHit }, { missing: [], forbiddenHit: [] }, `${scenario.id} × ${workflow.id}`);
+  }
+
+  const article = m.SCENARIOS.find(s => s.id === "article");
+  const debug = m.workflowById("debug");
+  assert.ok(debug.plugins.includes("pi-lens"));
+  assert.ok(debug.skills.includes(codeSkill));
+  state.active = tools.map(t => t.name);
+  const res = m.applyScenario(pi, makeCtx(state), { ...article }, store, debug);
+  assert.ok(res.disabled.includes("lens_a"));
+  assert.ok(!m.comboSkillIds(article, store, debug).includes(codeSkill));
+  assert.ok(m.comboPackages(article, store, debug).includes("gate-testing"));
+  const proposal = m.buildProposal(pi, article, store, debug);
+  assert.match(proposal, /复现问题/);
+  assert.match(proposal, /工作流跳过.*pi-lens.*gate-lsp/);
+
+  const workflowOnly = m.workflowOnlyScenario(debug);
+  m.applyScenario(pi, makeCtx(state), workflowOnly, store, debug);
+  assert.ok(state.active.includes("lens_a"));
+  assert.ok(m.comboSkillIds(workflowOnly, store, debug).includes(codeSkill));
+  assert.doesNotMatch(m.buildProposal(pi, workflowOnly, store, debug), /工作流跳过/);
 });
 
 // 固定种子；不重复选同一个 ID，且必测最大与最小规模。

@@ -5,15 +5,15 @@ import test from "node:test";
 import fs from "node:fs";
 
 import {
-  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, tool, builtinInfo, noticeText, emptyStore,
+  EXT, isolate, makePi, makeCtx, coreTools, pkgTools, tool, builtinInfo, noticeText, emptyStore, modelAssemblyTools,
 } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
 
-function env({ activeCore = true } = {}) {
+function env({ activeCore = true, model = false } = {}) {
   const tools = [
-    ...coreTools(),
+    ...coreTools(), ...(model ? modelAssemblyTools() : []),
     ...pkgTools("pi-lens", ["lens_diagnostics"]),
     ...pkgTools("@plannotator/pi-extension", ["plan_submit"]),
     tool("unrelated_tool", { path: "/x/node_modules/@example/unrelated/dist/index.js", source: "npm:@example/unrelated" }),
@@ -22,7 +22,7 @@ function env({ activeCore = true } = {}) {
   const { pi, state } = makePi({ tools, active });
   m.default(pi);
   const cmd = state.commands.get("function");
-  return { state, run: (args, opts) => cmd.handler(args, makeCtx(state, opts)) };
+  return { state, run: (args, opts) => cmd.handler(args, makeCtx(state, model ? { ...opts, sessionId: "convenience" } : opts)) };
 }
 
 const storeOnDisk = () => JSON.parse(fs.readFileSync(process.env.PI_FUNCTION_STORE, "utf8"));
@@ -59,10 +59,10 @@ test("直达：/function resume 仍是项目续接（简历场景用 scenario re
 });
 
 test("直达：不存在的 id 当作需求文本交给模型", async () => {
-  const { state, run } = env();
-  await run("zzz-not-a-real-id", { selects: ["✓ 让模型决定工作流（推荐）"] });
-  assert.equal(state.userMessages.length, 1);
-  assert.match(state.userMessages[0].text, /zzz-not-a-real-id/);
+  const { state, run } = env({ model: true });
+  await run("zzz-not-a-real-id");
+  assert.equal(state.modelTurns.length, 1);
+  assert.match(state.modelTurns[0].content, /zzz-not-a-real-id/);
 });
 
 /* ------------------------- 装配后下一步 ------------------------- */

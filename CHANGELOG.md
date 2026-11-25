@@ -1,10 +1,18 @@
 # Changelog
 
-## Unreleased
+## 3.0.1
 
-- Give `/function resume` and `/function <need>` the same project-progress report, workflow picker and approval flow. Free text adds the current request to the analysis; it no longer enables tools without confirmation.
-- Use the Pi session workspace for suggestions, assembly and project-skill discovery. Resume recognizes status fields and blocker lists rather than matching words in command tables or fenced examples.
-- Keep project text in evidence reports, not in shared scene templates or the system prompt. Cancelling a free-text request does not send it. Cancelled/headless resume previews and suggestion calls do not persist the scanned catalog.
+### Model-driven project assembly
+
+- Separate the business acceptance goal from the media used to deliver it, and keep implementation capability in scope when the requested outcome must actually run.
+- Have the model distinguish missing execution materials from missing authority or goals for the assembly itself. It can propose the smallest known loadout without guessing unavailable inputs.
+- Describe the boundaries between deliverables and implementation methods in the model catalog. Separate manual preset roles from an actual deliverable's media and capability needs; manual presets and scene exclusions remain unchanged.
+- Bind project evidence and proposals to the Pi session, workspace and model turn in the host. The model no longer copies a request ID; stale, foreign and duplicate proposals cannot reach confirmation.
+- Use the current LLM for all judgment in `/function resume` and `/function <need>`: project progress, workflow, scene, gaps, and an exact plugin/tool/skill loadout. Local code shows evidence, validates the proposal and confirms before applying it; there is no local guessing fallback.
+- Preview tools and skills to be removed. Approval scopes the session skill list and pauses unselected `/skill:` commands without uninstalling anything.
+- Keep the selected workflow steps while skipping any workflow plugins or skills forbidden by the scenario; show the skipped items in the proposal.
+- Preserve workflow usage counts across ordinary saves, merge increments from different sessions, and keep explicit statistics resets authoritative.
+- Both project entry points use the Pi session workspace for evidence. Free text adds only the current request; unattended previews do not invoke a model or modify the loadout. Interactive analysis uses bounded evidence excerpts and leaves no new saved assembly when declined.
 - Respect the current branch’s `off` record, scope fallback restoration to the session/workspace, and restore combined workflows. Honor manual exclusions and report tools actually enabled by the host.
 - Restrict statistics reset to explicit commands; handle complete inventories on small installations. Tests use repository code and a temporary Pi installation instead of the developer’s home directory.
 - Write the store/profile atomically (temp file + fsync + rename): concurrent writers produced 71/248 truncated reads before and 0 after. Flush usage counters on `session_shutdown`. Invalidate the project brief cache when docs or git state change on disk.

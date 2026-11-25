@@ -1,0 +1,702 @@
+{
+  "version": 1,
+  "source": "RELEASE-REVIEW.md",
+  "method": "two independent blind AI reviewers",
+  "catalogType": "synthetic; one package and one skill per role",
+  "readiness": "frozen",
+  "cases": [
+    {
+      "id": "A01",
+      "text": "我把三个县的实地采访都记下来了。想要一篇能发到我们机构公众号的长文，主线是年轻人为什么留下，数字和采访原话都已核对。",
+      "source": "synthetic",
+      "accept": [
+        "article"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A02",
+      "text": "管理层要在两个仓储地点里选一个。已有租金、配送时效、招工情况的资料，请核对来源，列出可复算的对比和决策理由。",
+      "source": "synthetic",
+      "accept": [
+        "report"
+      ],
+      "required": [
+        "data",
+        "writing"
+      ],
+      "optional": [
+        "web"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A03",
+      "text": "I have seven minutes at the board meeting. Turn these notes into one decision per slide with an opening, a funding ask, and speaker notes.",
+      "source": "synthetic",
+      "accept": [
+        "presentation"
+      ],
+      "required": [
+        "slides"
+      ],
+      "optional": [
+        "design",
+        "writing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A04",
+      "text": "轮班同事第一次独立开店，常漏掉关账步骤。把现有操作整理成可按顺序照做的手册，有异常就告诉他去哪里查。",
+      "source": "synthetic",
+      "accept": [
+        "docs"
+      ],
+      "required": [
+        "docs"
+      ],
+      "optional": [
+        "process"
+      ],
+      "forbidden": [
+        "slides"
+      ]
+    },
+    {
+      "id": "A05",
+      "text": "我们周末做义卖，想把地点、轮班时间和报名按钮放到一张手机上好读的公开页面。登记用现成链接，不需要账号或后台。",
+      "source": "synthetic",
+      "accept": [
+        "webpage"
+      ],
+      "required": [
+        "design"
+      ],
+      "optional": [
+        "browser",
+        "writing"
+      ],
+      "forbidden": [
+        "mcp"
+      ]
+    },
+    {
+      "id": "A06",
+      "text": "现在借用设备靠纸本。想让教务人员登录、查库存、按权限批准借用，并让两间办公室在浏览器里共用同一份记录。",
+      "source": "synthetic",
+      "accept": [
+        "webapp"
+      ],
+      "required": [
+        "design",
+        "code-intel"
+      ],
+      "optional": [
+        "browser",
+        "testing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A07",
+      "text": "门店顾客扫桌牌二维码后要有微信内的订座入口，不想要求他们装新的独立 App；交付要能走微信审核。",
+      "source": "synthetic",
+      "accept": [
+        "mobile"
+      ],
+      "required": [
+        "design",
+        "code-intel"
+      ],
+      "optional": [
+        "testing",
+        "release"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A08",
+      "text": "让访客轮流从方格里翻牌，配成一对就得分，结束可以重来；需要交一个能实际玩的版本。",
+      "source": "synthetic",
+      "accept": [
+        "game"
+      ],
+      "required": [
+        "code-intel"
+      ],
+      "optional": [
+        "design",
+        "testing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A09",
+      "text": "咖啡袋、价牌、小程序头像现在像三个店。先定一套大家能复用的字型、配色和使用规范，不要求这轮做出各个成品。",
+      "source": "synthetic",
+      "accept": [
+        "design"
+      ],
+      "required": [
+        "design"
+      ],
+      "optional": [
+        "docs"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A10",
+      "text": "上季度退款数字对不上。我有两份导出的流水，要解释异常集中在哪些渠道和日期，最后能拿一张图说明原因。",
+      "source": "synthetic",
+      "accept": [
+        "data"
+      ],
+      "required": [
+        "data"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A11",
+      "text": "The warehouse team needs a JSON endpoint for missing shipments. Define request/response and status codes, then implement it against the existing service; no UI.",
+      "source": "synthetic",
+      "accept": [
+        "api"
+      ],
+      "required": [
+        "code-intel"
+      ],
+      "optional": [
+        "testing",
+        "docs"
+      ],
+      "forbidden": [
+        "design"
+      ]
+    },
+    {
+      "id": "A12",
+      "text": "每周三五点整理送料名单，发现下一周缺负责人就给我一封提醒。现在手动跑的脚本已经能算出缺口。",
+      "source": "synthetic",
+      "accept": [
+        "automation"
+      ],
+      "required": [
+        "automation"
+      ],
+      "optional": [
+        "code-intel",
+        "testing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A13",
+      "text": "财务把文档存在外部知识库。现在只能手工复制，我想在 Pi 会话里调用公司的搜索接口并保留鉴权边界；不改原服务。",
+      "source": "synthetic",
+      "accept": [
+        "integration"
+      ],
+      "required": [
+        "mcp"
+      ],
+      "optional": [
+        "code-intel",
+        "testing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A14",
+      "text": "我想让 Pi 的 `/draft-check` 先显示将检查哪些文件，再征求确认。需要能随会话加载的扩展，不是写一个独立 shell 脚本。",
+      "source": "synthetic",
+      "accept": [
+        "plugin"
+      ],
+      "required": [
+        "code-intel"
+      ],
+      "optional": [
+        "testing",
+        "docs"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A15",
+      "text": "每次活动结束各组都用不同方式交接照片。把谁收、谁核对授权、谁归档、何时算完成定下来，下次照一套流程走。",
+      "source": "synthetic",
+      "accept": [
+        "process"
+      ],
+      "required": [
+        "process"
+      ],
+      "optional": [
+        "docs"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A16",
+      "text": "pandas 构造索引时，如果输入只含一个空元组就报错，类似的数据经其他路径却能得到索引。请找出差异并修复，加一个回归用例；不要改调用方。［公开来源 1］",
+      "source": "https://github.com/pandas-dev/pandas/issues/45608",
+      "accept": [
+        "maintain"
+      ],
+      "required": [
+        "code-intel",
+        "testing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A17",
+      "text": "日本站要上线已有的预约界面。请翻译界面和错误提示，保留变量占位符，统一日期、称呼和敬语；不要重新设计页面。",
+      "source": "synthetic",
+      "accept": [
+        "localization"
+      ],
+      "required": [
+        "i18n"
+      ],
+      "optional": [
+        "writing",
+        "testing"
+      ],
+      "forbidden": [
+        "design"
+      ]
+    },
+    {
+      "id": "A18",
+      "text": "这周末门店有试吃。给三条可以直接发到小红书的短文案，语气要像店员，不像新闻稿。",
+      "source": "synthetic",
+      "accept": [
+        "social"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A19",
+      "text": "从一个刚回到故乡的维修工写起，第一章只让读者发现钟楼每天慢一分钟，不先解释原因。",
+      "source": "synthetic",
+      "accept": [
+        "novel"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A20",
+      "text": "We need a 30-second safety clip for new staff. Break it down into shots, on-screen captions and narration timings; someone else will do the shoot.",
+      "source": "synthetic",
+      "accept": [
+        "video"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A21",
+      "text": "想做一张剧团的竖版演出主视觉：画面是舞台上唯一一把空椅子，留出能叠放演出时间和地点的空间。",
+      "source": "synthetic",
+      "accept": [
+        "image"
+      ],
+      "required": [
+        "design"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A22",
+      "text": "四次培训，每次 45 分钟。新客服要从不会判断工单优先级，到能解释自己的分流理由；要有每一节的练习和考核。",
+      "source": "synthetic",
+      "accept": [
+        "course"
+      ],
+      "required": [
+        "docs"
+      ],
+      "optional": [
+        "writing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A23",
+      "text": "我从仓库转去做采购，旧经历里那些数字要保留。帮我把投递用简历重写成突出谈判、交期和降本的版本。",
+      "source": "synthetic",
+      "accept": [
+        "resume"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [
+        "docs",
+        "design"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A24",
+      "text": "80 人线下读书会，下雨也要能继续。帮我定场地、当天节奏、志愿者分工和备用方案。",
+      "source": "synthetic",
+      "accept": [
+        "event"
+      ],
+      "required": [],
+      "optional": [
+        "web",
+        "task",
+        "writing",
+        "process"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A25",
+      "text": "商品页常有人问是不是附插头。要重写购买页的卖点、规格和常见疑问，让买家下单前知道包装里有什么。",
+      "source": "synthetic",
+      "accept": [
+        "commerce"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A26",
+      "text": "我想每天打开同一个看板，看各点位的新增订单、积压和超时，能切换日期范围与区域；用固定的数据源更新。",
+      "source": "synthetic",
+      "accept": [
+        "dashboard"
+      ],
+      "required": [
+        "data"
+      ],
+      "optional": [
+        "design",
+        "automation"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A27",
+      "text": "给现有终端命令 `gh release create` 增加 `--dry-run`：脚本编写者想验证参数和将做的操作，但不能真的创建发布，也不用手工把命令改成 `echo`。［公开来源 2］",
+      "source": "https://github.com/cli/cli/issues/8887",
+      "accept": [
+        "api"
+      ],
+      "required": [
+        "code-intel",
+        "testing"
+      ],
+      "optional": [
+        "docs"
+      ],
+      "forbidden": [
+        "release"
+      ]
+    },
+    {
+      "id": "A28",
+      "text": "家长经常问课表和请假办法。想在聊天窗口里根据学校的现有制度回答，答不上来就转给值班同事。",
+      "source": "synthetic",
+      "accept": [
+        "chatbot"
+      ],
+      "required": [
+        "code-intel"
+      ],
+      "optional": [
+        "testing",
+        "docs"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A29",
+      "text": "Write one customer email asking a distributor to confirm the revised delivery week by Friday. Mention the two alternatives and keep it under 150 words.",
+      "source": "synthetic",
+      "accept": [
+        "email"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A30",
+      "text": "写一首能跟着 4/4 拍唱的民谣歌词，有两段主歌和会重复的副歌，主题是坐夜班车回家。",
+      "source": "synthetic",
+      "accept": [
+        "music"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A31",
+      "text": "需要一个能交给会计编辑的 Excel 工作簿，有原始表、勾稽公式、差额标色，不能只给我一个截图或总结。",
+      "source": "synthetic",
+      "accept": [
+        "spreadsheet"
+      ],
+      "required": [
+        "data"
+      ],
+      "optional": [
+        "testing"
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "A32",
+      "text": "看一下这份仓库租约里提前退租那两条，指出承租方承担的风险，以及哪些措辞值得请律师再确认；不是帮我润色。",
+      "source": "synthetic",
+      "accept": [
+        "legal"
+      ],
+      "required": [
+        "writing"
+      ],
+      "optional": [],
+      "forbidden": []
+    },
+    {
+      "id": "A33",
+      "text": "发给下属单位的正式通知，要按公文格式排成可修订的 Word，有发文字号、签发和落款；不要做宣传版海报。",
+      "source": "synthetic",
+      "accept": [
+        "docx"
+      ],
+      "required": [
+        "docx"
+      ],
+      "optional": [
+        "writing"
+      ],
+      "forbidden": [
+        "design",
+        "slides"
+      ]
+    }
+  ],
+  "catalog": [
+    {
+      "role": "code-intel",
+      "package": "fixture-code-intel",
+      "skill": "fixture-skill-code-intel",
+      "description": "代码理解 / 静态检查"
+    },
+    {
+      "role": "repo-wiki",
+      "package": "fixture-repo-wiki",
+      "skill": "fixture-skill-repo-wiki",
+      "description": "仓库 Wiki / 代码地图"
+    },
+    {
+      "role": "memory",
+      "package": "fixture-memory",
+      "skill": "fixture-skill-memory",
+      "description": "长期记忆 / 草稿"
+    },
+    {
+      "role": "side-chat",
+      "package": "fixture-side-chat",
+      "skill": "fixture-skill-side-chat",
+      "description": "旁路问答"
+    },
+    {
+      "role": "web",
+      "package": "fixture-web",
+      "skill": "fixture-skill-web",
+      "description": "联网搜索 / 抓取"
+    },
+    {
+      "role": "subagent",
+      "package": "fixture-subagent",
+      "skill": "fixture-skill-subagent",
+      "description": "子代理 / 独立复核"
+    },
+    {
+      "role": "orchestration",
+      "package": "fixture-orchestration",
+      "skill": "fixture-skill-orchestration",
+      "description": "多代理编排"
+    },
+    {
+      "role": "process",
+      "package": "fixture-process",
+      "skill": "fixture-skill-process",
+      "description": "流程 / SOP / 需求建模"
+    },
+    {
+      "role": "task",
+      "package": "fixture-task",
+      "skill": "fixture-skill-task",
+      "description": "任务清单 / 进度"
+    },
+    {
+      "role": "plan-review",
+      "package": "fixture-plan-review",
+      "skill": "fixture-skill-plan-review",
+      "description": "计划 / 方案审阅"
+    },
+    {
+      "role": "context",
+      "package": "fixture-context",
+      "skill": "fixture-skill-context",
+      "description": "大输出 / 上下文管理"
+    },
+    {
+      "role": "browser",
+      "package": "fixture-browser",
+      "skill": "fixture-skill-browser",
+      "description": "浏览器 / 页面操作"
+    },
+    {
+      "role": "vision",
+      "package": "fixture-vision",
+      "skill": "fixture-skill-vision",
+      "description": "图片理解"
+    },
+    {
+      "role": "simplify",
+      "package": "fixture-simplify",
+      "skill": "fixture-skill-simplify",
+      "description": "收尾简化"
+    },
+    {
+      "role": "advisor",
+      "package": "fixture-advisor",
+      "skill": "fixture-skill-advisor",
+      "description": "第二意见"
+    },
+    {
+      "role": "mcp",
+      "package": "fixture-mcp",
+      "skill": "fixture-skill-mcp",
+      "description": "MCP / 外部系统"
+    },
+    {
+      "role": "i18n",
+      "package": "fixture-i18n",
+      "skill": "fixture-skill-i18n",
+      "description": "本地化 / 多语言"
+    },
+    {
+      "role": "gsd",
+      "package": "fixture-gsd",
+      "skill": "fixture-skill-gsd",
+      "description": "规格驱动 / 阶段流程"
+    },
+    {
+      "role": "safety",
+      "package": "fixture-safety",
+      "skill": "fixture-skill-safety",
+      "description": "安全 / 危险操作拦截"
+    },
+    {
+      "role": "pretty",
+      "package": "fixture-pretty",
+      "skill": "fixture-skill-pretty",
+      "description": "主题 / 终端美化"
+    },
+    {
+      "role": "ask",
+      "package": "fixture-ask",
+      "skill": "fixture-skill-ask",
+      "description": "选项澄清"
+    },
+    {
+      "role": "design",
+      "package": "fixture-design",
+      "skill": "fixture-skill-design",
+      "description": "视觉 / UI / 品牌"
+    },
+    {
+      "role": "writing",
+      "package": "fixture-writing",
+      "skill": "fixture-skill-writing",
+      "description": "写作 / 编辑 / 文案"
+    },
+    {
+      "role": "slides",
+      "package": "fixture-slides",
+      "skill": "fixture-skill-slides",
+      "description": "演示 / 幻灯片"
+    },
+    {
+      "role": "docx",
+      "package": "fixture-docx",
+      "skill": "fixture-skill-docx",
+      "description": "公文 / 正式排版"
+    },
+    {
+      "role": "docs",
+      "package": "fixture-docs",
+      "skill": "fixture-skill-docs",
+      "description": "文档 / 教程 / 知识库"
+    },
+    {
+      "role": "release",
+      "package": "fixture-release",
+      "skill": "fixture-skill-release",
+      "description": "发布 / CI / 版本"
+    },
+    {
+      "role": "testing",
+      "package": "fixture-testing",
+      "skill": "fixture-skill-testing",
+      "description": "测试 / 验证"
+    },
+    {
+      "role": "automation",
+      "package": "fixture-automation",
+      "skill": "fixture-skill-automation",
+      "description": "自动化 / 爬虫 / 定时"
+    },
+    {
+      "role": "data",
+      "package": "fixture-data",
+      "skill": "fixture-skill-data",
+      "description": "数据 / 图表 / 分析"
+    },
+    {
+      "role": "perf",
+      "package": "fixture-perf",
+      "skill": "fixture-skill-perf",
+      "description": "性能 / 基准"
+    }
+  ]
+}

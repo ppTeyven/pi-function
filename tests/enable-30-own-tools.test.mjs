@@ -20,7 +20,7 @@ function env({ active } = {}) {
   const tools = [...coreTools(), ...OWN, ...pkgTools("pi-lens", ["lens_diagnostics"])];
   const { pi, state } = makePi({ tools, active: active || tools.map((t) => t.name) });
   m.default(pi);
-  const run = (args, opts = { selects: ["✓ 让模型决定工作流（推荐）"] }) => state.commands.get("function").handler(args, makeCtx(state, opts));
+  const run = (args, opts) => state.commands.get("function").handler(args, makeCtx(state, { ...opts, sessionId: "own-tools" }));
   return { pi, state, tools, run };
 }
 
@@ -45,12 +45,13 @@ test("死锁回归：disabled 列表里不包含自有工具", () => {
   assert.ok(!res.disabled.includes("assemble_scenario"));
 });
 
-test("死锁回归：自有工具被手动关掉时，本地仍能出提案，取消后不改工具", async () => {
+test("自有工具被手动关掉时只报告证据，不启动模型也不出猜测提案", async () => {
   const { state, run } = env({ active: coreTools().map((t) => t.name) });
-  await run("写个爬虫抓取网页", { selects: ["✓ 使用项目推荐工作流"], confirms: [false] });
-  assert.ok(state.messages.some((x) => x.customType === "function-proposal"));
+  await run("写个爬虫抓取网页");
+  assert.equal(state.messages.at(-1)?.customType, "function-project");
+  assert.ok(!state.messages.some(x => x.customType === "function-proposal"));
   assert.equal(state.setCalls.length, 0);
-  assert.equal(state.userMessages.length, 0, "不能把请求发给缺少入口工具的模型");
+  assert.equal(state.modelTurns.length, 0, "不能把请求发给缺少入口工具的模型");
 });
 
 test("死锁回归：自有工具本来就在时不重复加", async () => {
@@ -68,11 +69,13 @@ test("死锁回归：自有工具不是插件，不计入场景审计", () => {
   assert.ok(!rows.some((r) => r.pkg.includes("function-menu")), JSON.stringify(rows.map((r) => r.pkg)));
 });
 
-test("死锁回归：/function off 之后仍然能通过 /function <需求> 恢复这两个工具", async () => {
+test("死锁回归：off 保留装配入口，下一次 resume 或需求无需本地兜底", async () => {
   const { state, run } = env();
   await run("off");
-  assert.ok(!state.active.includes("assemble_scenario"), "off = 全局常开，自有工具会关掉");
-  await run("编写项目文档", { selects: ["✓ 使用项目推荐工作流"], confirms: [true, false, false, false, false, false, false] });
-  assert.ok(state.active.includes("assemble_scenario"), "确认本地提案后应恢复自有工具");
+  assert.ok(state.active.includes("assemble_scenario"));
   assert.ok(state.active.includes("suggest_scenario"));
+  await run("resume");
+  await run("编写项目文档");
+  assert.equal(state.modelTurns.length, 2);
+  assert.ok(state.messages.every(x => x.customType !== "function-proposal"));
 });

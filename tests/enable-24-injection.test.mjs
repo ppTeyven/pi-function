@@ -1,14 +1,17 @@
 // 用户看到的提案/回执，以及模型实际收到的能力与执行流程。
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, noticeText } from "./lib/mock-pi.mjs";
+import { EXT, isolate, makePi, makeCtx, coreTools, pkgTools, noticeText, skillInfo, modelPlan } from "./lib/mock-pi.mjs";
 
 isolate();
 const m = await import(EXT);
 
 function env() {
   const tools = [...coreTools(), ...pkgTools("pi-lens", ["lens_diagnostics"])];
-  const { pi, state } = makePi({ tools, commands: [{ name: "lens-toggle", source: "extension", sourceInfo: { path: "/x/node_modules/pi-lens/a.js", source: "npm:pi-lens" } }] });
+  const { pi, state } = makePi({ tools, commands: [
+    { name: "lens-toggle", source: "extension", sourceInfo: { path: "/x/node_modules/pi-lens/a.js", source: "npm:pi-lens" } },
+    { name: "skill:pi-lens-lsp-navigation", source: "skill", sourceInfo: skillInfo("pi-lens-lsp-navigation"), description: "LSP diagnostics and code navigation" },
+  ] });
   m.default(pi);
   const ctx = makeCtx(state, { confirms: [true] });
   const run = (args) => state.commands.get("function").handler(args, ctx);
@@ -63,20 +66,21 @@ test("组合工作流提案：两种执行方式的标题和步骤同时可见",
 test("模型装配：可见提案包含流程和验收，回执列实际工具、用途、技能数和还原入口", async () => {
   const { state, ctx } = env();
   const assemble = state.registeredTools.find(t => t.name === "assemble_scenario");
-  const result = await assemble.execute("1", { scenario: "plugin", workflow: "debug" }, undefined, undefined, ctx);
-  assert.ok(!result.isError);
+  const plan = modelPlan({ scenario: "plugin", workflow: "debug", plugins: ["npm:pi-lens"], tools: ["lens_diagnostics"], skills: ["pi-lens-lsp-navigation"] });
+  const result = await assemble.execute("1", plan, undefined, undefined, ctx);
+  assert.ok(!result.isError, result.content[0].text);
   assert.deepEqual(state.messages.map(x => x.customType), ["function-proposal", "function-assembled"]);
   const [proposal, outcome] = state.messages;
   assert.equal(proposal.display, true);
   assert.equal(outcome.display, true);
-  assert.match(proposal.content, /^## 装配：/);
-  assert.match(proposal.content, /1\. 复现问题/);
+  assert.match(proposal.content, /^## 模型装配提案：/);
+  assert.match(proposal.content, /步骤：复现问题/);
   assert.match(proposal.content, /检查点：/);
   assert.match(proposal.content, /完成标准：/);
   assert.match(outcome.content, /^## 已装配：/);
   assert.ok(outcome.content.includes(`当前 ${state.active.length} 个工具可用`));
-  assert.match(outcome.content, /`pi-lens` — .+ · 1 个工具/);
-  const count = outcome.content.match(/\*\*技能\*\*（(\d+) 个）/);
+  assert.match(outcome.content, /`npm:pi-lens`：1 个活动工具；LSP/);
+  const count = outcome.content.match(/会话技能（(\d+) 个）/);
   const rows = outcome.content.split("\n").filter(line => /`pi-lens-lsp-navigation`/.test(line));
   assert.ok(Number(count?.[1]) >= rows.length && rows.length === 1);
   assert.match(outcome.content, /还原 \/function off/);

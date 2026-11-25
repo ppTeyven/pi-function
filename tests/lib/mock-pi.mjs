@@ -60,6 +60,9 @@ export const coreTools = () =>
 /** 一个包带一组工具 */
 export const pkgTools = (pkg, names, file) => names.map((n) => tool(n, npmInfo(pkg, file)));
 
+export const modelAssemblyTools = () => ["suggest_scenario", "assemble_scenario"].map(name => tool(name, localInfo()));
+export const modelPlan = (over = {}) => ({ standalone: true, scenario: "docs", workflow: "direct", plugins: [], tools: [], skills: [], reason: "仅保留当前阶段所需能力", gaps: [], ...over });
+
 /* -------------------------------- mock pi -------------------------------- */
 export function makePi({ tools = [], commands = [], active = null, settings = {} } = {}) {
   const state = {
@@ -73,6 +76,7 @@ export function makePi({ tools = [], commands = [], active = null, settings = {}
     selectCalls: [],
     editorText: null,
     userMessages: [],
+    modelTurns: [],
     handlers: {},
     editorWrites: 0,
     commands: new Map(),
@@ -85,7 +89,7 @@ export function makePi({ tools = [], commands = [], active = null, settings = {}
     registerOption() {},
     on(event, fn) { (state.handlers[event] = state.handlers[event] || []).push(fn); },
     appendEntry(type, d) { state.entries.push({ type, d }); },
-    sendMessage(msg) { state.messages.push(msg); },
+    sendMessage(msg, opts) { state.messages.push(msg); if (opts?.triggerTurn) state.modelTurns.push(msg); },
     sendUserMessage(text, opts) { state.userMessages = (state.userMessages || []).concat([{ text, opts }]); },
     getAllTools: () => state.tools,
     getActiveTools: () => state.active,
@@ -99,10 +103,11 @@ export function makePi({ tools = [], commands = [], active = null, settings = {}
 }
 
 /** ctx.ui 队列：input 收编号字符串，select 收选项，confirm 收布尔 */
-export function makeCtx(state, { inputs = [], selects = [], confirms = [], hasUI = true } = {}) {
+export function makeCtx(state, { inputs = [], selects = [], confirms = [], hasUI = true, sessionId } = {}) {
   return {
     hasUI,
     cwd: process.cwd(),
+    ...(sessionId ? { sessionManager: { getSessionId: () => sessionId } } : {}),
     ui: {
       notify(t, l) { state.notices.push({ text: String(t), level: l }); },
       input: async () => inputs.shift() ?? null,
